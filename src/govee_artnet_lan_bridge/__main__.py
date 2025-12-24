@@ -10,11 +10,17 @@ from typing import Iterable, List, Optional
 
 from .config import Config, load_config
 from .db import apply_migrations
+from .devices import DeviceStore
+from .discovery import DiscoveryService
 from .logging import configure_logging, get_logger
 
 
 async def _discovery_loop(stop_event: asyncio.Event, config: Config) -> None:
     logger = get_logger("govee.discovery")
+    store = DeviceStore(config.db_path)
+    service = DiscoveryService(config, store)
+    await store.sync_manual_devices(config.manual_devices)
+    await service.start()
     logger.info(
         "Discovery loop starting",
         extra={"interval": config.discovery_interval},
@@ -22,6 +28,10 @@ async def _discovery_loop(stop_event: asyncio.Event, config: Config) -> None:
     try:
         while not stop_event.is_set():
             logger.debug("Running discovery cycle")
+            try:
+                await service.run_cycle()
+            except Exception:
+                logger.exception("Discovery cycle failed")
             try:
                 await asyncio.wait_for(
                     stop_event.wait(), timeout=config.discovery_interval
@@ -32,6 +42,7 @@ async def _discovery_loop(stop_event: asyncio.Event, config: Config) -> None:
         logger.info("Discovery loop cancelled")
         raise
     finally:
+        await service.stop()
         logger.info("Discovery loop stopped")
 
 

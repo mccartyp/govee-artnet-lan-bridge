@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import json
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, Iterable, Mapping, MutableMapping, Optional
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence
 
 try:  # Python 3.11+
     import tomllib
@@ -24,6 +26,17 @@ def _default_db_path() -> Path:
 
 
 @dataclass(frozen=True)
+class ManualDevice:
+    """User-specified device metadata for discovery and persistence."""
+
+    id: str
+    ip: str
+    model: Optional[str] = None
+    description: Optional[str] = None
+    capabilities: Optional[Any] = None
+
+
+@dataclass(frozen=True)
 class Config:
     """Application configuration."""
 
@@ -33,6 +46,13 @@ class Config:
     discovery_interval: float = 30.0
     rate_limit_per_second: float = 10.0
     rate_limit_burst: int = 20
+    discovery_multicast_address: str = "239.255.255.250"
+    discovery_multicast_port: int = 4003
+    discovery_probe_payload: str = '{"cmd":"scan"}'
+    discovery_response_timeout: float = 2.0
+    discovery_stale_after: float = 300.0
+    manual_unicast_probes: bool = True
+    manual_devices: Sequence[ManualDevice] = ()
     log_format: str = "plain"
     log_level: str = "INFO"
     migrate_only: bool = False
@@ -80,6 +100,31 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         help="Seconds between device discovery scans.",
     )
     parser.add_argument(
+        "--discovery-multicast-address",
+        type=str,
+        help="Multicast address used for discovery probes.",
+    )
+    parser.add_argument(
+        "--discovery-multicast-port",
+        type=int,
+        help="UDP port used for discovery probes and responses.",
+    )
+    parser.add_argument(
+        "--discovery-probe-payload",
+        type=str,
+        help="Raw payload sent in discovery probes.",
+    )
+    parser.add_argument(
+        "--discovery-response-timeout",
+        type=float,
+        help="Seconds to wait for discovery responses after sending probes.",
+    )
+    parser.add_argument(
+        "--discovery-stale-after",
+        type=float,
+        help="Seconds after last_seen before a device is marked stale.",
+    )
+    parser.add_argument(
         "--rate-limit-per-second",
         type=float,
         help="Allowed outgoing events per second.",
@@ -98,6 +143,20 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Log verbosity level.",
+    )
+    parser.add_argument(
+        "--manual-device",
+        action="append",
+        dest="manual_devices",
+        help=(
+            "Manually provision a device as id=<id>,ip=<ip>,model=<model>,"
+            "description=<description>,capabilities=<json>"
+        ),
+    )
+    parser.add_argument(
+        "--manual-unicast-probes",
+        action="store_true",
+        help="Send unicast discovery probes to manually configured devices.",
     )
     parser.add_argument(
         "--migrate-only",
@@ -143,6 +202,10 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             data[key] = int(value)
         elif key in {"discovery_interval", "rate_limit_per_second"}:
             data[key] = float(value)
+        elif key in {"discovery_response_timeout", "discovery_stale_after"}:
+            data[key] = float(value)
+        elif key in {"discovery_multicast_port"}:
+            data[key] = int(value)
         elif key in {"log_format", "log_level"}:
             if key == "log_level":
                 data[key] = str(value).upper()
@@ -150,6 +213,10 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
                 data[key] = str(value).lower()
         elif key == "migrate_only":
             data[key] = _coerce_bool(value)
+        elif key == "manual_unicast_probes":
+            data[key] = _coerce_bool(value)
+        elif key == "manual_devices":
+            data[key] = _coerce_manual_devices(value)
         else:
             data[key] = value
     return replace(config, **data)
@@ -165,6 +232,78 @@ def _coerce_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def _coerce_manual_devices(value: Any) -> Sequence[ManualDevice]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            return (_manual_from_str(value),)
+        return _coerce_manual_devices(parsed)
+
+    if isinstance(value, ManualDevice):
+        return (value,)
+    if isinstance(value, Mapping):
+        return (_manual_from_mapping(value),)
+
+    if isinstance(value, Iterable):
+        devices: List[ManualDevice] = []
+        for item in value:
+            if isinstance(item, ManualDevice):
+                devices.append(item)
+            elif isinstance(item, Mapping):
+                devices.append(_manual_from_mapping(item))
+            elif isinstance(item, str):
+                devices.extend(_coerce_manual_devices(item))
+            else:
+                raise ValueError("Unsupported manual device entry")
+        return tuple(devices)
+
+    raise ValueError("Unsupported manual_devices configuration")
+
+
+def _manual_from_mapping(value: Mapping[str, Any]) -> ManualDevice:
+    if "id" not in value or "ip" not in value:
+        raise ValueError("Manual devices require 'id' and 'ip' fields")
+    return ManualDevice(
+        id=str(value["id"]),
+        ip=str(value["ip"]),
+        model=str(value.get("model")) if value.get("model") is not None else None,
+        description=str(value.get("description")) if value.get("description") is not None else None,
+        capabilities=value.get("capabilities"),
+    )
+
+
+_PAIR = re.compile(r"(?P<key>[^=]+)=(?P<value>.+)")
+
+
+def _manual_from_str(value: str) -> ManualDevice:
+    cap_value: Optional[str] = None
+    if "capabilities=" in value:
+        prefix, cap_raw = value.split("capabilities=", 1)
+        value = prefix.rstrip(",")
+        cap_value = cap_raw.strip()
+
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    mapping: Dict[str, Any] = {}
+    for part in parts:
+        match = _PAIR.match(part)
+        if not match:
+            raise ValueError(
+                "Manual device arguments must be key=value pairs separated by commas"
+            )
+        key = match.group("key").strip()
+        val = match.group("value").strip()
+        mapping[key] = val
+    if cap_value is not None:
+        try:
+            mapping["capabilities"] = json.loads(cap_value)
+        except json.JSONDecodeError:
+            mapping["capabilities"] = cap_value
+    return _manual_from_mapping(mapping)
 
 
 def load_config(cli_args: Optional[Iterable[str]] = None) -> Config:
