@@ -1,0 +1,20 @@
+[Unit]
+Description=Govee Artnet LAN Bridge (user)
+Documentation=https://github.com/Govee/govee-artnet-lan-bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:%h/.local/sbin:/usr/local/bin:/usr/bin
+EnvironmentFile=-%h/.config/govee-bridge/environment
+WorkingDirectory=%h/.local/share/govee-artnet-lan-bridge
+ExecStart=%h/.local/bin/govee-artnet-bridge --config %h/.config/govee-bridge/config.toml
+Restart=on-failure
+RestartSec=2s
+# Uncomment when using sd_notify (e.g., via systemd-notify wrapper)
+# Type=notify
+# NotifyAccess=main
+
+[Install]
+WantedBy=default.target
