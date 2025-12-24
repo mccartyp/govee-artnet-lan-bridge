@@ -209,7 +209,7 @@ def _cmd_health(config: ClientConfig, client: httpx.Client, args: argparse.Names
 
 
 def _cmd_status(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    data = _handle_response(client.get("/metrics"))
+    data = _handle_response(client.get("/status"))
     _print_output(data, config.output)
 
 

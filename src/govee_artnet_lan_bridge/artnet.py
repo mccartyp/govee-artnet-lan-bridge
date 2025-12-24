@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional,
 from .config import Config
 from .devices import DeviceStateUpdate, DeviceStore, MappingRecord
 from .logging import get_logger
+from .metrics import record_artnet_packet, record_artnet_update
 
 ARTNET_HEADER = b"Art-Net\x00"
 OPCODE_ARTDMX = 0x5000
@@ -256,6 +257,13 @@ class ArtNetService:
         if not self._universe_mappings:
             self.logger.warning("No ArtNet mappings configured; listener will still start.")
 
+        if self.config.dry_run:
+            self.logger.info(
+                "ArtNet service running in dry-run mode; listener not started.",
+                extra={"universes": sorted(self._universe_mappings.keys())},
+            )
+            return
+
         loop = asyncio.get_running_loop()
         try:
             transport, protocol = await loop.create_datagram_endpoint(
@@ -322,6 +330,7 @@ class ArtNetService:
         }
 
     def handle_packet(self, packet: ArtNetPacket, addr: Tuple[str, int]) -> None:
+        record_artnet_packet(packet.universe)
         mapping = self._universe_mappings.get(packet.universe)
         if mapping is None:
             self.logger.debug(
@@ -340,6 +349,7 @@ class ArtNetService:
             return
         self._last_payloads[update.device_id] = update.payload
         self._pending_updates[update.device_id] = update
+        record_artnet_update(update.device_id)
         if update.device_id not in self._debounce_tasks:
             self._debounce_tasks[update.device_id] = asyncio.create_task(
                 self._flush_after(update.device_id)

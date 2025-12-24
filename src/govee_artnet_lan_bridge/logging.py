@@ -6,7 +6,7 @@ import json
 import logging
 import logging.config
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Iterable, Mapping
 
 from .config import Config
 
@@ -51,6 +51,22 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(base, ensure_ascii=False)
 
 
+_REDACT_KEYS = {"authorization", "x-api-key", "cookie"}
+
+
+def redact_mapping(values: Mapping[str, Any], extra_keys: Iterable[str] = ()) -> Dict[str, Any]:
+    """Return a shallow copy of `values` with sensitive keys redacted."""
+
+    redacted: Dict[str, Any] = {}
+    redact_keys = {key.lower() for key in _REDACT_KEYS} | {key.lower() for key in extra_keys}
+    for key, value in values.items():
+        if key.lower() in redact_keys:
+            redacted[key] = "***REDACTED***"
+        else:
+            redacted[key] = value
+    return redacted
+
+
 def configure_logging(config: Config) -> None:
     """Configure global logging based on the provided config."""
 
@@ -81,6 +97,11 @@ def configure_logging(config: Config) -> None:
             },
             "loggers": {
                 "govee": {
+                    "level": level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
+                "govee.metrics": {
                     "level": level,
                     "handlers": ["console"],
                     "propagate": False,
@@ -116,6 +137,11 @@ def configure_logging(config: Config) -> None:
                     "propagate": False,
                 },
                 "govee.api": {
+                    "level": level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
+                "govee.api.middleware": {
                     "level": level,
                     "handlers": ["console"],
                     "propagate": False,

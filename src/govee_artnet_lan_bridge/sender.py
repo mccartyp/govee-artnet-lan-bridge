@@ -12,6 +12,7 @@ from typing import Any, Dict, Mapping, Optional
 from .config import Config
 from .devices import DeviceInfo, DeviceStore, PendingState
 from .logging import get_logger
+from .metrics import record_send_result
 
 
 @dataclass(frozen=True)
@@ -72,11 +73,15 @@ class DeviceSenderService:
         self._stop_event = asyncio.Event()
         self._poll_task: Optional[asyncio.Task[None]] = None
         self._device_tasks: Dict[str, asyncio.Task[None]] = {}
+        self._dry_run = config.dry_run
 
     async def start(self) -> None:
         self._stop_event.clear()
         self._poll_task = asyncio.create_task(self._poll_loop())
-        self.logger.info("Device sender service started")
+        if self._dry_run:
+            self.logger.info("Device sender service started in dry-run mode; payloads will not be sent.")
+        else:
+            self.logger.info("Device sender service started")
 
     async def stop(self) -> None:
         self._stop_event.set()
@@ -151,6 +156,7 @@ class DeviceSenderService:
                 "Skipping send for unknown or disabled device",
                 extra={"device_id": state.device_id},
             )
+            record_send_result("skipped")
             await self.store.record_send_failure(
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
@@ -163,6 +169,7 @@ class DeviceSenderService:
                 "Device missing IP; cannot send",
                 extra={"device_id": state.device_id},
             )
+            record_send_result("skipped")
             await self.store.record_send_failure(
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
@@ -180,10 +187,12 @@ class DeviceSenderService:
         payload = state.payload.encode("utf-8")
         success = await self._send_with_retries(target, payload, payload_hash)
         if success:
+            record_send_result("success" if not self._dry_run else "dry_run")
             await self.store.record_send_success(state.device_id, payload_hash)
             await self.store.set_last_seen([state.device_id])
             await self.store.delete_state(state.id)
         else:
+            record_send_result("failure")
             await self.store.record_send_failure(
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
@@ -192,6 +201,12 @@ class DeviceSenderService:
     async def _send_with_retries(
         self, target: DeviceTarget, payload: bytes, payload_hash: str
     ) -> bool:
+        if self._dry_run:
+            self.logger.info(
+                "Dry-run: would send payload",
+                extra={"device_id": target.id, "transport": target.transport, "port": target.port},
+            )
+            return True
         backoff = max(0.0, self.config.device_backoff_base)
         attempts = max(1, self.config.device_send_retries)
         for attempt in range(1, attempts + 1):

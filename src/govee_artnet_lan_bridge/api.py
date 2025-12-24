@@ -6,7 +6,7 @@ import asyncio
 import time
 from typing import Any, Callable, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -14,7 +14,12 @@ import uvicorn
 
 from .config import Config, ManualDevice
 from .devices import DeviceStateUpdate, DeviceStore
-from .logging import get_logger
+from .logging import get_logger, redact_mapping
+from .metrics import (
+    METRICS_CONTENT_TYPE,
+    latest_metrics,
+    observe_request,
+)
 
 
 def _build_auth_dependency(config: Config) -> Callable[[Request], None]:
@@ -123,6 +128,7 @@ def create_app(config: Config, store: DeviceStore) -> FastAPI:
     """Create and configure a FastAPI application."""
 
     logger = get_logger("govee.api")
+    request_logger = get_logger("govee.api.middleware")
     auth_dependency = _build_auth_dependency(config)
     app = FastAPI(
         title="Govee Artnet LAN Bridge API",
@@ -134,28 +140,51 @@ def create_app(config: Config, store: DeviceStore) -> FastAPI:
     @app.middleware("http")
     async def _logging_middleware(request: Request, call_next: Callable[..., Any]) -> JSONResponse:
         start = time.perf_counter()
+        path_template = getattr(request.scope.get("route"), "path", request.url.path)
+        redacted_headers = redact_mapping(dict(request.headers))
         try:
             response = await call_next(request)
-        except HTTPException:
+        except HTTPException as exc:
+            duration_seconds = time.perf_counter() - start
+            observe_request(request.method, path_template, exc.status_code, duration_seconds)
+            request_logger.warning(
+                "API error",
+                extra={
+                    "method": request.method,
+                    "path": path_template,
+                    "status": exc.status_code,
+                    "duration_ms": round(duration_seconds * 1000, 2),
+                    "client": request.client.host if request.client else None,
+                    "headers": redacted_headers,
+                },
+            )
             raise
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Unhandled API error")
             raise HTTPException(status_code=500, detail="Internal server error") from exc
-        duration_ms = (time.perf_counter() - start) * 1000
-        logger.info(
+        duration_seconds = time.perf_counter() - start
+        observe_request(
+            request.method,
+            path_template,
+            response.status_code,
+            duration_seconds,
+        )
+        request_logger.info(
             "Handled request",
             extra={
                 "method": request.method,
-                "path": request.url.path,
+                "path": path_template,
                 "status": response.status_code,
-                "duration_ms": round(duration_ms, 2),
+                "duration_ms": round(duration_seconds * 1000, 2),
+                "client": request.client.host if request.client else None,
+                "headers": redacted_headers,
             },
         )
         return response
 
     @app.exception_handler(HTTPException)
     async def _http_exc_handler(request: Request, exc: HTTPException) -> JSONResponse:
-        logger.warning(
+        request_logger.warning(
             "API error",
             extra={"path": request.url.path, "status": exc.status_code, "detail": exc.detail},
         )
@@ -165,7 +194,7 @@ def create_app(config: Config, store: DeviceStore) -> FastAPI:
     async def _validation_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        logger.warning(
+        request_logger.warning(
             "Validation error",
             extra={"path": request.url.path, "errors": exc.errors()},
         )
@@ -175,9 +204,13 @@ def create_app(config: Config, store: DeviceStore) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/metrics", dependencies=[Depends(auth_dependency)])
-    async def metrics() -> dict[str, int]:
+    @app.get("/status", dependencies=[Depends(auth_dependency)])
+    async def status() -> dict[str, int]:
         return dict(await store.stats())
+
+    @app.get("/metrics")
+    async def metrics() -> Response:
+        return Response(content=latest_metrics(), media_type=METRICS_CONTENT_TYPE)
 
     @app.get("/devices", dependencies=[Depends(auth_dependency)], response_model=list[DeviceOut])
     async def list_devices() -> list[DeviceOut]:
