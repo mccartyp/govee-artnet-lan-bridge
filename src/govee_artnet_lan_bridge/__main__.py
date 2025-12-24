@@ -11,15 +11,16 @@ from typing import Iterable, List, Optional
 from .config import Config, load_config
 from .db import apply_migrations
 from .devices import DeviceStore
+from .artnet import ArtNetService
 from .discovery import DiscoveryService
 from .logging import configure_logging, get_logger
 
 
-async def _discovery_loop(stop_event: asyncio.Event, config: Config) -> None:
+async def _discovery_loop(
+    stop_event: asyncio.Event, config: Config, store: DeviceStore
+) -> None:
     logger = get_logger("govee.discovery")
-    store = DeviceStore(config.db_path)
     service = DiscoveryService(config, store)
-    await store.sync_manual_devices(config.manual_devices)
     await service.start()
     logger.info(
         "Discovery loop starting",
@@ -69,9 +70,23 @@ async def _rate_limit_monitor(stop_event: asyncio.Event, config: Config) -> None
         logger.info("Rate limit monitor stopped")
 
 
+async def _artnet_loop(
+    stop_event: asyncio.Event, config: Config, store: DeviceStore
+) -> None:
+    logger = get_logger("govee.artnet")
+    service = ArtNetService(config, store)
+    await service.start()
+    try:
+        await stop_event.wait()
+    finally:
+        await service.stop()
+        logger.info("ArtNet loop stopped")
+
+
 async def _run_async(config: Config) -> None:
     logger = get_logger("govee")
     stop_event = asyncio.Event()
+    store = DeviceStore(config.db_path)
 
     def _request_shutdown(sig: Optional[int] = None) -> None:
         if not stop_event.is_set():
@@ -83,9 +98,11 @@ async def _run_async(config: Config) -> None:
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, _request_shutdown, sig.name)
 
+    await store.sync_manual_devices(config.manual_devices)
     tasks: List[asyncio.Task[None]] = [
-        asyncio.create_task(_discovery_loop(stop_event, config)),
+        asyncio.create_task(_discovery_loop(stop_event, config, store)),
         asyncio.create_task(_rate_limit_monitor(stop_event, config)),
+        asyncio.create_task(_artnet_loop(stop_event, config, store)),
     ]
     logger.info(
         "Bridge services started",
