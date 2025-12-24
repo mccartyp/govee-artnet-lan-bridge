@@ -9,6 +9,7 @@ import logging
 from typing import Iterable, List, Optional
 
 from .config import Config, load_config
+from .db import apply_migrations
 from .logging import configure_logging, get_logger
 
 
@@ -107,6 +108,11 @@ def run(cli_args: Optional[Iterable[str]] = None) -> None:
     configure_logging(config)
     logger = get_logger("govee")
     logger.debug("Loaded configuration", extra={"config": config})
+
+    apply_migrations(config.db_path)
+    if config.migrate_only:
+        logger.info("Migrations complete; exiting per configuration.")
+        return
     try:
         asyncio.run(_run_async(config))
     except KeyboardInterrupt:
