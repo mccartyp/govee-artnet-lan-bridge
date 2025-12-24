@@ -70,6 +70,7 @@ class Config:
     log_format: str = "plain"
     log_level: str = "INFO"
     migrate_only: bool = False
+    dry_run: bool = False
 
     @classmethod
     def from_sources(cls, cli_args: Optional[Iterable[str]] = None) -> "Config":
@@ -248,6 +249,11 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         help="Consecutive failures before marking a device offline.",
     )
     parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run without network IO while still emitting logs and queueing updates.",
+    )
+    parser.add_argument(
         "--migrate-only",
         action="store_true",
         help="Run database migrations and exit without starting services.",
@@ -321,6 +327,8 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
         elif key in {"migrate_only", "api_docs"}:
             data[key] = _coerce_bool(value)
         elif key == "manual_unicast_probes":
+            data[key] = _coerce_bool(value)
+        elif key == "dry_run":
             data[key] = _coerce_bool(value)
         elif key == "manual_devices":
             data[key] = _coerce_manual_devices(value)

@@ -12,6 +12,7 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 from .config import Config
 from .devices import DeviceStore, DiscoveryResult
 from .logging import get_logger
+from .metrics import record_discovery_error, record_discovery_response
 
 
 def _create_multicast_socket(address: str, port: int) -> socket.socket:
@@ -70,22 +71,26 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         try:
             message = data.decode("utf-8")
         except UnicodeDecodeError:
+            record_discovery_error("non_utf8")
             self.logger.debug("Ignoring non-UTF8 discovery response", extra={"from": addr})
             return
         try:
             payload = json.loads(message)
         except json.JSONDecodeError:
+            record_discovery_error("non_json")
             self.logger.debug("Ignoring non-JSON discovery response", extra={"from": addr})
             return
 
         parsed = _parse_payload(payload, addr)
         if parsed is None:
+            record_discovery_error("invalid_payload")
             return
         previous_ip = self._seen.get(parsed.id)
         self._seen[parsed.id] = parsed.ip
         if previous_ip and previous_ip == parsed.ip:
             return
 
+        record_discovery_response("multicast")
         self.loop.create_task(self.store.record_discovery(parsed))
 
     def send_probe(self, target: Tuple[str, int]) -> None:
@@ -149,6 +154,9 @@ class DiscoveryService:
         self._socket: Optional[socket.socket] = None
 
     async def start(self) -> None:
+        if self.config.dry_run:
+            self.logger.info("Discovery service running in dry-run mode; sockets not opened.")
+            return
         loop = asyncio.get_running_loop()
         sock = _create_multicast_socket(
             self.config.discovery_multicast_address,
@@ -180,8 +188,13 @@ class DiscoveryService:
         self.logger.info("Discovery service stopped")
 
     async def run_cycle(self) -> None:
-        if not self._protocol:
+        if not self._protocol and not self.config.dry_run:
             await self.start()
+        if self.config.dry_run:
+            self.logger.debug("Skipping discovery probes in dry-run mode")
+            await self.store.mark_stale(self.config.discovery_stale_after)
+            return
+
         assert self._protocol is not None
         self._protocol.reset_cycle()
 

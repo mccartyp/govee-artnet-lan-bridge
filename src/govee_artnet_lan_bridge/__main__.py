@@ -138,6 +138,7 @@ async def _run_async(config: Config) -> None:
             "artnet_port": config.artnet_port,
             "api_port": config.api_port,
             "db_path": str(config.db_path),
+            "dry_run": config.dry_run,
         },
     )
 
