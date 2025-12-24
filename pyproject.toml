@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "govee-artnet-lan-bridge"
+version = "0.1.0"
+description = "Asyncio entrypoint, configuration loader, and structured logging for the Govee Artnet LAN bridge."
+readme = "LICENSE"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Govee Bridge Maintainers" }]
+dependencies = []
+
+[project.scripts]
+govee-artnet-bridge = "govee_artnet_lan_bridge.__main__:run"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
