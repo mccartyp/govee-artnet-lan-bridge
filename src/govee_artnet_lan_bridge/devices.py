@@ -73,6 +73,30 @@ class DeviceStateUpdate:
     payload: Mapping[str, Any]
 
 
+@dataclass(frozen=True)
+class PendingState:
+    """Queued state row ready for delivery."""
+
+    id: int
+    device_id: str
+    payload: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class DeviceInfo:
+    """Metadata required for transport decisions and monitoring."""
+
+    id: str
+    ip: Optional[str]
+    capabilities: Any
+    offline: bool
+    failure_count: int
+    last_payload_hash: Optional[str]
+    last_payload_at: Optional[str]
+    last_failure_at: Optional[str]
+
+
 class DeviceStore:
     """SQLite-backed persistence for device metadata."""
 
@@ -327,6 +351,165 @@ class DeviceStore:
                 WHERE id = ?
                 """,
                 [(ts, device_id) for device_id in device_ids],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    async def pending_device_ids(self) -> List[str]:
+        return await asyncio.to_thread(self._pending_device_ids)
+
+    def _pending_device_ids(self) -> List[str]:
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT s.device_id
+                FROM state s
+                JOIN devices d ON d.id = s.device_id
+                WHERE d.enabled = 1
+                  AND (d.stale = 0 OR d.stale IS NULL)
+                """
+            ).fetchall()
+            return [row["device_id"] for row in rows]
+        finally:
+            conn.close()
+
+    async def next_state(self, device_id: str) -> Optional[PendingState]:
+        return await asyncio.to_thread(self._next_state, device_id)
+
+    def _next_state(self, device_id: str) -> Optional[PendingState]:
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT id, device_id, payload, created_at
+                FROM state
+                WHERE device_id = ?
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (device_id,),
+            ).fetchone()
+            if not row:
+                return None
+            return PendingState(
+                id=int(row["id"]),
+                device_id=row["device_id"],
+                payload=row["payload"],
+                created_at=row["created_at"],
+            )
+        finally:
+            conn.close()
+
+    async def delete_state(self, state_id: int) -> None:
+        await asyncio.to_thread(self._delete_state, state_id)
+
+    def _delete_state(self, state_id: int) -> None:
+        conn = self._connect()
+        try:
+            conn.execute(
+                """
+                DELETE FROM state
+                WHERE id = ?
+                """,
+                (state_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    async def device_info(self, device_id: str) -> Optional[DeviceInfo]:
+        return await asyncio.to_thread(self._device_info, device_id)
+
+    def _device_info(self, device_id: str) -> Optional[DeviceInfo]:
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT
+                    id,
+                    ip,
+                    capabilities,
+                    offline,
+                    failure_count,
+                    last_payload_hash,
+                    last_payload_at,
+                    last_failure_at,
+                    enabled,
+                    stale
+                FROM devices
+                WHERE id = ?
+                """,
+                (device_id,),
+            ).fetchone()
+            if not row or not row["enabled"] or row["stale"]:
+                return None
+            return DeviceInfo(
+                id=row["id"],
+                ip=row["ip"],
+                capabilities=_deserialize_capabilities(row["capabilities"]),
+                offline=bool(row["offline"]),
+                failure_count=int(row["failure_count"] or 0),
+                last_payload_hash=row["last_payload_hash"],
+                last_payload_at=row["last_payload_at"],
+                last_failure_at=row["last_failure_at"],
+            )
+        finally:
+            conn.close()
+
+    async def record_send_success(self, device_id: str, payload_hash: str) -> None:
+        await asyncio.to_thread(self._record_send_success, device_id, payload_hash)
+
+    def _record_send_success(self, device_id: str, payload_hash: str) -> None:
+        now = _now_iso()
+        conn = self._connect()
+        try:
+            conn.execute(
+                """
+                UPDATE devices
+                SET
+                    last_payload_hash = ?,
+                    last_payload_at = ?,
+                    failure_count = 0,
+                    offline = 0,
+                    last_failure_at = NULL
+                WHERE id = ?
+                """,
+                (payload_hash, now, device_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    async def record_send_failure(
+        self, device_id: str, payload_hash: str, offline_threshold: int
+    ) -> None:
+        await asyncio.to_thread(
+            self._record_send_failure, device_id, payload_hash, offline_threshold
+        )
+
+    def _record_send_failure(
+        self, device_id: str, payload_hash: str, offline_threshold: int
+    ) -> None:
+        now = _now_iso()
+        conn = self._connect()
+        try:
+            conn.execute(
+                """
+                UPDATE devices
+                SET
+                    last_payload_hash = ?,
+                    last_payload_at = ?,
+                    failure_count = failure_count + 1,
+                    offline = CASE
+                        WHEN (failure_count + 1) >= ? THEN 1
+                        ELSE offline
+                    END,
+                    last_failure_at = ?
+                WHERE id = ?
+                """,
+                (payload_hash, now, offline_threshold, now, device_id),
             )
             conn.commit()
         finally:
