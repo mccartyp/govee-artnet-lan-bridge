@@ -10,7 +10,10 @@ readme = "LICENSE"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "Govee Bridge Maintainers" }]
-dependencies = []
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.23.0",
+]
 
 [project.scripts]
 govee-artnet-bridge = "govee_artnet_lan_bridge.__main__:run"

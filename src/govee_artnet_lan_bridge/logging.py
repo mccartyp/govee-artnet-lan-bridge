@@ -115,6 +115,11 @@ def configure_logging(config: Config) -> None:
                     "handlers": ["console"],
                     "propagate": False,
                 },
+                "govee.api": {
+                    "level": level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
                 "govee.discovery.protocol": {
                     "level": level,
                     "handlers": ["console"],

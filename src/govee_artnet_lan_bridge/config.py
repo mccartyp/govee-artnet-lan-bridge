@@ -42,6 +42,9 @@ class Config:
 
     artnet_port: int = 6454
     api_port: int = 8000
+    api_key: Optional[str] = None
+    api_bearer_token: Optional[str] = None
+    api_docs: bool = True
     db_path: Path = _default_db_path()
     discovery_interval: float = 30.0
     rate_limit_per_second: float = 10.0
@@ -99,6 +102,26 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         "--api-port",
         type=int,
         help="TCP port for the HTTP/API server.",
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        help="API key required via X-API-Key or Authorization: ApiKey <key>.",
+    )
+    parser.add_argument(
+        "--api-bearer-token",
+        type=str,
+        help="Bearer token required via Authorization: Bearer <token>.",
+    )
+    parser.add_argument(
+        "--api-docs",
+        action="store_true",
+        help="Enable interactive API docs (enabled by default).",
+    )
+    parser.add_argument(
+        "--no-api-docs",
+        action="store_true",
+        help="Disable interactive API docs.",
     )
     parser.add_argument(
         "--db-path",
@@ -254,7 +277,11 @@ def _load_env_config(prefix: str) -> Dict[str, Any]:
 
 
 def _cli_overrides(args: argparse.Namespace) -> Dict[str, Any]:
-    return {k: v for k, v in vars(args).items() if k != "config" and v is not None}
+    mapping = {k: v for k, v in vars(args).items() if k != "config" and v is not None}
+    if mapping.get("no_api_docs"):
+        mapping["api_docs"] = False
+        mapping.pop("no_api_docs", None)
+    return mapping
 
 
 def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
@@ -291,7 +318,7 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
                 data[key] = str(value).lower()
         elif key == "device_default_transport":
             data[key] = str(value).lower()
-        elif key == "migrate_only":
+        elif key in {"migrate_only", "api_docs"}:
             data[key] = _coerce_bool(value)
         elif key == "manual_unicast_probes":
             data[key] = _coerce_bool(value)
