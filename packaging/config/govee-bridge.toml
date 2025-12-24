@@ -1,0 +1,18 @@
+# Default configuration for govee-artnet-lan-bridge.
+# Copy this file to /etc/govee-bridge/config.toml for the system service or to
+# ${XDG_CONFIG_HOME:-$HOME/.config}/govee-bridge/config.toml for the user
+# service and adjust values as needed.
+
+# UDP port for Art-Net input.
+artnet_port = 6454
+
+# HTTP API port.
+api_port = 8000
+
+# Path to the SQLite database that stores devices and state.
+# For the system service the installer sets up /var/lib/govee-bridge.
+db_path = "/var/lib/govee-bridge/bridge.sqlite3"
+
+# Logging verbosity and format. Use "json" for structured logs.
+log_level = "INFO"
+log_format = "plain"

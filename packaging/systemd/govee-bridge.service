@@ -1,0 +1,27 @@
+[Unit]
+Description=Govee Artnet LAN Bridge (system)
+Documentation=https://github.com/Govee/govee-artnet-lan-bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=govee-bridge
+Group=govee-bridge
+WorkingDirectory=/var/lib/govee-bridge
+EnvironmentFile=-/etc/govee-bridge/environment
+ExecStart=/usr/local/bin/govee-artnet-bridge --config /etc/govee-bridge/config.toml
+StateDirectory=govee-bridge
+StateDirectoryMode=0750
+ConfigurationDirectory=govee-bridge
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+Restart=on-failure
+RestartSec=2s
+# Uncomment when using sd_notify (e.g., with a wrapper that signals readiness)
+# Type=notify
+# NotifyAccess=main
+
+[Install]
+WantedBy=multi-user.target
