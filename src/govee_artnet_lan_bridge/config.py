@@ -35,6 +35,7 @@ class Config:
     rate_limit_burst: int = 20
     log_format: str = "plain"
     log_level: str = "INFO"
+    migrate_only: bool = False
 
     @classmethod
     def from_sources(cls, cli_args: Optional[Iterable[str]] = None) -> "Config":
@@ -98,6 +99,11 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Log verbosity level.",
     )
+    parser.add_argument(
+        "--migrate-only",
+        action="store_true",
+        help="Run database migrations and exit without starting services.",
+    )
     return parser.parse_args(args=cli_args)
 
 
@@ -142,6 +148,8 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
                 data[key] = str(value).upper()
             else:
                 data[key] = str(value).lower()
+        elif key == "migrate_only":
+            data[key] = _coerce_bool(value)
         else:
             data[key] = value
     return replace(config, **data)
@@ -149,6 +157,14 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
 
 def _coerce_path(value: Any) -> Path:
     return value if isinstance(value, Path) else Path(str(value)).expanduser()
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def load_config(cli_args: Optional[Iterable[str]] = None) -> Config:
