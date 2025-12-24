@@ -114,8 +114,31 @@ def _migration_initial_schema(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_device_metadata(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE devices ADD COLUMN ip TEXT;
+        ALTER TABLE devices ADD COLUMN model TEXT;
+        ALTER TABLE devices ADD COLUMN first_seen TEXT;
+        ALTER TABLE devices ADD COLUMN manual INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE devices ADD COLUMN stale INTEGER NOT NULL DEFAULT 0;
+
+        CREATE INDEX IF NOT EXISTS idx_devices_manual ON devices (manual);
+        CREATE INDEX IF NOT EXISTS idx_devices_stale ON devices (stale);
+        """
+    )
+    conn.execute(
+        """
+        UPDATE devices
+        SET first_seen = COALESCE(last_seen, created_at)
+        WHERE first_seen IS NULL
+        """
+    )
+
+
 MIGRATIONS: List[Tuple[int, Migration]] = [
     (1, _migration_initial_schema),
+    (2, _migration_device_metadata),
 ]
 
 

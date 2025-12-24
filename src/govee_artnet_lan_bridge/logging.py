@@ -95,6 +95,16 @@ def configure_logging(config: Config) -> None:
                     "handlers": ["console"],
                     "propagate": False,
                 },
+                "govee.devices": {
+                    "level": level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
+                "govee.discovery.protocol": {
+                    "level": level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
                 "govee.artnet": {
                     "level": level,
                     "handlers": ["console"],
