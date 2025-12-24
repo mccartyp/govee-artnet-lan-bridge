@@ -120,6 +120,11 @@ def configure_logging(config: Config) -> None:
                     "handlers": ["console"],
                     "propagate": False,
                 },
+                "govee.sender": {
+                    "level": level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
             },
             "root": {"level": level, "handlers": ["console"]},
         }

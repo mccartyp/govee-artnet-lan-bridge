@@ -136,9 +136,24 @@ def _migration_device_metadata(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_device_send_tracking(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE devices ADD COLUMN last_payload_hash TEXT;
+        ALTER TABLE devices ADD COLUMN last_payload_at TEXT;
+        ALTER TABLE devices ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE devices ADD COLUMN offline INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE devices ADD COLUMN last_failure_at TEXT;
+
+        CREATE INDEX IF NOT EXISTS idx_devices_offline ON devices (offline);
+        """
+    )
+
+
 MIGRATIONS: List[Tuple[int, Migration]] = [
     (1, _migration_initial_schema),
     (2, _migration_device_metadata),
+    (3, _migration_device_send_tracking),
 ]
 
 

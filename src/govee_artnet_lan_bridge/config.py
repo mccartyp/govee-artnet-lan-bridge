@@ -53,6 +53,17 @@ class Config:
     discovery_stale_after: float = 300.0
     manual_unicast_probes: bool = True
     manual_devices: Sequence[ManualDevice] = ()
+    device_default_transport: str = "udp"
+    device_default_port: int = 4003
+    device_send_timeout: float = 2.0
+    device_send_retries: int = 3
+    device_backoff_base: float = 0.5
+    device_backoff_factor: float = 2.0
+    device_backoff_max: float = 5.0
+    device_max_send_rate: float = 10.0
+    device_queue_poll_interval: float = 0.5
+    device_idle_wait: float = 0.2
+    device_offline_threshold: int = 3
     log_format: str = "plain"
     log_level: str = "INFO"
     migrate_only: bool = False
@@ -159,6 +170,61 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         help="Send unicast discovery probes to manually configured devices.",
     )
     parser.add_argument(
+        "--device-default-transport",
+        choices=["tcp", "udp"],
+        help="Transport used when capabilities do not specify one.",
+    )
+    parser.add_argument(
+        "--device-default-port",
+        type=int,
+        help="Port used when capabilities do not specify one.",
+    )
+    parser.add_argument(
+        "--device-send-timeout",
+        type=float,
+        help="Seconds to wait for device send operations.",
+    )
+    parser.add_argument(
+        "--device-send-retries",
+        type=int,
+        help="Number of retries before marking a send as failed.",
+    )
+    parser.add_argument(
+        "--device-backoff-base",
+        type=float,
+        help="Initial backoff delay between retries.",
+    )
+    parser.add_argument(
+        "--device-backoff-factor",
+        type=float,
+        help="Multiplier applied to backoff between attempts.",
+    )
+    parser.add_argument(
+        "--device-backoff-max",
+        type=float,
+        help="Maximum backoff delay between retries.",
+    )
+    parser.add_argument(
+        "--device-max-send-rate",
+        type=float,
+        help="Maximum sends per second per device.",
+    )
+    parser.add_argument(
+        "--device-queue-poll-interval",
+        type=float,
+        help="Seconds between scans for devices with queued payloads.",
+    )
+    parser.add_argument(
+        "--device-idle-wait",
+        type=float,
+        help="Delay when a device queue is empty before polling again.",
+    )
+    parser.add_argument(
+        "--device-offline-threshold",
+        type=int,
+        help="Consecutive failures before marking a device offline.",
+    )
+    parser.add_argument(
         "--migrate-only",
         action="store_true",
         help="Run database migrations and exit without starting services.",
@@ -200,17 +266,31 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             data[key] = _coerce_path(value)
         elif key in {"artnet_port", "api_port", "rate_limit_burst"}:
             data[key] = int(value)
-        elif key in {"discovery_interval", "rate_limit_per_second"}:
+        elif key in {
+            "discovery_interval",
+            "rate_limit_per_second",
+            "device_send_timeout",
+            "device_backoff_base",
+            "device_backoff_factor",
+            "device_backoff_max",
+            "device_max_send_rate",
+            "device_queue_poll_interval",
+            "device_idle_wait",
+        }:
             data[key] = float(value)
         elif key in {"discovery_response_timeout", "discovery_stale_after"}:
             data[key] = float(value)
-        elif key in {"discovery_multicast_port"}:
+        elif key in {"discovery_multicast_port", "device_default_port"}:
+            data[key] = int(value)
+        elif key in {"device_send_retries", "device_offline_threshold"}:
             data[key] = int(value)
         elif key in {"log_format", "log_level"}:
             if key == "log_level":
                 data[key] = str(value).upper()
             else:
                 data[key] = str(value).lower()
+        elif key == "device_default_transport":
+            data[key] = str(value).lower()
         elif key == "migrate_only":
             data[key] = _coerce_bool(value)
         elif key == "manual_unicast_probes":

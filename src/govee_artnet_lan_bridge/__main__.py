@@ -13,6 +13,7 @@ from .db import apply_migrations
 from .devices import DeviceStore
 from .artnet import ArtNetService
 from .discovery import DiscoveryService
+from .sender import DeviceSenderService
 from .logging import configure_logging, get_logger
 
 
@@ -83,6 +84,19 @@ async def _artnet_loop(
         logger.info("ArtNet loop stopped")
 
 
+async def _sender_loop(
+    stop_event: asyncio.Event, config: Config, store: DeviceStore
+) -> None:
+    logger = get_logger("govee.sender")
+    service = DeviceSenderService(config, store)
+    await service.start()
+    try:
+        await stop_event.wait()
+    finally:
+        await service.stop()
+        logger.info("Sender loop stopped")
+
+
 async def _run_async(config: Config) -> None:
     logger = get_logger("govee")
     stop_event = asyncio.Event()
@@ -103,6 +117,7 @@ async def _run_async(config: Config) -> None:
         asyncio.create_task(_discovery_loop(stop_event, config, store)),
         asyncio.create_task(_rate_limit_monitor(stop_event, config)),
         asyncio.create_task(_artnet_loop(stop_event, config, store)),
+        asyncio.create_task(_sender_loop(stop_event, config, store)),
     ]
     logger.info(
         "Bridge services started",
