@@ -2,19 +2,41 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import shutil
 import sqlite3
+from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterable, List, Tuple
+from typing import Callable, Iterable, List, Optional, Tuple, TypeVar
 
 from .logging import get_logger
 
 Migration = Callable[[sqlite3.Connection], None]
 
 SCHEMA_VERSION_KEY = "schema_version"
+DEFAULT_INTEGRITY_CHECK_INTERVAL = 6 * 60 * 60  # seconds
+BUSY_TIMEOUT_MS = 5000
+
+T = TypeVar("T")
+
+
+class DatabaseCorruptionError(RuntimeError):
+    """Raised when a fatal SQLite corruption is detected."""
 
 
 def _ensure_parent_dir(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _configure_connection(conn: sqlite3.Connection) -> None:
+    """Apply connection-wide pragmas suitable for concurrent writers."""
+
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
 
 
 def _ensure_meta_table(conn: sqlite3.Connection) -> None:
@@ -162,8 +184,8 @@ def apply_migrations(db_path: Path) -> None:
 
     logger = get_logger("govee.migrations")
     _ensure_parent_dir(db_path)
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    _configure_connection(conn)
     try:
         current = _get_schema_version(conn)
         logger.info("Current schema version", extra={"version": current})
@@ -182,3 +204,117 @@ def _pending_migrations(current_version: int) -> Iterable[Tuple[int, Migration]]
     for version, migration in MIGRATIONS:
         if version > current_version:
             yield version, migration
+
+
+class DatabaseManager:
+    """Serializes access to a shared SQLite connection with health checks."""
+
+    def __init__(
+        self,
+        db_path: Path,
+        *,
+        integrity_check_interval: float = DEFAULT_INTEGRITY_CHECK_INTERVAL,
+    ) -> None:
+        self.db_path = db_path
+        self.logger = get_logger("govee.db")
+        self._conn: Optional[sqlite3.Connection] = None
+        self._lock = asyncio.Lock()
+        self._integrity_task: Optional[asyncio.Task[None]] = None
+        self._integrity_interval = integrity_check_interval
+        self._closed = False
+
+    async def start_integrity_checks(self) -> None:
+        if self._integrity_task or self._integrity_interval <= 0:
+            return
+        self._integrity_task = asyncio.create_task(self._integrity_loop())
+        self.logger.info(
+            "Started database integrity checks",
+            extra={"interval_seconds": self._integrity_interval},
+        )
+
+    async def close(self) -> None:
+        self._closed = True
+        if self._integrity_task:
+            self._integrity_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._integrity_task
+            self._integrity_task = None
+        async with self._lock:
+            conn = self._conn
+            self._conn = None
+        if conn is not None:
+            await asyncio.to_thread(conn.close)
+
+    async def run(self, operation: Callable[[sqlite3.Connection], T]) -> T:
+        """Run an operation with a shared connection, serialized by a lock."""
+
+        if self._closed:
+            raise RuntimeError("Database manager is closed")
+        async with self._lock:
+            try:
+                return await asyncio.to_thread(self._run_with_connection, operation)
+            except sqlite3.DatabaseError as exc:
+                raise self._handle_db_error(exc) from exc
+
+    def _run_with_connection(self, operation: Callable[[sqlite3.Connection], T]) -> T:
+        if self._conn is None:
+            _ensure_parent_dir(self.db_path)
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            _configure_connection(self._conn)
+        return operation(self._conn)
+
+    async def _integrity_loop(self) -> None:
+        try:
+            while not self._closed:
+                try:
+                    await self.run(self._integrity_check)
+                except DatabaseCorruptionError:
+                    self.logger.exception(
+                        "Database corruption detected during integrity check"
+                    )
+                    raise
+                await asyncio.sleep(self._integrity_interval)
+        except asyncio.CancelledError:
+            self.logger.info("Database integrity checks cancelled")
+            raise
+
+    def _integrity_check(self, conn: sqlite3.Connection) -> None:
+        results = conn.execute("PRAGMA integrity_check").fetchall()
+        if not results:
+            raise DatabaseCorruptionError("Integrity check returned no results")
+        failures = [row[0] for row in results if str(row[0]).lower() != "ok"]
+        if failures:
+            backup_path = self._backup_corrupt_db("; ".join(failures))
+            raise DatabaseCorruptionError(
+                f"Integrity check failed; database copied to {backup_path}. "
+                "Restore from a known-good backup or replace the database file."
+            )
+
+    def _handle_db_error(self, exc: sqlite3.DatabaseError) -> Exception:
+        message = str(exc).lower()
+        if any(
+            key in message
+            for key in ("malformed", "corrupt", "file is encrypted or is not a database")
+        ):
+            backup_path = self._backup_corrupt_db(message)
+            return DatabaseCorruptionError(
+                f"Database appears to be corrupted ({exc}); copied to {backup_path}. "
+                "Restore the database from a backup or remove the corrupted file."
+            )
+        return exc
+
+    def _backup_corrupt_db(self, reason: str) -> Path:
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        backup_path = self.db_path.with_suffix(f".corrupt-{timestamp}{self.db_path.suffix}")
+        try:
+            shutil.copy2(self.db_path, backup_path)
+            self.logger.error(
+                "Database corruption detected; backup created",
+                extra={"reason": reason, "backup_path": str(backup_path)},
+            )
+        except Exception:
+            self.logger.exception(
+                "Failed to create corruption backup",
+                extra={"reason": reason},
+            )
+        return backup_path
