@@ -18,6 +18,8 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreter
 
 
 CONFIG_ENV_PREFIX = "GOVEE_ARTNET_"
+CONFIG_VERSION = 1
+MIN_SUPPORTED_CONFIG_VERSION = 1
 
 
 def _default_db_path() -> Path:
@@ -67,10 +69,67 @@ class Config:
     device_queue_poll_interval: float = 0.5
     device_idle_wait: float = 0.2
     device_offline_threshold: int = 3
+    device_max_queue_depth: int = 1000
     log_format: str = "plain"
     log_level: str = "INFO"
     migrate_only: bool = False
     dry_run: bool = False
+    config_version: int = CONFIG_VERSION
+
+    def __post_init__(self) -> None:
+        _validate_config(self)
+
+    def logging_dict(self) -> Dict[str, Any]:
+        """Return a sanitized mapping suitable for structured logging."""
+
+        masked_keys = {
+            "api_key": "***REDACTED***" if self.api_key else None,
+            "api_bearer_token": "***REDACTED***" if self.api_bearer_token else None,
+        }
+        manual_devices = [
+            {
+                "id": device.id,
+                "ip": device.ip,
+                "model": device.model,
+                "description": device.description,
+                "capabilities": device.capabilities,
+            }
+            for device in self.manual_devices
+        ]
+        base: Dict[str, Any] = {
+            "config_version": self.config_version,
+            "artnet_port": self.artnet_port,
+            "api_port": self.api_port,
+            "api_docs": self.api_docs,
+            "db_path": str(self.db_path),
+            "discovery_interval": self.discovery_interval,
+            "discovery_multicast_address": self.discovery_multicast_address,
+            "discovery_multicast_port": self.discovery_multicast_port,
+            "discovery_probe_payload": self.discovery_probe_payload,
+            "discovery_response_timeout": self.discovery_response_timeout,
+            "discovery_stale_after": self.discovery_stale_after,
+            "manual_unicast_probes": self.manual_unicast_probes,
+            "manual_devices": manual_devices,
+            "device_default_transport": self.device_default_transport,
+            "device_default_port": self.device_default_port,
+            "device_send_timeout": self.device_send_timeout,
+            "device_send_retries": self.device_send_retries,
+            "device_backoff_base": self.device_backoff_base,
+            "device_backoff_factor": self.device_backoff_factor,
+            "device_backoff_max": self.device_backoff_max,
+            "device_max_send_rate": self.device_max_send_rate,
+            "device_queue_poll_interval": self.device_queue_poll_interval,
+            "device_idle_wait": self.device_idle_wait,
+            "device_offline_threshold": self.device_offline_threshold,
+            "device_max_queue_depth": self.device_max_queue_depth,
+            "log_format": self.log_format,
+            "log_level": self.log_level,
+            "migrate_only": self.migrate_only,
+            "dry_run": self.dry_run,
+        }
+        base.update(masked_keys)
+        return base
+
 
     @classmethod
     def from_sources(cls, cli_args: Optional[Iterable[str]] = None) -> "Config":
@@ -90,6 +149,45 @@ class Config:
         config = _apply_mapping(config, env_config)
         config = _apply_mapping(config, cli_config)
         return config
+
+
+def _validate_config(config: Config) -> None:
+    _validate_version(config.config_version)
+    _validate_range("artnet_port", config.artnet_port, 1, 65535)
+    _validate_range("api_port", config.api_port, 1, 65535)
+    _validate_range("discovery_interval", config.discovery_interval, 1.0, 3600.0)
+    _validate_range(
+        "discovery_response_timeout", config.discovery_response_timeout, 0.1, 120.0
+    )
+    _validate_range("discovery_stale_after", config.discovery_stale_after, 1.0, 172800.0)
+    _validate_range("rate_limit_per_second", config.rate_limit_per_second, 0.1, 10000.0)
+    _validate_range("rate_limit_burst", config.rate_limit_burst, 1, 100000)
+    _validate_range("device_send_timeout", config.device_send_timeout, 0.1, 120.0)
+    _validate_range("device_send_retries", config.device_send_retries, 1, 20)
+    _validate_range("device_backoff_base", config.device_backoff_base, 0.0, 60.0)
+    _validate_range("device_backoff_factor", config.device_backoff_factor, 1.0, 10.0)
+    _validate_range("device_backoff_max", config.device_backoff_max, 0.1, 300.0)
+    _validate_range("device_max_send_rate", config.device_max_send_rate, 0.0, 10000.0)
+    _validate_range("device_queue_poll_interval", config.device_queue_poll_interval, 0.01, 60.0)
+    _validate_range("device_idle_wait", config.device_idle_wait, 0.0, 10.0)
+    _validate_range("device_offline_threshold", config.device_offline_threshold, 1, 1000)
+    _validate_range("device_max_queue_depth", config.device_max_queue_depth, 1, 1000000)
+
+
+def _validate_version(version: int) -> None:
+    if version < MIN_SUPPORTED_CONFIG_VERSION:
+        raise ValueError(
+            f"Config version {version} is too old; minimum supported is {MIN_SUPPORTED_CONFIG_VERSION}."
+        )
+    if version > CONFIG_VERSION:
+        raise ValueError(
+            f"Config version {version} is newer than supported ({CONFIG_VERSION}); please upgrade the bridge."
+        )
+
+
+def _validate_range(name: str, value: float, minimum: float, maximum: float) -> None:
+    if value < minimum or value > maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}; got {value}.")
 
 
 def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
@@ -249,6 +347,11 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         help="Consecutive failures before marking a device offline.",
     )
     parser.add_argument(
+        "--device-max-queue-depth",
+        type=int,
+        help="Maximum queued payloads per device before refusing new entries.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run without network IO while still emitting logs and queueing updates.",
@@ -257,6 +360,11 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         "--migrate-only",
         action="store_true",
         help="Run database migrations and exit without starting services.",
+    )
+    parser.add_argument(
+        "--config-version",
+        type=int,
+        help="Version of the configuration schema being supplied.",
     )
     return parser.parse_args(args=cli_args)
 
@@ -297,7 +405,13 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             continue
         if key == "db_path":
             data[key] = _coerce_path(value)
-        elif key in {"artnet_port", "api_port", "rate_limit_burst"}:
+        elif key in {
+            "artnet_port",
+            "api_port",
+            "rate_limit_burst",
+            "device_max_queue_depth",
+            "config_version",
+        }:
             data[key] = int(value)
         elif key in {
             "discovery_interval",
