@@ -100,3 +100,68 @@ async def test_channel_map_endpoint(tmp_path) -> None:
     brightness_entries = [entry for entry in entries if entry.get("field") == "brightness"]
     assert brightness_entries
     assert brightness_entries[0]["device_description"] == "API Fixture"
+
+
+@pytest.mark.asyncio
+async def test_template_mapping_creation_via_api(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="api-template",
+            ip="10.0.2.1",
+            capabilities={"mode": "rgbw", "order": ["r", "g", "b", "w"], "supports_brightness": True},
+        )
+    )
+
+    app = create_app(Config(), store=store, health=None, reload_callback=None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/mappings",
+            json={
+                "device_id": "api-template",
+                "universe": 0,
+                "template": "rgbaw",
+                "start_channel": 10,
+            },
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert isinstance(payload, list)
+    assert len(payload) == 2
+    assert {entry["mapping_type"] for entry in payload} == {"discrete", "range"}
+    channels = [entry["channel"] for entry in payload]
+    assert channels == [10, 11]
+
+
+@pytest.mark.asyncio
+async def test_template_validation_returns_actionable_error(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="api-template-unsupported",
+            ip="10.0.2.2",
+            capabilities={"color_modes": [], "supports_brightness": False},
+        )
+    )
+
+    app = create_app(Config(), store=store, health=None, reload_callback=None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/mappings",
+            json={
+                "device_id": "api-template-unsupported",
+                "universe": 0,
+                "template": "brightness_rgb",
+                "start_channel": 1,
+            },
+        )
+
+    assert response.status_code == 400
+    assert "brightness" in response.json()["detail"]

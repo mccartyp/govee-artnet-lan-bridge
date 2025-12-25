@@ -94,11 +94,13 @@ class MappingCreate(BaseModel):
 
     device_id: str
     universe: int = Field(ge=0)
-    channel: int = Field(gt=0)
-    length: int = Field(default=1, gt=0)
-    mapping_type: str = Field(default="range")
+    channel: Optional[int] = Field(default=None, gt=0)
+    start_channel: Optional[int] = Field(default=None, gt=0)
+    length: Optional[int] = Field(default=1, gt=0)
+    mapping_type: Optional[str] = Field(default="range")
     field: Optional[str] = None
     allow_overlap: bool = False
+    template: Optional[str] = None
 
 
 class MappingUpdate(BaseModel):
@@ -321,21 +323,42 @@ def create_app(
         result = await store.channel_map()
         return {int(universe): [ChannelMapEntry(**entry) for entry in entries] for universe, entries in result.items()}
 
-    @app.post("/mappings", dependencies=[Depends(auth_dependency)], response_model=MappingOut, status_code=status.HTTP_201_CREATED)
-    async def create_mapping(payload: MappingCreate) -> MappingOut:
+    @app.post(
+        "/mappings",
+        dependencies=[Depends(auth_dependency)],
+        response_model=MappingOut | list[MappingOut],
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_mapping(payload: MappingCreate) -> MappingOut | list[MappingOut]:
         try:
+            if payload.template:
+                start_channel = payload.start_channel or payload.channel
+                if start_channel is None:
+                    raise ValueError("Start channel is required when using a template")
+                rows = await store.create_template_mappings(
+                    device_id=payload.device_id,
+                    universe=payload.universe,
+                    start_channel=start_channel,
+                    template=payload.template,
+                    allow_overlap=payload.allow_overlap,
+                )
+                return [MappingOut(**row.__dict__) for row in rows]
+            channel = payload.channel or payload.start_channel
+            if channel is None:
+                raise ValueError("Channel is required")
+            length = payload.length if payload.length is not None else 1
             row = await store.create_mapping(
                 device_id=payload.device_id,
                 universe=payload.universe,
-                channel=payload.channel,
-                length=payload.length,
-                mapping_type=payload.mapping_type,
+                channel=channel,
+                length=length,
+                mapping_type=payload.mapping_type or "range",
                 field=payload.field,
                 allow_overlap=payload.allow_overlap,
             )
+            return MappingOut(**row.__dict__)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        return MappingOut(**row.__dict__)
 
     @app.get("/mappings/{mapping_id}", dependencies=[Depends(auth_dependency)], response_model=MappingOut)
     async def get_mapping(mapping_id: int) -> MappingOut:
