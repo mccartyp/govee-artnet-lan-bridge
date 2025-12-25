@@ -113,6 +113,7 @@ async def _run_async(config: Config) -> None:
     logger = get_logger("govee")
     stop_event = asyncio.Event()
     store = DeviceStore(config.db_path)
+    await store.start()
 
     def _request_shutdown(sig: Optional[int] = None) -> None:
         if not stop_event.is_set():
@@ -146,6 +147,7 @@ async def _run_async(config: Config) -> None:
         await stop_event.wait()
     finally:
         await _shutdown_tasks(tasks, logger)
+        await store.stop()
         logger.info("Bridge shutdown complete")
 
 
