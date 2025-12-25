@@ -14,27 +14,65 @@ from .devices import DeviceStore
 from .api import ApiService
 from .artnet import ArtNetService
 from .discovery import DiscoveryService
+from .health import BackoffPolicy, HealthMonitor
 from .sender import DeviceSenderService
 from .logging import configure_logging, get_logger
 
 
 async def _discovery_loop(
-    stop_event: asyncio.Event, config: Config, store: DeviceStore
+    stop_event: asyncio.Event,
+    config: Config,
+    store: DeviceStore,
+    health: HealthMonitor,
 ) -> None:
     logger = get_logger("govee.discovery")
+    backoff = BackoffPolicy(
+        base=config.device_backoff_base,
+        factor=config.device_backoff_factor,
+        maximum=config.device_backoff_max,
+    )
     service = DiscoveryService(config, store)
-    await service.start()
+    start_failures = 0
+    while not stop_event.is_set():
+        allowed, remaining = await health.allow_attempt("discovery")
+        if not allowed:
+            logger.warning(
+                "Discovery temporarily suppressed after repeated failures",
+                extra={"cooldown_seconds": round(remaining, 2)},
+            )
+            await _wait_or_stop(stop_event, remaining)
+            continue
+        try:
+            await service.start()
+            await health.record_success("discovery")
+            start_failures = 0
+            break
+        except Exception as exc:
+            start_failures += 1
+            logger.exception("Discovery service failed to start")
+            await health.record_failure("discovery", exc)
+            await _wait_or_stop(stop_event, backoff.delay(start_failures))
+    else:
+        return
+
     logger.info(
         "Discovery loop starting",
         extra={"interval": config.discovery_interval},
     )
+    failures = 0
     try:
         while not stop_event.is_set():
             logger.debug("Running discovery cycle")
             try:
                 await service.run_cycle()
-            except Exception:
+                await health.record_success("discovery")
+                failures = 0
+            except Exception as exc:
                 logger.exception("Discovery cycle failed")
+                failures += 1
+                await health.record_failure("discovery", exc)
+                await _wait_or_stop(stop_event, backoff.delay(failures))
+                continue
             try:
                 await asyncio.wait_for(
                     stop_event.wait(), timeout=config.discovery_interval
@@ -73,23 +111,57 @@ async def _rate_limit_monitor(stop_event: asyncio.Event, config: Config) -> None
 
 
 async def _artnet_loop(
-    stop_event: asyncio.Event, config: Config, store: DeviceStore
+    stop_event: asyncio.Event, config: Config, store: DeviceStore, health: HealthMonitor
 ) -> None:
     logger = get_logger("govee.artnet")
     service = ArtNetService(config, store)
-    await service.start()
-    try:
-        await stop_event.wait()
-    finally:
-        await service.stop()
-        logger.info("ArtNet loop stopped")
+    backoff = BackoffPolicy(
+        base=config.device_backoff_base,
+        factor=config.device_backoff_factor,
+        maximum=config.device_backoff_max,
+    )
+    failures = 0
+    while not stop_event.is_set():
+        allowed, remaining = await health.allow_attempt("artnet")
+        if not allowed:
+            logger.warning(
+                "ArtNet listener suppressed after repeated failures",
+                extra={"cooldown_seconds": round(remaining, 2)},
+            )
+            await _wait_or_stop(stop_event, remaining)
+            continue
+        try:
+            await service.start()
+            await health.record_success("artnet")
+        except Exception as exc:
+            failures += 1
+            logger.exception("ArtNet service failed to start; will retry")
+            await health.record_failure("artnet", exc)
+            await _wait_or_stop(stop_event, backoff.delay(failures))
+            continue
+        failures = 0
+        wait_tasks = [
+            asyncio.create_task(stop_event.wait()),
+            asyncio.create_task(service.error_event.wait()),
+        ]
+        done, pending = await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        if stop_event.is_set():
+            break
+        logger.warning("ArtNet listener restarting after error")
+        await health.record_failure("artnet")
+        failures += 1
+        await _wait_or_stop(stop_event, backoff.delay(failures))
+    await service.stop()
+    logger.info("ArtNet loop stopped")
 
 
 async def _sender_loop(
-    stop_event: asyncio.Event, config: Config, store: DeviceStore
+    stop_event: asyncio.Event, config: Config, store: DeviceStore, health: HealthMonitor
 ) -> None:
     logger = get_logger("govee.sender")
-    service = DeviceSenderService(config, store)
+    service = DeviceSenderService(config, store, health=health)
     await service.start()
     try:
         await stop_event.wait()
@@ -98,9 +170,11 @@ async def _sender_loop(
         logger.info("Sender loop stopped")
 
 
-async def _api_loop(stop_event: asyncio.Event, config: Config, store: DeviceStore) -> None:
+async def _api_loop(
+    stop_event: asyncio.Event, config: Config, store: DeviceStore, health: HealthMonitor
+) -> None:
     logger = get_logger("govee.api")
-    service = ApiService(config, store)
+    service = ApiService(config, store, health=health)
     await service.start()
     try:
         await stop_event.wait()
@@ -114,6 +188,11 @@ async def _run_async(config: Config) -> None:
     stop_event = asyncio.Event()
     store = DeviceStore(config.db_path)
     await store.start()
+    health = HealthMonitor(
+        ("discovery", "sender", "artnet", "api"),
+        failure_threshold=config.subsystem_failure_threshold,
+        cooldown_seconds=config.subsystem_failure_cooldown,
+    )
 
     def _request_shutdown(sig: Optional[int] = None) -> None:
         if not stop_event.is_set():
@@ -127,11 +206,11 @@ async def _run_async(config: Config) -> None:
 
     await store.sync_manual_devices(config.manual_devices)
     tasks: List[asyncio.Task[None]] = [
-        asyncio.create_task(_discovery_loop(stop_event, config, store)),
+        asyncio.create_task(_discovery_loop(stop_event, config, store, health)),
         asyncio.create_task(_rate_limit_monitor(stop_event, config)),
-        asyncio.create_task(_artnet_loop(stop_event, config, store)),
-        asyncio.create_task(_sender_loop(stop_event, config, store)),
-        asyncio.create_task(_api_loop(stop_event, config, store)),
+        asyncio.create_task(_artnet_loop(stop_event, config, store, health)),
+        asyncio.create_task(_sender_loop(stop_event, config, store, health)),
+        asyncio.create_task(_api_loop(stop_event, config, store, health)),
     ]
     logger.info(
         "Bridge services started",
@@ -158,6 +237,15 @@ async def _shutdown_tasks(
         task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await asyncio.gather(*tasks)
+
+
+async def _wait_or_stop(stop_event: asyncio.Event, delay: float) -> None:
+    if delay <= 0:
+        return
+    try:
+        await asyncio.wait_for(stop_event.wait(), timeout=delay)
+    except asyncio.TimeoutError:
+        return
 
 
 def run(cli_args: Optional[Iterable[str]] = None) -> None:

@@ -11,6 +11,7 @@ from typing import Any, Dict, Mapping, Optional
 
 from .config import Config
 from .devices import DeviceInfo, DeviceStore, PendingState
+from .health import BackoffPolicy, HealthMonitor
 from .logging import get_logger
 from .metrics import record_send_result
 
@@ -66,7 +67,9 @@ def _derive_target(config: Config, device: DeviceInfo) -> Optional[DeviceTarget]
 class DeviceSenderService:
     """Background service draining device queues and handling retries."""
 
-    def __init__(self, config: Config, store: DeviceStore) -> None:
+    def __init__(
+        self, config: Config, store: DeviceStore, health: Optional[HealthMonitor] = None
+    ) -> None:
         self.config = config
         self.store = store
         self.logger = get_logger("govee.sender")
@@ -74,6 +77,16 @@ class DeviceSenderService:
         self._poll_task: Optional[asyncio.Task[None]] = None
         self._device_tasks: Dict[str, asyncio.Task[None]] = {}
         self._dry_run = config.dry_run
+        self._health = health or HealthMonitor(
+            ("sender",),
+            failure_threshold=config.subsystem_failure_threshold,
+            cooldown_seconds=config.subsystem_failure_cooldown,
+        )
+        self._backoff = BackoffPolicy(
+            base=config.device_backoff_base,
+            factor=config.device_backoff_factor,
+            maximum=config.device_backoff_max,
+        )
 
     async def start(self) -> None:
         self._stop_event.clear()
@@ -130,7 +143,6 @@ class DeviceSenderService:
         rate_delay = 0.0
         if self.config.device_max_send_rate > 0:
             rate_delay = 1.0 / self.config.device_max_send_rate
-        backoff_floor = max(0.0, self.config.device_backoff_base)
         while not self._stop_event.is_set():
             state = await self.store.next_state(device_id)
             if state is None:
@@ -141,14 +153,23 @@ class DeviceSenderService:
                 except asyncio.TimeoutError:
                     continue
                 continue
-            await self._process_state(state, backoff_floor)
+            await self._process_state(state)
             if rate_delay:
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=rate_delay)
                 except asyncio.TimeoutError:
                     continue
 
-    async def _process_state(self, state: PendingState, backoff_floor: float) -> None:
+    async def _process_state(self, state: PendingState) -> None:
+        allowed, remaining = await self._health.allow_attempt("sender")
+        if not allowed:
+            self.logger.warning(
+                "Send pipeline suppressed after repeated failures",
+                extra={"device_id": state.device_id, "cooldown_seconds": round(remaining, 2)},
+            )
+            await self._sleep_with_stop(remaining)
+            return
+
         payload_hash = hashlib.sha256(state.payload.encode("utf-8")).hexdigest()
         device = await self.store.device_info(state.device_id)
         if device is None:
@@ -160,7 +181,8 @@ class DeviceSenderService:
             await self.store.record_send_failure(
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
-            await asyncio.sleep(backoff_floor)
+            await self._health.record_failure("sender", RuntimeError("unknown or disabled device"))
+            await self._sleep_with_stop(self._backoff.delay(1))
             return
 
         target = _derive_target(self.config, device)
@@ -173,7 +195,8 @@ class DeviceSenderService:
             await self.store.record_send_failure(
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
-            await asyncio.sleep(backoff_floor)
+            await self._health.record_failure("sender", RuntimeError("device missing IP"))
+            await self._sleep_with_stop(self._backoff.delay(1))
             return
 
         if device.failure_count == 0 and device.last_payload_hash == payload_hash:
@@ -188,6 +211,7 @@ class DeviceSenderService:
         success = await self._send_with_retries(target, payload, payload_hash)
         if success:
             record_send_result("success" if not self._dry_run else "dry_run")
+            await self._health.record_success("sender")
             await self.store.record_send_success(state.device_id, payload_hash)
             await self.store.set_last_seen([state.device_id])
             await self.store.delete_state(state.id)
@@ -196,7 +220,8 @@ class DeviceSenderService:
             await self.store.record_send_failure(
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
-            await asyncio.sleep(backoff_floor)
+            await self._health.record_failure("sender", RuntimeError("send failed"))
+            await self._sleep_with_stop(self._backoff.delay(1))
 
     async def _send_with_retries(
         self, target: DeviceTarget, payload: bytes, payload_hash: str
@@ -207,18 +232,14 @@ class DeviceSenderService:
                 extra={"device_id": target.id, "transport": target.transport, "port": target.port},
             )
             return True
-        backoff = max(0.0, self.config.device_backoff_base)
         attempts = max(1, self.config.device_send_retries)
+        delays = self._backoff.iter_delays(attempts)
         for attempt in range(1, attempts + 1):
             if await self._send_once(target, payload):
                 return True
             if attempt == attempts:
                 break
-            await asyncio.sleep(backoff)
-            backoff = min(
-                self.config.device_backoff_max,
-                max(backoff * self.config.device_backoff_factor, self.config.device_backoff_base),
-            )
+            await self._sleep_with_stop(delays[attempt - 1])
         self.logger.error(
             "Exhausted retries sending payload",
             extra={
@@ -284,3 +305,11 @@ class DeviceSenderService:
                 extra={"device_id": target.id},
             )
             return False
+
+    async def _sleep_with_stop(self, delay: float) -> None:
+        if delay <= 0:
+            return
+        try:
+            await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
+        except asyncio.TimeoutError:
+            return

@@ -235,6 +235,7 @@ class ArtNetProtocol(asyncio.DatagramProtocol):
 
     def error_received(self, exc: Exception) -> None:
         self.logger.error("ArtNet listener error", exc_info=(type(exc), exc, exc.__traceback__))
+        self.handler.notify_error(exc)
 
 
 class ArtNetService:
@@ -251,8 +252,10 @@ class ArtNetService:
         self._pending_updates: MutableMapping[str, DeviceStateUpdate] = {}
         self._debounce_tasks: MutableMapping[str, asyncio.Task[None]] = {}
         self._debounce_seconds = DEFAULT_DEBOUNCE_SECONDS
+        self._error_event: asyncio.Event = asyncio.Event()
 
     async def start(self) -> None:
+        self._error_event.clear()
         await self._reload_mappings()
         if not self._universe_mappings:
             self.logger.warning("No ArtNet mappings configured; listener will still start.")
@@ -295,6 +298,7 @@ class ArtNetService:
         self._protocol = None
         await self._flush_pending()
         self.logger.info("ArtNet service stopped")
+        self._error_event.set()
 
     async def _reload_mappings(self) -> None:
         records = await self.store.mappings()
@@ -378,3 +382,11 @@ class ArtNetService:
         for device_id, update in list(self._pending_updates.items()):
             await self.store.enqueue_state(update)
             self._pending_updates.pop(device_id, None)
+
+    @property
+    def error_event(self) -> asyncio.Event:
+        return self._error_event
+
+    def notify_error(self, exc: Exception) -> None:
+        self.logger.warning("ArtNet listener reported error", extra={"error": str(exc)})
+        self._error_event.set()

@@ -8,6 +8,7 @@ try:
     from prometheus_client import (  # type: ignore
         CollectorRegistry,
         Counter,
+        Gauge,
         Histogram,
         CONTENT_TYPE_LATEST,
         generate_latest,
@@ -26,6 +27,9 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for constrained envir
         def observe(self, _: float) -> None:
             return None
 
+        def set(self, _: float) -> None:
+            return None
+
     class CollectorRegistry:  # type: ignore[empty-body]
         def __init__(self, *args: object, **kwargs: object) -> None:
             return None
@@ -35,7 +39,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for constrained envir
 
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4"
 
-    Counter = Histogram = _NoopMetric  # type: ignore
+    Counter = Gauge = Histogram = _NoopMetric  # type: ignore
 
 _REGISTRY = CollectorRegistry()
 
@@ -80,6 +84,18 @@ DEVICE_SEND_RESULTS = Counter(
     "govee_device_sends_total",
     "Device send outcomes",
     ["result"],
+    registry=_REGISTRY,
+)
+SUBSYSTEM_FAILURES = Counter(
+    "govee_subsystem_failures_total",
+    "Subsystem failures leading to suppression",
+    ["subsystem"],
+    registry=_REGISTRY,
+)
+SUBSYSTEM_STATUS = Gauge(
+    "govee_subsystem_status",
+    "Subsystem health (0=suppressed,1=degraded/recovering,2=ok)",
+    ["subsystem"],
     registry=_REGISTRY,
 )
 
@@ -132,6 +148,23 @@ def record_send_result(result: str) -> None:
     """Record the result of a device send attempt."""
 
     DEVICE_SEND_RESULTS.labels(result=result).inc()
+
+
+def record_subsystem_failure(subsystem: str) -> None:
+    """Record a subsystem failure triggering suppression."""
+
+    SUBSYSTEM_FAILURES.labels(subsystem=subsystem).inc()
+
+
+def record_subsystem_status(subsystem: str, status: str) -> None:
+    """Record the current subsystem status."""
+
+    code = 0
+    if status == "ok":
+        code = 2
+    elif status in {"recovering", "degraded"}:
+        code = 1
+    SUBSYSTEM_STATUS.labels(subsystem=subsystem).set(code)
 
 
 METRICS_CONTENT_TYPE = CONTENT_TYPE_LATEST
