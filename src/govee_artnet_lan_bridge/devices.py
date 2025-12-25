@@ -467,7 +467,7 @@ class DeviceStore:
                 configured, enabled, first_seen, last_seen, stale,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, 1, 1, 1, ?, ?, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
                 model=COALESCE(excluded.model, devices.model),
@@ -477,8 +477,8 @@ class DeviceStore:
                 first_seen=COALESCE(devices.first_seen, excluded.last_seen),
                 manual=excluded.manual OR devices.manual,
                 discovered=1,
-                configured=1,
-                enabled=1,
+                configured=devices.configured OR devices.manual,
+                enabled=devices.enabled,
                 stale=0
             """,
             (
