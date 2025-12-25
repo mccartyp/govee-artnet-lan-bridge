@@ -14,7 +14,12 @@ from .config import Config
 from .devices import DeviceInfo, DeviceStore, PendingState
 from .health import BackoffPolicy, HealthMonitor
 from .logging import get_logger
-from .metrics import observe_send_duration, record_send_result
+from .metrics import (
+    observe_send_duration,
+    record_rate_limit_wait,
+    record_send_result,
+    set_rate_limit_tokens,
+)
 
 
 @dataclass(frozen=True)
@@ -88,10 +93,17 @@ class DeviceSenderService:
             factor=config.device_backoff_factor,
             maximum=config.device_backoff_max,
         )
+        self._rate_tokens = float(config.rate_limit_burst)
+        self._rate_last_refill = time.perf_counter()
+        self._rate_lock = asyncio.Lock()
+        set_rate_limit_tokens(self._rate_tokens)
 
     async def start(self) -> None:
         self._stop_event.clear()
         await self.store.refresh_metrics()
+        self._rate_tokens = float(self.config.rate_limit_burst)
+        self._rate_last_refill = time.perf_counter()
+        set_rate_limit_tokens(self._rate_tokens)
         self._poll_task = asyncio.create_task(self._poll_loop())
         if self._dry_run:
             self.logger.info("Device sender service started in dry-run mode; payloads will not be sent.")
@@ -223,6 +235,7 @@ class DeviceSenderService:
             await self.store.delete_state(state.id)
             return
 
+        await self._acquire_rate_limit(state.device_id, state.context_id)
         payload = state.payload.encode("utf-8")
         transport_label = target.transport
         try:
@@ -356,3 +369,33 @@ class DeviceSenderService:
             await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
         except asyncio.TimeoutError:
             return
+
+    async def _acquire_rate_limit(self, device_id: str, context_id: Optional[str]) -> None:
+        if self.config.rate_limit_per_second <= 0 or self.config.rate_limit_burst <= 0:
+            return
+        while not self._stop_event.is_set():
+            async with self._rate_lock:
+                now = time.perf_counter()
+                elapsed = max(0.0, now - self._rate_last_refill)
+                self._rate_last_refill = now
+                self._rate_tokens = min(
+                    float(self.config.rate_limit_burst),
+                    self._rate_tokens + elapsed * self.config.rate_limit_per_second,
+                )
+                if self._rate_tokens >= 1.0:
+                    self._rate_tokens -= 1.0
+                    set_rate_limit_tokens(self._rate_tokens)
+                    return
+                wait_seconds = (1.0 - self._rate_tokens) / self.config.rate_limit_per_second
+                set_rate_limit_tokens(self._rate_tokens)
+            self.logger.debug(
+                "Rate limit exceeded; delaying send",
+                extra={
+                    "device_id": device_id,
+                    "context_id": context_id,
+                    "wait_seconds": round(wait_seconds, 3),
+                    "tokens": round(self._rate_tokens, 3),
+                },
+            )
+            record_rate_limit_wait("global")
+            await self._sleep_with_stop(wait_seconds)
