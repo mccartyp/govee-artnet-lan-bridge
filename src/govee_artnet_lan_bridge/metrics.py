@@ -135,6 +135,17 @@ OFFLINE_DEVICES = Gauge(
     "Number of devices marked offline",
     registry=_REGISTRY,
 )
+RATE_LIMIT_TOKENS = Gauge(
+    "govee_rate_limit_tokens",
+    "Available tokens in the device sender rate limiter",
+    registry=_REGISTRY,
+)
+RATE_LIMIT_WAITS = Counter(
+    "govee_rate_limit_waits_total",
+    "Send attempts delayed by the rate limiter",
+    ["scope"],
+    registry=_REGISTRY,
+)
 
 
 def get_registry() -> CollectorRegistry:
@@ -238,6 +249,18 @@ def set_offline_devices(count: int) -> None:
     """Set the number of offline devices."""
 
     OFFLINE_DEVICES.set(count)
+
+
+def set_rate_limit_tokens(tokens: float) -> None:
+    """Expose the current available rate limit tokens."""
+
+    RATE_LIMIT_TOKENS.set(tokens)
+
+
+def record_rate_limit_wait(scope: str) -> None:
+    """Record a send that waited for the rate limiter."""
+
+    RATE_LIMIT_WAITS.labels(scope=scope).inc()
 
 
 METRICS_CONTENT_TYPE = CONTENT_TYPE_LATEST

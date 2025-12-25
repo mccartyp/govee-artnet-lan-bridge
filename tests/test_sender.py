@@ -86,3 +86,100 @@ async def test_queue_drains_when_device_disabled_or_stale(tmp_path) -> None:
     dead_letters = await store.dead_letters("dev-disabled")
     assert len(dead_letters) == 1
     assert dead_letters[0].reason == "device_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_throttles_sends(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    config = Config(
+        db_path=db_path,
+        dry_run=True,
+        device_queue_poll_interval=0.01,
+        device_idle_wait=0.0,
+        device_backoff_base=0.0,
+        device_backoff_factor=1.0,
+        device_backoff_max=0.1,
+        device_max_send_rate=0.0,
+        rate_limit_per_second=2.0,
+        rate_limit_burst=1,
+    )
+    store = DeviceStore(config.db_path)
+    await store.create_manual_device(
+        ManualDevice(id="dev-rate-limit", ip="127.0.0.1", capabilities={"transport": "udp"})
+    )
+
+    send_times = []
+
+    async def _fake_send(self, *_args, **_kwargs):
+        send_times.append(asyncio.get_event_loop().time())
+        return True
+
+    monkeypatch.setattr(DeviceSenderService, "_send_with_retries", _fake_send)
+
+    for idx in range(3):
+        await store.enqueue_state(
+            DeviceStateUpdate(device_id="dev-rate-limit", payload={"seq": idx})
+        )
+
+    sender = DeviceSenderService(config, store)
+    await sender.start()
+
+    try:
+        await _wait_for_drain(store, timeout=2.0)
+    finally:
+        await sender.stop()
+
+    assert len(send_times) == 3
+    spacing = [send_times[i + 1] - send_times[i] for i in range(len(send_times) - 1)]
+    assert spacing[0] >= 0.45
+    assert spacing[1] >= 0.45
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_allows_burst(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    config = Config(
+        db_path=db_path,
+        dry_run=True,
+        device_queue_poll_interval=0.01,
+        device_idle_wait=0.0,
+        device_backoff_base=0.0,
+        device_backoff_factor=1.0,
+        device_backoff_max=0.1,
+        device_max_send_rate=0.0,
+        rate_limit_per_second=10.0,
+        rate_limit_burst=3,
+    )
+    store = DeviceStore(config.db_path)
+    await store.create_manual_device(
+        ManualDevice(id="dev-rate-burst", ip="127.0.0.1", capabilities={"transport": "udp"})
+    )
+
+    send_times = []
+
+    async def _fake_send(self, *_args, **_kwargs):
+        send_times.append(asyncio.get_event_loop().time())
+        return True
+
+    monkeypatch.setattr(DeviceSenderService, "_send_with_retries", _fake_send)
+
+    for idx in range(4):
+        await store.enqueue_state(
+            DeviceStateUpdate(device_id="dev-rate-burst", payload={"seq": idx})
+        )
+
+    sender = DeviceSenderService(config, store)
+    await sender.start()
+
+    try:
+        await _wait_for_drain(store, timeout=2.0)
+    finally:
+        await sender.stop()
+
+    assert len(send_times) == 4
+    spacing = [send_times[i + 1] - send_times[i] for i in range(len(send_times) - 1)]
+    assert spacing[0] < 0.3
+    assert spacing[1] < 0.3
+    assert spacing[2] >= 0.08
