@@ -1,7 +1,11 @@
+import pytest
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
 from govee_artnet_lan_bridge.api import create_app
 from govee_artnet_lan_bridge.config import Config
+from govee_artnet_lan_bridge.db import apply_migrations
+from govee_artnet_lan_bridge.devices import DeviceStore, DiscoveryResult
 
 
 def test_reload_endpoint_triggers_callback() -> None:
@@ -23,3 +27,33 @@ def test_reload_endpoint_without_callback() -> None:
     client = TestClient(app)
     response = client.post("/reload")
     assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_devices_endpoint_reflects_discovery_state(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.record_discovery(
+        DiscoveryResult(
+            id="api-dev-1",
+            ip="10.0.1.1",
+            model="API-Model",
+            capabilities={"color_modes": ["color"], "supports_brightness": True},
+        )
+    )
+
+    app = create_app(Config(), store=store, health=None, reload_callback=None)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/devices")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    device = payload[0]
+    assert device["id"] == "api-dev-1"
+    assert device["discovered"] is True
+    assert device["configured"] is False
+    assert device["enabled"] is False
