@@ -6,7 +6,8 @@ import asyncio
 import contextlib
 import signal
 import logging
-from typing import Iterable, List, Optional
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable, Iterable, List, Mapping, Optional
 
 from .config import Config, load_config
 from .db import apply_migrations
@@ -19,11 +20,22 @@ from .sender import DeviceSenderService
 from .logging import configure_logging, get_logger
 
 
+@dataclass
+class RunningServices:
+    """Track running service instances for state capture."""
+
+    discovery: Optional[DiscoveryService] = None
+    artnet: Optional[ArtNetService] = None
+    sender: Optional[DeviceSenderService] = None
+    api: Optional[ApiService] = None
+
+
 async def _discovery_loop(
     stop_event: asyncio.Event,
     config: Config,
     store: DeviceStore,
     health: HealthMonitor,
+    services: Optional[RunningServices] = None,
 ) -> None:
     logger = get_logger("govee.discovery")
     backoff = BackoffPolicy(
@@ -32,6 +44,8 @@ async def _discovery_loop(
         maximum=config.device_backoff_max,
     )
     service = DiscoveryService(config, store)
+    if services is not None:
+        services.discovery = service
     start_failures = 0
     while not stop_event.is_set():
         allowed, remaining = await health.allow_attempt("discovery")
@@ -84,6 +98,8 @@ async def _discovery_loop(
         raise
     finally:
         await service.stop()
+        if services is not None:
+            services.discovery = None
         logger.info("Discovery loop stopped")
 
 
@@ -111,10 +127,17 @@ async def _rate_limit_monitor(stop_event: asyncio.Event, config: Config) -> None
 
 
 async def _artnet_loop(
-    stop_event: asyncio.Event, config: Config, store: DeviceStore, health: HealthMonitor
+    stop_event: asyncio.Event,
+    config: Config,
+    store: DeviceStore,
+    health: HealthMonitor,
+    services: Optional[RunningServices] = None,
+    artnet_state: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> None:
     logger = get_logger("govee.artnet")
-    service = ArtNetService(config, store)
+    service = ArtNetService(config, store, initial_last_payloads=artnet_state)
+    if services is not None:
+        services.artnet = service
     backoff = BackoffPolicy(
         base=config.device_backoff_base,
         factor=config.device_backoff_factor,
@@ -154,90 +177,178 @@ async def _artnet_loop(
         failures += 1
         await _wait_or_stop(stop_event, backoff.delay(failures))
     await service.stop()
+    if services is not None:
+        services.artnet = None
     logger.info("ArtNet loop stopped")
 
 
 async def _sender_loop(
-    stop_event: asyncio.Event, config: Config, store: DeviceStore, health: HealthMonitor
+    stop_event: asyncio.Event,
+    config: Config,
+    store: DeviceStore,
+    health: HealthMonitor,
+    services: Optional[RunningServices] = None,
 ) -> None:
     logger = get_logger("govee.sender")
     service = DeviceSenderService(config, store, health=health)
+    if services is not None:
+        services.sender = service
     await service.start()
     try:
         await stop_event.wait()
     finally:
         await service.stop()
         logger.info("Sender loop stopped")
+        if services is not None:
+            services.sender = None
 
 
 async def _api_loop(
-    stop_event: asyncio.Event, config: Config, store: DeviceStore, health: HealthMonitor
+    stop_event: asyncio.Event,
+    config: Config,
+    store: DeviceStore,
+    health: HealthMonitor,
+    services: Optional[RunningServices] = None,
+    reload_callback: Optional[Callable[[], Awaitable[None]]] = None,
 ) -> None:
     logger = get_logger("govee.api")
-    service = ApiService(config, store, health=health)
+    service = ApiService(config, store, health=health, reload_callback=reload_callback)
+    if services is not None:
+        services.api = service
     await service.start()
     try:
         await stop_event.wait()
     finally:
         await service.stop()
         logger.info("API loop stopped")
+        if services is not None:
+            services.api = None
 
 
-async def _run_async(config: Config) -> None:
+async def _stop_services(
+    stop_event: asyncio.Event, tasks: Iterable[asyncio.Task[None]], logger: logging.Logger
+) -> None:
+    stop_event.set()
+    done, pending = await asyncio.wait(set(tasks), timeout=5)
+    for task in pending:
+        task.cancel()
+    if pending:
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.gather(*pending)
+    for task in done:
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+def _load_reloaded_config(
+    cli_args: Optional[Iterable[str]],
+    logger: logging.Logger,
+    current_config: Config,
+) -> Optional[Config]:
+    try:
+        new_config = load_config(cli_args)
+    except Exception:
+        logger.exception("Failed to reload configuration; keeping existing settings")
+        return None
+
+    if new_config.db_path != current_config.db_path:
+        logger.error(
+            "Config reload rejected because db_path changed; restart required",
+            extra={"current_db_path": str(current_config.db_path), "new_db_path": str(new_config.db_path)},
+        )
+        return None
+    return new_config
+
+
+async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -> None:
     logger = get_logger("govee")
-    stop_event = asyncio.Event()
+    shutdown_event = asyncio.Event()
+    reload_event = asyncio.Event()
     store = DeviceStore(config.db_path)
     await store.start()
     await store.refresh_metrics()
-    health = HealthMonitor(
-        ("discovery", "sender", "artnet", "api"),
-        failure_threshold=config.subsystem_failure_threshold,
-        cooldown_seconds=config.subsystem_failure_cooldown,
-    )
 
     def _request_shutdown(sig: Optional[int] = None) -> None:
-        if not stop_event.is_set():
+        if not shutdown_event.is_set():
             logger.warning("Shutdown requested", extra={"signal": sig})
-            stop_event.set()
+            shutdown_event.set()
+
+    def _request_reload(sig: Optional[int] = None) -> None:
+        logger.warning("Config reload requested", extra={"signal": sig})
+        reload_event.set()
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, _request_shutdown, sig.name)
+    with contextlib.suppress(NotImplementedError):
+        loop.add_signal_handler(signal.SIGHUP, _request_reload, "SIGHUP")
 
-    await store.sync_manual_devices(config.manual_devices)
-    tasks: List[asyncio.Task[None]] = [
-        asyncio.create_task(_discovery_loop(stop_event, config, store, health)),
-        asyncio.create_task(_rate_limit_monitor(stop_event, config)),
-        asyncio.create_task(_artnet_loop(stop_event, config, store, health)),
-        asyncio.create_task(_sender_loop(stop_event, config, store, health)),
-        asyncio.create_task(_api_loop(stop_event, config, store, health)),
-    ]
-    logger.info(
-        "Bridge services started",
-        extra={
-            "artnet_port": config.artnet_port,
-            "api_port": config.api_port,
-            "db_path": str(config.db_path),
-            "dry_run": config.dry_run,
-        },
-    )
+    artnet_state: Optional[Mapping[str, Mapping[str, Any]]] = None
+    current_config = config
 
-    try:
-        await stop_event.wait()
-    finally:
-        await _shutdown_tasks(tasks, logger)
-        await store.stop()
-        logger.info("Bridge shutdown complete")
+    while not shutdown_event.is_set():
+        await store.sync_manual_devices(current_config.manual_devices)
+        health = HealthMonitor(
+            ("discovery", "sender", "artnet", "api"),
+            failure_threshold=current_config.subsystem_failure_threshold,
+            cooldown_seconds=current_config.subsystem_failure_cooldown,
+        )
+        services = RunningServices()
+        stop_event = asyncio.Event()
+        tasks: List[asyncio.Task[None]] = [
+            asyncio.create_task(_discovery_loop(stop_event, current_config, store, health, services)),
+            asyncio.create_task(_rate_limit_monitor(stop_event, current_config)),
+            asyncio.create_task(_artnet_loop(stop_event, current_config, store, health, services, artnet_state)),
+            asyncio.create_task(_sender_loop(stop_event, current_config, store, health, services)),
+            asyncio.create_task(_api_loop(stop_event, current_config, store, health, services, _request_reload)),
+        ]
+        logger.info(
+            "Bridge services started",
+            extra={
+                "artnet_port": current_config.artnet_port,
+                "api_port": current_config.api_port,
+                "db_path": str(current_config.db_path),
+                "dry_run": current_config.dry_run,
+            },
+        )
 
+        while True:
+            wait_tasks = [
+                asyncio.create_task(shutdown_event.wait()),
+                asyncio.create_task(reload_event.wait()),
+            ]
+            done, pending = await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            for task in done:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
-async def _shutdown_tasks(
-    tasks: Iterable[asyncio.Task[None]], logger: logging.Logger
-) -> None:
-    for task in tasks:
-        task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await asyncio.gather(*tasks)
+            if shutdown_event.is_set():
+                await _stop_services(stop_event, tasks, logger)
+                break
+
+            reload_event.clear()
+            new_config = _load_reloaded_config(cli_args, logger, current_config)
+            if new_config is None:
+                logger.warning("Continuing with existing configuration after failed reload")
+                continue
+
+            artnet_service = services.artnet
+            await _stop_services(stop_event, tasks, logger)
+            if artnet_service is not None:
+                artnet_state = artnet_service.snapshot_last_payloads()
+            current_config = new_config
+            configure_logging(current_config)
+            logger.info("Configuration reloaded", extra={"config": current_config.logging_dict()})
+            break
+
+        if shutdown_event.is_set():
+            break
+
+    await store.stop()
+    logger.info("Bridge shutdown complete")
 
 
 async def _wait_or_stop(stop_event: asyncio.Event, delay: float) -> None:
@@ -262,7 +373,7 @@ def run(cli_args: Optional[Iterable[str]] = None) -> None:
         logger.info("Migrations complete; exiting per configuration.")
         return
     try:
-        asyncio.run(_run_async(config))
+        asyncio.run(_run_async(config, cli_args))
     except KeyboardInterrupt:
         logger.warning("Interrupted by user")
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Awaitable, Callable, Mapping, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
@@ -132,7 +133,12 @@ def _overall_status(subsystems: Mapping[str, Mapping[str, Any]]) -> str:
     return "ok"
 
 
-def create_app(config: Config, store: DeviceStore, health: Optional[HealthMonitor] = None) -> FastAPI:
+def create_app(
+    config: Config,
+    store: DeviceStore,
+    health: Optional[HealthMonitor] = None,
+    reload_callback: Optional[Callable[[], Awaitable[None]]] = None,
+) -> FastAPI:
     """Create and configure a FastAPI application."""
 
     logger = get_logger("govee.api")
@@ -214,7 +220,7 @@ def create_app(config: Config, store: DeviceStore, health: Optional[HealthMonito
         return {"status": _overall_status(subsystems), "subsystems": subsystems}
 
     @app.get("/status", dependencies=[Depends(auth_dependency)])
-    async def status() -> dict[str, int]:
+    async def status_view() -> dict[str, int]:
         return dict(await store.stats())
 
     @app.get("/metrics")
@@ -330,16 +336,35 @@ def create_app(config: Config, store: DeviceStore, health: Optional[HealthMonito
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mapping not found")
         return None
 
+    @app.post("/reload", dependencies=[Depends(auth_dependency)], status_code=status.HTTP_202_ACCEPTED)
+    async def reload_config() -> dict[str, str]:
+        if not reload_callback:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Reload handler unavailable",
+            )
+        result = reload_callback()
+        if inspect.isawaitable(result):
+            await result
+        return {"status": "reload_requested"}
+
     return app
 
 
 class ApiService:
     """Lifecycle wrapper for the FastAPI/uvicorn server."""
 
-    def __init__(self, config: Config, store: DeviceStore, health: Optional[HealthMonitor] = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        store: DeviceStore,
+        health: Optional[HealthMonitor] = None,
+        reload_callback: Optional[Callable[[], Awaitable[None]]] = None,
+    ) -> None:
         self.config = config
         self.store = store
         self.health = health
+        self._reload_callback = reload_callback
         self.logger = get_logger("govee.api")
         self._server: Optional[uvicorn.Server] = None
         self._server_task: Optional[Any] = None
@@ -347,7 +372,7 @@ class ApiService:
     async def start(self) -> None:
         if self._server:
             return
-        app = create_app(self.config, self.store, self.health)
+        app = create_app(self.config, self.store, self.health, reload_callback=self._reload_callback)
         uvicorn_config = uvicorn.Config(
             app,
             host="0.0.0.0",
