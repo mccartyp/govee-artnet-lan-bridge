@@ -70,6 +70,8 @@ class Config:
     device_idle_wait: float = 0.2
     device_offline_threshold: int = 3
     device_max_queue_depth: int = 1000
+    subsystem_failure_threshold: int = 5
+    subsystem_failure_cooldown: float = 15.0
     log_format: str = "plain"
     log_level: str = "INFO"
     migrate_only: bool = False
@@ -122,6 +124,8 @@ class Config:
             "device_idle_wait": self.device_idle_wait,
             "device_offline_threshold": self.device_offline_threshold,
             "device_max_queue_depth": self.device_max_queue_depth,
+            "subsystem_failure_threshold": self.subsystem_failure_threshold,
+            "subsystem_failure_cooldown": self.subsystem_failure_cooldown,
             "log_format": self.log_format,
             "log_level": self.log_level,
             "migrate_only": self.migrate_only,
@@ -172,6 +176,8 @@ def _validate_config(config: Config) -> None:
     _validate_range("device_idle_wait", config.device_idle_wait, 0.0, 10.0)
     _validate_range("device_offline_threshold", config.device_offline_threshold, 1, 1000)
     _validate_range("device_max_queue_depth", config.device_max_queue_depth, 1, 1000000)
+    _validate_range("subsystem_failure_threshold", config.subsystem_failure_threshold, 1, 1000)
+    _validate_range("subsystem_failure_cooldown", config.subsystem_failure_cooldown, 0.0, 3600.0)
 
 
 def _validate_version(version: int) -> None:
@@ -352,6 +358,16 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         help="Maximum queued payloads per device before refusing new entries.",
     )
     parser.add_argument(
+        "--subsystem-failure-threshold",
+        type=int,
+        help="Consecutive failures before subsystem attempts are temporarily suppressed.",
+    )
+    parser.add_argument(
+        "--subsystem-failure-cooldown",
+        type=float,
+        help="Seconds to pause a subsystem after repeated failures.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run without network IO while still emitting logs and queueing updates.",
@@ -410,6 +426,7 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             "api_port",
             "rate_limit_burst",
             "device_max_queue_depth",
+            "subsystem_failure_threshold",
             "config_version",
         }:
             data[key] = int(value)
@@ -423,6 +440,7 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             "device_max_send_rate",
             "device_queue_poll_interval",
             "device_idle_wait",
+            "subsystem_failure_cooldown",
         }:
             data[key] = float(value)
         elif key in {"discovery_response_timeout", "discovery_stale_after"}:

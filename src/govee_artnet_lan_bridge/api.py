@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Mapping, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
@@ -14,6 +14,7 @@ import uvicorn
 
 from .config import Config, ManualDevice
 from .devices import DeviceStateUpdate, DeviceStore
+from .health import HealthMonitor
 from .logging import get_logger, redact_mapping
 from .metrics import (
     METRICS_CONTENT_TYPE,
@@ -124,7 +125,13 @@ class TestAction(BaseModel):
     payload: Any
 
 
-def create_app(config: Config, store: DeviceStore) -> FastAPI:
+def _overall_status(subsystems: Mapping[str, Mapping[str, Any]]) -> str:
+    if any(state.get("status") != "ok" for state in subsystems.values()):
+        return "degraded"
+    return "ok"
+
+
+def create_app(config: Config, store: DeviceStore, health: Optional[HealthMonitor] = None) -> FastAPI:
     """Create and configure a FastAPI application."""
 
     logger = get_logger("govee.api")
@@ -201,8 +208,9 @@ def create_app(config: Config, store: DeviceStore) -> FastAPI:
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": exc.errors()})
 
     @app.get("/health", dependencies=[Depends(auth_dependency)])
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    async def health_status() -> dict[str, Any]:
+        subsystems = await health.snapshot() if health else {}
+        return {"status": _overall_status(subsystems), "subsystems": subsystems}
 
     @app.get("/status", dependencies=[Depends(auth_dependency)])
     async def status() -> dict[str, int]:
@@ -320,9 +328,10 @@ def create_app(config: Config, store: DeviceStore) -> FastAPI:
 class ApiService:
     """Lifecycle wrapper for the FastAPI/uvicorn server."""
 
-    def __init__(self, config: Config, store: DeviceStore) -> None:
+    def __init__(self, config: Config, store: DeviceStore, health: Optional[HealthMonitor] = None) -> None:
         self.config = config
         self.store = store
+        self.health = health
         self.logger = get_logger("govee.api")
         self._server: Optional[uvicorn.Server] = None
         self._server_task: Optional[Any] = None
@@ -330,7 +339,7 @@ class ApiService:
     async def start(self) -> None:
         if self._server:
             return
-        app = create_app(self.config, self.store)
+        app = create_app(self.config, self.store, self.health)
         uvicorn_config = uvicorn.Config(
             app,
             host="0.0.0.0",
@@ -340,6 +349,8 @@ class ApiService:
         )
         self._server = uvicorn.Server(config=uvicorn_config)
         self._server_task = asyncio.create_task(self._server.serve())
+        if self.health:
+            await self.health.record_success("api")
         self.logger.info("API server starting", extra={"port": self.config.api_port})
 
     async def stop(self) -> None:
