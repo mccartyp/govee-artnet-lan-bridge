@@ -164,7 +164,7 @@ def run(cli_args: Optional[Iterable[str]] = None) -> None:
     config = load_config(cli_args)
     configure_logging(config)
     logger = get_logger("govee")
-    logger.debug("Loaded configuration", extra={"config": config})
+    logger.info("Loaded configuration", extra={"config": config.logging_dict()})
 
     apply_migrations(config.db_path)
     if config.migrate_only:
