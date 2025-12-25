@@ -95,6 +95,65 @@ def _required_channels(capabilities: Any, length: int) -> int:
 SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness"}
 
 
+@dataclass(frozen=True)
+class TemplateSegment:
+    """Describes a single segment of a template expansion."""
+
+    kind: str  # "range" or "discrete"
+    fields: Tuple[str, ...]
+
+    @property
+    def length(self) -> int:
+        return len(self.fields)
+
+
+_TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
+    "rgb": (TemplateSegment("range", ("r", "g", "b")),),
+    "rgbw": (TemplateSegment("range", ("r", "g", "b", "w")),),
+    "brightness_rgb": (
+        TemplateSegment("discrete", ("brightness",)),
+        TemplateSegment("range", ("r", "g", "b")),
+    ),
+    "master_only": (TemplateSegment("discrete", ("brightness",)),),
+    # Ambience fixtures often expose a master brightness alongside RGBW channels.
+    "rgbwa": (
+        TemplateSegment("range", ("r", "g", "b", "w")),
+        TemplateSegment("discrete", ("brightness",)),
+    ),
+    "rgbaw": (
+        TemplateSegment("discrete", ("brightness",)),
+        TemplateSegment("range", ("r", "g", "b", "w")),
+    ),
+}
+
+
+def _template_segments(name: str) -> Tuple[TemplateSegment, ...]:
+    normalized = name.strip().lower()
+    if normalized not in _TEMPLATE_CATALOGUE:
+        raise ValueError(
+            f"Unknown template '{name}'. Supported templates: {', '.join(sorted(_TEMPLATE_CATALOGUE))}."
+        )
+    return _TEMPLATE_CATALOGUE[normalized]
+
+
+def _validate_template_support(
+    segments: Tuple[TemplateSegment, ...], capabilities: NormalizedCapabilities, template_name: str
+) -> None:
+    needs_brightness = any("brightness" in segment.fields for segment in segments)
+    needs_color = any(field in {"r", "g", "b", "w"} for segment in segments for field in segment.fields)
+    errors = []
+    if needs_brightness and not capabilities.supports_brightness:
+        errors.append("brightness")
+    if needs_color and not capabilities.supports_color:
+        errors.append("color")
+    if errors:
+        supported = capabilities.describe_support()
+        raise ValueError(
+            f"Template '{template_name}' is incompatible with this device "
+            f"(missing {', '.join(errors)} support; supported: {supported})."
+        )
+
+
 def _normalize_mapping_type(mapping_type: Optional[str]) -> str:
     normalized = (mapping_type or "range").strip().lower()
     if normalized not in {"range", "discrete"}:
@@ -749,6 +808,26 @@ class DeviceStore:
             )
         )
 
+    async def create_template_mappings(
+        self,
+        *,
+        device_id: str,
+        universe: int,
+        start_channel: int,
+        template: str,
+        allow_overlap: bool = False,
+    ) -> List[MappingRow]:
+        return await self.db.run(
+            lambda conn: self._create_template_mappings(
+                conn,
+                device_id=device_id,
+                universe=universe,
+                start_channel=start_channel,
+                template=template,
+                allow_overlap=allow_overlap,
+            )
+        )
+
     def _create_mapping(
         self,
         conn: sqlite3.Connection,
@@ -759,6 +838,9 @@ class DeviceStore:
         mapping_type: str,
         field: Optional[str],
         allow_overlap: bool,
+        *,
+        commit: bool = True,
+        normalized_capabilities: Optional[NormalizedCapabilities] = None,
     ) -> MappingRow:
         if channel <= 0 or length <= 0:
             raise ValueError("Channel and length must be positive")
@@ -772,7 +854,7 @@ class DeviceStore:
         ).fetchone()
         if not device_row:
             raise ValueError("Device not found")
-        normalized = self._normalized_capabilities_obj(device_row)
+        normalized = normalized_capabilities or self._normalized_capabilities_obj(device_row)
         capabilities = normalized.as_mapping()
         if normalized_mapping_type == "range":
             required = _required_channels(capabilities, length)
@@ -806,7 +888,8 @@ class DeviceStore:
             """,
             (device_id, universe, channel, length, normalized_mapping_type, normalized_field),
         )
-        conn.commit()
+        if commit:
+            conn.commit()
         mapping_id = cursor.lastrowid
         created = conn.execute(
             """
@@ -840,6 +923,57 @@ class DeviceStore:
             },
         )
         return self._row_to_mapping(created)
+
+    def _create_template_mappings(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        device_id: str,
+        universe: int,
+        start_channel: int,
+        template: str,
+        allow_overlap: bool,
+    ) -> List[MappingRow]:
+        if start_channel <= 0:
+            raise ValueError("Start channel must be positive")
+
+        segments = _template_segments(template)
+        device_row = conn.execute(
+            "SELECT model, capabilities FROM devices WHERE id = ?",
+            (device_id,),
+        ).fetchone()
+        if not device_row:
+            raise ValueError("Device not found")
+        normalized = self._normalized_capabilities_obj(device_row)
+        _validate_template_support(segments, normalized, template)
+
+        results: List[MappingRow] = []
+        channel = start_channel
+        conn.execute("BEGIN")
+        try:
+            for segment in segments:
+                mapping_type = "discrete" if segment.kind == "discrete" else "range"
+                field = segment.fields[0] if mapping_type == "discrete" else None
+                results.append(
+                    self._create_mapping(
+                        conn,
+                        device_id=device_id,
+                        universe=universe,
+                        channel=channel,
+                        length=segment.length,
+                        mapping_type=mapping_type,
+                        field=field,
+                        allow_overlap=allow_overlap,
+                        commit=False,
+                        normalized_capabilities=normalized,
+                    )
+                )
+                channel += segment.length
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        return results
 
     async def update_mapping(
         self,

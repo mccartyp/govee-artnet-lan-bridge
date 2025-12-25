@@ -132,7 +132,8 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
     create = mapping_sub.add_parser("create", help="Create a mapping")
     create.add_argument("--device-id", required=True, help="Device identifier")
     create.add_argument("--universe", required=True, type=int, help="DMX universe")
-    create.add_argument("--channel", required=True, type=int, help="Starting DMX channel")
+    create.add_argument("--channel", type=int, help="Starting DMX channel")
+    create.add_argument("--start-channel", type=int, help="Starting channel when using a template")
     create.add_argument("--length", type=int, help="Number of channels (defaults to 1 for discrete mappings)")
     create.add_argument(
         "--type",
@@ -140,6 +141,10 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
         choices=["range", "discrete"],
         default="range",
         help="Mapping type (range/discrete)",
+    )
+    create.add_argument(
+        "--template",
+        help="Mapping template to expand (rgb, rgbw, brightness_rgb, master_only, rgbwa, rgbaw)",
     )
     create.add_argument(
         "--field",
@@ -317,16 +322,31 @@ def _cmd_mappings_get(config: ClientConfig, client: httpx.Client, args: argparse
 
 
 def _cmd_mappings_create(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    length = args.length if args.length is not None else 1
-    payload = {
+    payload: MutableMapping[str, Any] = {
         "device_id": args.device_id,
         "universe": args.universe,
-        "channel": args.channel,
-        "length": length,
-        "mapping_type": args.mapping_type,
-        "field": args.field,
         "allow_overlap": args.allow_overlap,
     }
+    if args.template:
+        start_channel = args.start_channel or args.channel
+        if start_channel is None:
+            raise CliError("Start channel is required when using a template")
+        payload["template"] = args.template
+        payload["start_channel"] = start_channel
+        if args.channel is not None:
+            payload["channel"] = args.channel
+    else:
+        channel = args.channel if args.channel is not None else args.start_channel
+        if channel is None:
+            raise CliError("Channel is required when not using a template")
+        payload.update(
+            {
+                "channel": channel,
+                "length": args.length if args.length is not None else 1,
+                "mapping_type": args.mapping_type,
+                "field": args.field,
+            }
+        )
     data = _handle_response(client.post("/mappings", json=payload))
     _print_output(data, config.output)
 

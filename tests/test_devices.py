@@ -164,3 +164,58 @@ async def test_rediscovery_preserves_user_enabled_state(tmp_path) -> None:
     assert device.configured is True
     assert device.last_seen != old_last_seen
     assert device.capabilities.get("color_temp_range") == [1800, 6500]
+
+
+@pytest.mark.asyncio
+async def test_template_expansion_creates_expected_mappings(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-template",
+            ip="127.0.0.1",
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+        )
+    )
+
+    rows = await store.create_template_mappings(
+        device_id="dev-template",
+        universe=1,
+        start_channel=5,
+        template="brightness_rgb",
+    )
+
+    assert len(rows) == 2
+    first, second = rows
+    assert first.mapping_type == "discrete"
+    assert first.field == "brightness"
+    assert first.channel == 5
+    assert first.length == 1
+    assert second.mapping_type == "range"
+    assert second.channel == 6
+    assert second.length == 3
+
+
+@pytest.mark.asyncio
+async def test_template_validation_rejects_incompatible_device(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-template-unsupported",
+            ip="127.0.0.1",
+            capabilities={"color_modes": [], "supports_brightness": False},
+        )
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        await store.create_template_mappings(
+            device_id="dev-template-unsupported",
+            universe=0,
+            start_channel=1,
+            template="brightness_rgb",
+        )
+
+    assert "brightness" in str(excinfo.value)
