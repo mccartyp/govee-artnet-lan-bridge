@@ -193,8 +193,10 @@ class DeviceSenderService:
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
             await self._health.record_failure("sender", RuntimeError("unknown or disabled device"))
-            await self._sleep_with_stop(self._backoff.delay(1))
-            _finalize("skipped")
+            await self.store.quarantine_state(
+                state, payload_hash, reason="device_unavailable", details="missing, disabled, or stale"
+            )
+            _finalize("dead_letter")
             return
 
         target = _derive_target(self.config, device)
@@ -207,8 +209,10 @@ class DeviceSenderService:
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
             await self._health.record_failure("sender", RuntimeError("device missing IP"))
-            await self._sleep_with_stop(self._backoff.delay(1))
-            _finalize("skipped")
+            await self.store.quarantine_state(
+                state, payload_hash, reason="missing_ip", details="device has no IP address"
+            )
+            _finalize("dead_letter")
             return
 
         if device.failure_count == 0 and device.last_payload_hash == payload_hash:

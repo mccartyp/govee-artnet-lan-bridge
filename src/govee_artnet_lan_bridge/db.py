@@ -188,11 +188,37 @@ def _migration_state_context_id(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_dead_letter_state(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS dead_letters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            state_id INTEGER,
+            device_id TEXT,
+            payload TEXT NOT NULL,
+            payload_hash TEXT,
+            context_id TEXT,
+            reason TEXT,
+            details TEXT,
+            state_created_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_dead_letters_device_id
+            ON dead_letters (device_id);
+
+        CREATE INDEX IF NOT EXISTS idx_dead_letters_created_at
+            ON dead_letters (created_at);
+        """
+    )
+
+
 MIGRATIONS: List[Tuple[int, Migration]] = [
     (1, _migration_initial_schema),
     (2, _migration_device_metadata),
     (3, _migration_device_send_tracking),
     (4, _migration_state_context_id),
+    (5, _migration_dead_letter_state),
 ]
 
 

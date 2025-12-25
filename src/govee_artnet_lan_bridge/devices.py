@@ -136,6 +136,22 @@ class PendingState:
 
 
 @dataclass(frozen=True)
+class DeadLetter:
+    """State rows that could not be delivered."""
+
+    id: int
+    state_id: Optional[int]
+    device_id: Optional[str]
+    payload: str
+    payload_hash: Optional[str]
+    context_id: Optional[str]
+    reason: Optional[str]
+    details: Optional[str]
+    state_created_at: Optional[str]
+    created_at: str
+
+
+@dataclass(frozen=True)
 class DeviceInfo:
     """Metadata required for transport decisions and monitoring."""
 
@@ -851,11 +867,8 @@ class DeviceStore:
     def _pending_device_ids(self, conn: sqlite3.Connection) -> List[str]:
         rows = conn.execute(
             """
-            SELECT DISTINCT s.device_id
-            FROM state s
-            JOIN devices d ON d.id = s.device_id
-            WHERE d.enabled = 1
-              AND (d.stale = 0 OR d.stale IS NULL)
+            SELECT DISTINCT device_id
+            FROM state
             """
         ).fetchall()
         return [row["device_id"] for row in rows]
@@ -1066,6 +1079,98 @@ class DeviceStore:
         total_row = conn.execute("SELECT COUNT(*) AS total FROM state").fetchone()
         total = int(total_row["total"] if total_row else 0)
         set_total_queue_depth(total)
+
+    async def quarantine_state(
+        self, state: PendingState, payload_hash: str, reason: str, details: Optional[str] = None
+    ) -> None:
+        await self.db.run(
+            lambda conn: self._quarantine_state(conn, state, payload_hash, reason, details)
+        )
+
+    def _quarantine_state(
+        self,
+        conn: sqlite3.Connection,
+        state: PendingState,
+        payload_hash: str,
+        reason: str,
+        details: Optional[str],
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO dead_letters (
+                state_id,
+                device_id,
+                payload,
+                payload_hash,
+                context_id,
+                reason,
+                details,
+                state_created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                state.id,
+                state.device_id,
+                state.payload,
+                payload_hash,
+                state.context_id,
+                reason,
+                details,
+                state.created_at,
+            ),
+        )
+        conn.execute(
+            """
+            DELETE FROM state
+            WHERE id = ?
+            """,
+            (state.id,),
+        )
+        conn.commit()
+        self._update_queue_metrics(conn, state.device_id)
+
+    async def dead_letters(self, device_id: Optional[str] = None) -> List[DeadLetter]:
+        return await self.db.run(lambda conn: self._dead_letters(conn, device_id))
+
+    def _dead_letters(
+        self, conn: sqlite3.Connection, device_id: Optional[str] = None
+    ) -> List[DeadLetter]:
+        query = """
+            SELECT
+                id,
+                state_id,
+                device_id,
+                payload,
+                payload_hash,
+                context_id,
+                reason,
+                details,
+                state_created_at,
+                created_at
+            FROM dead_letters
+        """
+        params: Tuple[Any, ...] = ()
+        if device_id is not None:
+            query += " WHERE device_id = ?"
+            params = (device_id,)
+        query += " ORDER BY created_at ASC"
+        rows = conn.execute(query, params).fetchall()
+        return [
+            DeadLetter(
+                id=int(row["id"]),
+                state_id=row["state_id"],
+                device_id=row["device_id"],
+                payload=row["payload"],
+                payload_hash=row["payload_hash"],
+                context_id=row["context_id"],
+                reason=row["reason"],
+                details=row["details"],
+                state_created_at=row["state_created_at"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
 
     def _update_offline_metric(self, conn: sqlite3.Connection) -> None:
         row = conn.execute(
