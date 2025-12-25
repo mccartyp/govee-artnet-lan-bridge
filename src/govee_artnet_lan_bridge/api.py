@@ -85,6 +85,11 @@ class DeviceOut(BaseModel):
     offline: bool
     last_seen: Optional[str]
     first_seen: Optional[str]
+    poll_last_success_at: Optional[str] = None
+    poll_last_failure_at: Optional[str] = None
+    poll_failure_count: int = 0
+    poll_state: Optional[Any] = None
+    poll_state_updated_at: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -244,8 +249,11 @@ def create_app(
         return {"status": _overall_status(subsystems), "subsystems": subsystems}
 
     @app.get("/status", dependencies=[Depends(auth_dependency)])
-    async def status_view() -> dict[str, int]:
-        return dict(await store.stats())
+    async def status_view() -> dict[str, Any]:
+        payload: dict[str, Any] = dict(await store.stats())
+        payload.update(await store.polling_stats())
+        payload["device_polling_enabled"] = config.device_poll_enabled
+        return payload
 
     @app.get("/metrics")
     async def metrics() -> Response:

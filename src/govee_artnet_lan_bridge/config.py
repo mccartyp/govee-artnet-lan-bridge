@@ -69,6 +69,18 @@ class Config:
     device_queue_poll_interval: float = 0.5
     device_idle_wait: float = 0.2
     device_offline_threshold: int = 3
+    device_poll_enabled: bool = False
+    device_poll_interval: float = 60.0
+    device_poll_timeout: float = 1.5
+    device_poll_rate_per_second: float = 2.0
+    device_poll_rate_burst: int = 5
+    device_poll_offline_threshold: int = 2
+    device_poll_payload: str = '{"cmd":"devStatus"}'
+    device_poll_port: Optional[int] = None
+    device_poll_backoff_base: float = 1.0
+    device_poll_backoff_factor: float = 2.0
+    device_poll_backoff_max: float = 30.0
+    device_poll_batch_size: int = 50
     device_max_queue_depth: int = 1000
     subsystem_failure_threshold: int = 5
     subsystem_failure_cooldown: float = 15.0
@@ -130,6 +142,18 @@ class Config:
             "device_queue_poll_interval": self.device_queue_poll_interval,
             "device_idle_wait": self.device_idle_wait,
             "device_offline_threshold": self.device_offline_threshold,
+            "device_poll_enabled": self.device_poll_enabled,
+            "device_poll_interval": self.device_poll_interval,
+            "device_poll_timeout": self.device_poll_timeout,
+            "device_poll_rate_per_second": self.device_poll_rate_per_second,
+            "device_poll_rate_burst": self.device_poll_rate_burst,
+            "device_poll_offline_threshold": self.device_poll_offline_threshold,
+            "device_poll_payload": self.device_poll_payload,
+            "device_poll_port": self.device_poll_port,
+            "device_poll_backoff_base": self.device_poll_backoff_base,
+            "device_poll_backoff_factor": self.device_poll_backoff_factor,
+            "device_poll_backoff_max": self.device_poll_backoff_max,
+            "device_poll_batch_size": self.device_poll_batch_size,
             "device_max_queue_depth": self.device_max_queue_depth,
             "subsystem_failure_threshold": self.subsystem_failure_threshold,
             "subsystem_failure_cooldown": self.subsystem_failure_cooldown,
@@ -189,6 +213,17 @@ def _validate_config(config: Config) -> None:
     _validate_range("device_queue_poll_interval", config.device_queue_poll_interval, 0.01, 60.0)
     _validate_range("device_idle_wait", config.device_idle_wait, 0.0, 10.0)
     _validate_range("device_offline_threshold", config.device_offline_threshold, 1, 1000)
+    _validate_range("device_poll_interval", config.device_poll_interval, 0.1, 86400.0)
+    _validate_range("device_poll_timeout", config.device_poll_timeout, 0.05, 60.0)
+    _validate_range("device_poll_rate_per_second", config.device_poll_rate_per_second, 0.0, 10000.0)
+    _validate_range("device_poll_rate_burst", config.device_poll_rate_burst, 0, 100000)
+    _validate_range("device_poll_offline_threshold", config.device_poll_offline_threshold, 1, 1000)
+    _validate_range("device_poll_backoff_base", config.device_poll_backoff_base, 0.0, 300.0)
+    _validate_range("device_poll_backoff_factor", config.device_poll_backoff_factor, 1.0, 10.0)
+    _validate_range("device_poll_backoff_max", config.device_poll_backoff_max, 0.1, 3600.0)
+    _validate_range("device_poll_batch_size", config.device_poll_batch_size, 1, 100000)
+    if config.device_poll_port is not None:
+        _validate_range("device_poll_port", config.device_poll_port, 1, 65535)
     _validate_range("device_max_queue_depth", config.device_max_queue_depth, 1, 1000000)
     _validate_range("subsystem_failure_threshold", config.subsystem_failure_threshold, 1, 1000)
     _validate_range("subsystem_failure_cooldown", config.subsystem_failure_cooldown, 0.0, 3600.0)
@@ -420,6 +455,66 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         help="Consecutive failures before marking a device offline.",
     )
     parser.add_argument(
+        "--device-poll-enabled",
+        action="store_true",
+        help="Enable background polling for device reachability.",
+    )
+    parser.add_argument(
+        "--device-poll-interval",
+        type=float,
+        help="Seconds between poll cycles.",
+    )
+    parser.add_argument(
+        "--device-poll-timeout",
+        type=float,
+        help="Seconds to wait for poll responses.",
+    )
+    parser.add_argument(
+        "--device-poll-rate-per-second",
+        type=float,
+        help="Maximum poll requests per second.",
+    )
+    parser.add_argument(
+        "--device-poll-rate-burst",
+        type=int,
+        help="Maximum burst of poll requests.",
+    )
+    parser.add_argument(
+        "--device-poll-offline-threshold",
+        type=int,
+        help="Consecutive poll failures before marking a device offline.",
+    )
+    parser.add_argument(
+        "--device-poll-payload",
+        type=str,
+        help="Raw payload sent in poll requests.",
+    )
+    parser.add_argument(
+        "--device-poll-port",
+        type=int,
+        help="Port used for polling (defaults to device_default_port when omitted).",
+    )
+    parser.add_argument(
+        "--device-poll-backoff-base",
+        type=float,
+        help="Initial backoff delay between poll retries or cycles.",
+    )
+    parser.add_argument(
+        "--device-poll-backoff-factor",
+        type=float,
+        help="Multiplier applied to poll backoff between attempts.",
+    )
+    parser.add_argument(
+        "--device-poll-backoff-max",
+        type=float,
+        help="Maximum backoff delay between poll retries or cycles.",
+    )
+    parser.add_argument(
+        "--device-poll-batch-size",
+        type=int,
+        help="Maximum number of devices to poll per cycle.",
+    )
+    parser.add_argument(
         "--device-max-queue-depth",
         type=int,
         help="Maximum queued payloads per device before refusing new entries.",
@@ -507,6 +602,12 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             "device_max_send_rate",
             "device_queue_poll_interval",
             "device_idle_wait",
+            "device_poll_interval",
+            "device_poll_timeout",
+            "device_poll_rate_per_second",
+            "device_poll_backoff_base",
+            "device_poll_backoff_factor",
+            "device_poll_backoff_max",
             "subsystem_failure_cooldown",
             "noisy_log_sample_rate",
             "trace_context_sample_rate",
@@ -514,9 +615,9 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             data[key] = float(value)
         elif key in {"discovery_response_timeout", "discovery_stale_after"}:
             data[key] = float(value)
-        elif key in {"discovery_multicast_port", "device_default_port"}:
+        elif key in {"discovery_multicast_port", "device_default_port", "device_poll_port"}:
             data[key] = int(value)
-        elif key in {"device_send_retries", "device_offline_threshold"}:
+        elif key in {"device_send_retries", "device_offline_threshold", "device_poll_offline_threshold", "device_poll_rate_burst", "device_poll_batch_size"}:
             data[key] = int(value)
         elif key in {"log_format", "log_level"}:
             if key == "log_level":
@@ -527,7 +628,7 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             data[key] = str(value).upper()
         elif key == "device_default_transport":
             data[key] = str(value).lower()
-        elif key in {"migrate_only", "api_docs"}:
+        elif key in {"migrate_only", "api_docs", "device_poll_enabled"}:
             data[key] = _coerce_bool(value)
         elif key == "manual_unicast_probes":
             data[key] = _coerce_bool(value)

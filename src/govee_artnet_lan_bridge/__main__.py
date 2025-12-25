@@ -16,6 +16,7 @@ from .api import ApiService
 from .artnet import ArtNetService
 from .discovery import DiscoveryService
 from .health import BackoffPolicy, HealthMonitor
+from .poller import DevicePollerService
 from .sender import DeviceSenderService
 from .logging import configure_logging, get_logger
 
@@ -27,6 +28,7 @@ class RunningServices:
     discovery: Optional[DiscoveryService] = None
     artnet: Optional[ArtNetService] = None
     sender: Optional[DeviceSenderService] = None
+    poller: Optional[DevicePollerService] = None
     api: Optional[ApiService] = None
 
 
@@ -225,6 +227,27 @@ async def _api_loop(
             services.api = None
 
 
+async def _poller_loop(
+    stop_event: asyncio.Event,
+    config: Config,
+    store: DeviceStore,
+    health: HealthMonitor,
+    services: Optional[RunningServices] = None,
+) -> None:
+    logger = get_logger("govee.poller")
+    service = DevicePollerService(config, store, health=health)
+    if services is not None:
+        services.poller = service
+    await service.start()
+    try:
+        await stop_event.wait()
+    finally:
+        await service.stop()
+        if services is not None:
+            services.poller = None
+        logger.info("Poller loop stopped")
+
+
 async def _stop_services(
     stop_event: asyncio.Event, tasks: Iterable[asyncio.Task[None]], logger: logging.Logger
 ) -> None:
@@ -290,7 +313,7 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
     while not shutdown_event.is_set():
         await store.sync_manual_devices(current_config.manual_devices)
         health = HealthMonitor(
-            ("discovery", "sender", "artnet", "api"),
+            ("discovery", "sender", "artnet", "api", "poller"),
             failure_threshold=current_config.subsystem_failure_threshold,
             cooldown_seconds=current_config.subsystem_failure_cooldown,
         )
@@ -301,6 +324,7 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
             asyncio.create_task(_rate_limit_monitor(stop_event, current_config)),
             asyncio.create_task(_artnet_loop(stop_event, current_config, store, health, services, artnet_state)),
             asyncio.create_task(_sender_loop(stop_event, current_config, store, health, services)),
+            asyncio.create_task(_poller_loop(stop_event, current_config, store, health, services)),
             asyncio.create_task(_api_loop(stop_event, current_config, store, health, services, _request_reload)),
         ]
         logger.info(
