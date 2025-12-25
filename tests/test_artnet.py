@@ -1,14 +1,20 @@
+import asyncio
 import struct
+from pathlib import Path
 
 from govee_artnet_lan_bridge.artnet import (
     ARTNET_HEADER,
+    ArtNetPacket,
+    ArtNetService,
     DeviceMapping,
     DeviceMappingSpec,
     UniverseMapping,
     _apply_gamma_dimmer,
     _parse_artnet_packet,
 )
-from govee_artnet_lan_bridge.devices import MappingRecord
+from govee_artnet_lan_bridge.config import Config, ManualDevice
+from govee_artnet_lan_bridge.db import apply_migrations
+from govee_artnet_lan_bridge.devices import DeviceStore, MappingRecord
 
 
 def build_artnet_packet(universe: int, payload: bytes) -> bytes:
@@ -55,3 +61,42 @@ def test_universe_mapping_apply() -> None:
     assert len(updates) == 1
     assert updates[0].device_id == "dev-1"
     assert updates[0].payload["color"] == {"r": 10, "g": 20, "b": 30}
+
+
+def test_artnet_reuses_last_payloads(tmp_path: Path) -> None:
+    asyncio.run(_run_artnet_reuse(tmp_path))
+
+
+async def _run_artnet_reuse(tmp_path: Path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    config = Config(
+        db_path=db_path,
+        dry_run=True,
+        device_queue_poll_interval=0.01,
+        device_idle_wait=0.01,
+    )
+    store = DeviceStore(config.db_path)
+    await store.create_manual_device(
+        ManualDevice(id="dev-1", ip="127.0.0.1", capabilities={"transport": "udp"})
+    )
+    await store.create_mapping(
+        device_id="dev-1",
+        universe=0,
+        channel=1,
+        length=3,
+        allow_overlap=True,
+    )
+
+    initial = {"dev-1": {"color": {"r": 1, "g": 2, "b": 3}}}
+    artnet = ArtNetService(config, store, initial_last_payloads=initial)
+    artnet._debounce_seconds = 0
+    await artnet.start()
+    try:
+        packet = ArtNetPacket(universe=0, sequence=1, physical=0, length=3, data=bytes([1, 2, 3]))
+        artnet.handle_packet(packet, ("127.0.0.1", config.artnet_port))
+        await asyncio.sleep(0.05)
+        assert await store.pending_device_ids() == []
+    finally:
+        await artnet.stop()
+        await store.stop()

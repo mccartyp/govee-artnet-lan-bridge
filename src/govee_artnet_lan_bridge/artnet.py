@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import math
 import socket
 import struct
@@ -254,14 +255,21 @@ class ArtNetProtocol(asyncio.DatagramProtocol):
 class ArtNetService:
     """High-level ArtNet listener with mapping and change detection."""
 
-    def __init__(self, config: Config, store: DeviceStore) -> None:
+    def __init__(
+        self,
+        config: Config,
+        store: DeviceStore,
+        initial_last_payloads: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    ) -> None:
         self.config = config
         self.store = store
         self.logger = get_logger("govee.artnet")
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._protocol: Optional[ArtNetProtocol] = None
         self._universe_mappings: Dict[int, UniverseMapping] = {}
-        self._last_payloads: MutableMapping[str, Mapping[str, Any]] = {}
+        self._last_payloads: MutableMapping[str, Mapping[str, Any]] = (
+            copy.deepcopy(initial_last_payloads) if initial_last_payloads else {}
+        )
         self._pending_updates: MutableMapping[str, DeviceStateUpdate] = {}
         self._debounce_tasks: MutableMapping[str, asyncio.Task[None]] = {}
         self._debounce_seconds = DEFAULT_DEBOUNCE_SECONDS
@@ -425,3 +433,8 @@ class ArtNetService:
 
     def _build_context_id(self, packet: ArtNetPacket) -> str:
         return f"artnet-{packet.universe}-{packet.sequence}-{uuid4().hex}"
+
+    def snapshot_last_payloads(self) -> Dict[str, Mapping[str, Any]]:
+        """Return a copy of the last delivered payloads for reuse across restarts."""
+
+        return copy.deepcopy(self._last_payloads)

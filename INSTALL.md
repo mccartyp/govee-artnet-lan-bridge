@@ -79,3 +79,12 @@ make uninstall-user
 - Use `govee-bridge-user.service` for per-user installs without root privileges.
 
 Both units expose commented `Type=notify`/`NotifyAccess=main` lines for optional sd_notify readiness signaling. Leave them commented unless the bridge is wrapped with `systemd-notify` or gains native sd_notify support.
+
+## Rolling updates and configuration reloads
+
+Non-disruptive updates rely on reloading configuration and restarting sockets without stopping the process:
+
+- Send `SIGHUP` to the running process (for example `systemctl kill -s HUP govee-bridge.service`) or call `POST /reload` on the API when authenticated. Both paths reload configuration from the same sources (config file, env, CLI) and restart listeners.
+- Discovery and ArtNet sockets are re-bound during the reload so new ports or multicast settings take effect without a full restart.
+- The SQLite database retains device mappings, queue state, and health metadata across reloads. ArtNet deduplication caches (last delivered payloads) are also preserved when services restart.
+- If you change critical settings such as the database path, perform a full restart so migrations and file permissions can be re-evaluated.
