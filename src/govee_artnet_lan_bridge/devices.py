@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from .capabilities import CapabilityCache, NormalizedCapabilities, validate_mapping_mode
 from .config import ManualDevice
 from .db import DatabaseManager
 from .logging import get_logger
@@ -138,6 +139,8 @@ class DeviceInfo:
     id: str
     ip: Optional[str]
     capabilities: Any
+    model: Optional[str]
+    normalized_capabilities: Optional[NormalizedCapabilities]
     offline: bool
     failure_count: int
     last_payload_hash: Optional[str]
@@ -185,6 +188,7 @@ class DeviceStore:
     def __init__(self, db_path: Path) -> None:
         self.db = DatabaseManager(db_path)
         self.logger = get_logger("govee.devices")
+        self._capability_cache = CapabilityCache()
 
     async def start(self) -> None:
         await self.db.start_integrity_checks()
@@ -317,9 +321,12 @@ class DeviceStore:
         ).fetchone()
         if not row:
             return None
+        normalized = None
+        if capabilities is not None:
+            normalized = self._capability_cache.normalize(model or row["model"], capabilities)
         serialized_caps = (
-            _serialize_capabilities(capabilities)
-            if capabilities is not None
+            _serialize_capabilities(normalized.as_mapping())
+            if normalized is not None
             else row["capabilities"]
         )
         conn.execute(
@@ -390,7 +397,12 @@ class DeviceStore:
 
     def _upsert_manual(self, conn: sqlite3.Connection, device: ManualDevice) -> None:
         now = _now_iso()
-        capabilities = _serialize_capabilities(device.capabilities)
+        normalized = (
+            self._capability_cache.normalize(device.model, device.capabilities)
+            if device.capabilities is not None
+            else None
+        )
+        capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
         conn.execute(
             """
             INSERT INTO devices (
@@ -423,7 +435,12 @@ class DeviceStore:
 
     def _record_discovery(self, conn: sqlite3.Connection, result: DiscoveryResult) -> None:
         now = _now_iso()
-        capabilities = _serialize_capabilities(result.capabilities)
+        normalized = (
+            self._capability_cache.normalize(result.model, result.capabilities)
+            if result.capabilities is not None
+            else None
+        )
+        capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
         conn.execute(
             """
             INSERT INTO devices (
@@ -509,7 +526,7 @@ class DeviceStore:
     def _mappings(self, conn: sqlite3.Connection) -> List[MappingRecord]:
         rows = conn.execute(
             """
-            SELECT m.device_id, m.universe, m.channel, m.length, d.capabilities
+            SELECT m.device_id, m.universe, m.channel, m.length, d.model, d.capabilities
             FROM mappings m
             JOIN devices d ON d.id = m.device_id
             WHERE d.enabled = 1
@@ -518,13 +535,16 @@ class DeviceStore:
         ).fetchall()
         results: List[MappingRecord] = []
         for row in rows:
+            normalized = self._capability_cache.normalize(
+                row["model"], _deserialize_capabilities(row["capabilities"])
+            )
             results.append(
                 MappingRecord(
                     device_id=row["device_id"],
                     universe=int(row["universe"]),
                     channel=int(row["channel"]),
                     length=int(row["length"]),
-                    capabilities=_deserialize_capabilities(row["capabilities"]),
+                    capabilities=normalized.as_mapping(),
                 )
             )
         return results
@@ -585,15 +605,18 @@ class DeviceStore:
         if channel <= 0 or length <= 0:
             raise ValueError("Channel and length must be positive")
         device_row = conn.execute(
-            "SELECT capabilities FROM devices WHERE id = ?",
+            "SELECT model, capabilities FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not device_row:
             raise ValueError("Device not found")
-        capabilities = _deserialize_capabilities(device_row["capabilities"])
+        normalized = self._normalized_capabilities_obj(device_row)
+        capabilities = normalized.as_mapping()
         required = _required_channels(capabilities, length)
         if required > length:
             raise ValueError("Mapping length is shorter than required channels")
+        mode = _coerce_mode_for_mapping(capabilities, length)
+        validate_mapping_mode(mode, normalized)
         self._ensure_no_overlap(conn, universe, channel, length, None, allow_overlap)
         cursor = conn.execute(
             """
@@ -665,15 +688,18 @@ class DeviceStore:
         if new_channel <= 0 or new_length <= 0:
             raise ValueError("Channel and length must be positive")
         device_row = conn.execute(
-            "SELECT capabilities FROM devices WHERE id = ?",
+            "SELECT model, capabilities FROM devices WHERE id = ?",
             (new_device_id,),
         ).fetchone()
         if not device_row:
             raise ValueError("Device not found")
-        capabilities = _deserialize_capabilities(device_row["capabilities"])
+        normalized = self._normalized_capabilities_obj(device_row)
+        capabilities = normalized.as_mapping()
         required = _required_channels(capabilities, new_length)
         if required > new_length:
             raise ValueError("Mapping length is shorter than required channels")
+        mode = _coerce_mode_for_mapping(capabilities, new_length)
+        validate_mapping_mode(mode, normalized)
         self._ensure_no_overlap(
             conn, new_universe, new_channel, new_length, mapping_id, allow_overlap
         )
@@ -757,7 +783,13 @@ class DeviceStore:
     def _update_capabilities(
         self, conn: sqlite3.Connection, device_id: str, capabilities: Mapping[str, Any]
     ) -> None:
-        serialized = _serialize_capabilities(capabilities)
+        device_row = conn.execute(
+            "SELECT model FROM devices WHERE id = ?",
+            (device_id,),
+        ).fetchone()
+        model = device_row["model"] if device_row else None
+        normalized = self._capability_cache.normalize(model, capabilities)
+        serialized = _serialize_capabilities(normalized.as_mapping())
         conn.execute(
             """
             UPDATE devices
@@ -863,12 +895,27 @@ class DeviceStore:
     async def device_info(self, device_id: str) -> Optional[DeviceInfo]:
         return await self.db.run(lambda conn: self._device_info(conn, device_id))
 
+    async def normalized_capabilities(self, device_id: str) -> Optional[NormalizedCapabilities]:
+        return await self.db.run(lambda conn: self._normalized_capabilities_by_id(conn, device_id))
+
+    def _normalized_capabilities_by_id(
+        self, conn: sqlite3.Connection, device_id: str
+    ) -> Optional[NormalizedCapabilities]:
+        row = conn.execute(
+            "SELECT model, capabilities FROM devices WHERE id = ?",
+            (device_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return self._normalized_capabilities_obj(row)
+
     def _device_info(self, conn: sqlite3.Connection, device_id: str) -> Optional[DeviceInfo]:
         row = conn.execute(
             """
             SELECT
                 id,
                 ip,
+                model,
                 capabilities,
                 offline,
                 failure_count,
@@ -884,15 +931,18 @@ class DeviceStore:
         ).fetchone()
         if not row or not row["enabled"] or row["stale"]:
             return None
+        normalized = self._normalized_capabilities_obj(row)
         return DeviceInfo(
             id=row["id"],
             ip=row["ip"],
-            capabilities=_deserialize_capabilities(row["capabilities"]),
+            capabilities=normalized.as_mapping(),
             offline=bool(row["offline"]),
             failure_count=int(row["failure_count"] or 0),
             last_payload_hash=row["last_payload_hash"],
             last_payload_at=row["last_payload_at"],
             last_failure_at=row["last_failure_at"],
+            model=row["model"],
+            normalized_capabilities=normalized,
         )
 
     async def record_send_success(self, device_id: str, payload_hash: str) -> None:
@@ -969,13 +1019,22 @@ class DeviceStore:
             "mappings_total": int(mapping_counts["total"] or 0),
         }
 
+    def _normalized_capabilities_obj(self, row: sqlite3.Row) -> NormalizedCapabilities:
+        model = row["model"] if "model" in row.keys() else None
+        raw_caps = _deserialize_capabilities(row["capabilities"])
+        return self._capability_cache.normalize(model, raw_caps)
+
+    def _normalized_capabilities_from_row(self, row: sqlite3.Row) -> Any:
+        return self._normalized_capabilities_obj(row).as_mapping()
+
     def _row_to_device(self, row: sqlite3.Row) -> DeviceRow:
+        normalized = self._normalized_capabilities_obj(row)
         return DeviceRow(
             id=row["id"],
             ip=row["ip"],
             model=row["model"],
             description=row["description"],
-            capabilities=_deserialize_capabilities(row["capabilities"]),
+            capabilities=normalized.as_mapping(),
             manual=bool(row["manual"]),
             discovered=bool(row["discovered"]),
             configured=bool(row["configured"]),

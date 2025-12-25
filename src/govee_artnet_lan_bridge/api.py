@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
 
+from .capabilities import validate_command_payload
 from .config import Config, ManualDevice
 from .devices import DeviceStateUpdate, DeviceStore
 from .health import HealthMonitor
@@ -265,12 +266,19 @@ def create_app(config: Config, store: DeviceStore, health: Optional[HealthMonito
         device = await store.device(device_id)
         if not device:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+        capabilities = await store.normalized_capabilities(device_id)
+        if capabilities is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
         try:
-            update = DeviceStateUpdate(device_id=device_id, payload=payload.payload)
+            sanitized, warnings = validate_command_payload(payload.payload, capabilities)
+            update = DeviceStateUpdate(device_id=device_id, payload=sanitized)
             await store.enqueue_state(update)
+            response: dict[str, str] = {"status": "queued"}
+            if warnings:
+                response["detail"] = "; ".join(warnings)
+            return response
         except Exception as exc:  # pragma: no cover - defensive
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {"status": "queued"}
 
     @app.get("/mappings", dependencies=[Depends(auth_dependency)], response_model=list[MappingOut])
     async def list_mappings() -> list[MappingOut]:
