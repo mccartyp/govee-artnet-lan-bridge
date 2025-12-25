@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional, Tuple, TypeVar
+from typing import Any, Callable, Iterable, List, Mapping, Optional, Tuple, TypeVar
 
 from .logging import get_logger
 
@@ -222,6 +223,94 @@ def _migration_discrete_mappings(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_mapping_fields(conn: sqlite3.Connection) -> None:
+    def _deserialize_capabilities(value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return value
+        return value
+
+    def _coerce_mode(capabilities: Any, length: int) -> str:
+        default_mode = "rgbw" if length >= 4 else "rgb" if length >= 3 else "brightness"
+        if isinstance(capabilities, Mapping):
+            mode = str(capabilities.get("mode", default_mode)).lower()
+            if mode in {"rgb", "rgbw", "brightness", "custom"}:
+                return mode
+        return default_mode
+
+    def _coerce_order(capabilities: Any, mode: str) -> Tuple[str, ...]:
+        def _normalize_entry(entry: str) -> Optional[str]:
+            value = entry.strip().lower()
+            if value in {"r", "g", "b", "w", "brightness"}:
+                return value
+            return None
+
+        default_orders = {
+            "rgb": ("r", "g", "b"),
+            "rgbw": ("r", "g", "b", "w"),
+            "brightness": ("brightness",),
+        }
+        if isinstance(capabilities, Mapping):
+            order_value = capabilities.get("order") or capabilities.get("channel_order")
+            if isinstance(order_value, str):
+                parsed = tuple(
+                    entry for entry in (_normalize_entry(ch) for ch in order_value) if entry
+                )
+                if parsed:
+                    return parsed
+            if isinstance(order_value, Iterable) and not isinstance(order_value, (str, bytes)):
+                parsed_list = []
+                for item in order_value:
+                    if not isinstance(item, str):
+                        continue
+                    normalized = _normalize_entry(item)
+                    if normalized:
+                        parsed_list.append(normalized)
+                if parsed_list:
+                    return tuple(parsed_list)
+        return default_orders.get(mode, default_orders["brightness"])
+
+    conn.executescript(
+        """
+        ALTER TABLE mappings ADD COLUMN fields TEXT;
+        """
+    )
+
+    rows = conn.execute(
+        """
+        SELECT
+            m.id,
+            m.mapping_type,
+            m.length,
+            m.field,
+            d.capabilities
+        FROM mappings m
+        LEFT JOIN devices d ON d.id = m.device_id
+        """
+    ).fetchall()
+
+    for row in rows:
+        mapping_type = str(row["mapping_type"] or "range").strip().lower()
+        length = int(row["length"] or 0)
+        fields: Tuple[str, ...] = tuple()
+        if mapping_type == "discrete" and row["field"]:
+            fields = (str(row["field"]).strip().lower(),)
+        else:
+            capabilities = _deserialize_capabilities(row["capabilities"])
+            mode = _coerce_mode(capabilities, length)
+            fields = _coerce_order(capabilities, mode)
+        if fields:
+            conn.execute(
+                "UPDATE mappings SET fields = ? WHERE id = ?",
+                (json.dumps(list(fields)), row["id"]),
+            )
+    conn.commit()
+
+
 MIGRATIONS: List[Tuple[int, Migration]] = [
     (1, _migration_initial_schema),
     (2, _migration_device_metadata),
@@ -229,6 +318,7 @@ MIGRATIONS: List[Tuple[int, Migration]] = [
     (4, _migration_state_context_id),
     (5, _migration_dead_letter_state),
     (6, _migration_discrete_mappings),
+    (7, _migration_mapping_fields),
 ]
 
 

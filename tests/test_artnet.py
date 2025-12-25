@@ -52,6 +52,7 @@ def test_universe_mapping_apply() -> None:
         length=3,
         mapping_type="range",
         field=None,
+        fields=("r", "g", "b"),
         capabilities={"mode": "rgb", "order": ["r", "g", "b"], "gamma": 1.0, "dimmer": 1.0},
     )
     mapping = DeviceMapping(
@@ -73,6 +74,7 @@ def test_universe_mapping_merges_discrete_fields() -> None:
         length=1,
         mapping_type="discrete",
         field="r",
+        fields=("r",),
         capabilities={"gamma": 1.0, "dimmer": 1.0},
     )
     brightness_record = MappingRecord(
@@ -82,6 +84,7 @@ def test_universe_mapping_merges_discrete_fields() -> None:
         length=1,
         mapping_type="discrete",
         field="brightness",
+        fields=("brightness",),
         capabilities={"gamma": 1.0, "dimmer": 1.0},
     )
     red_mapping = DeviceMapping(
@@ -108,6 +111,7 @@ def test_universe_mapping_range_and_discrete_merge() -> None:
         length=3,
         mapping_type="range",
         field=None,
+        fields=("r", "g", "b"),
         capabilities={"mode": "rgb", "order": ["r", "g", "b"], "gamma": 1.0, "dimmer": 1.0},
     )
     brightness_record = MappingRecord(
@@ -117,6 +121,7 @@ def test_universe_mapping_range_and_discrete_merge() -> None:
         length=1,
         mapping_type="discrete",
         field="brightness",
+        fields=("brightness",),
         capabilities={"gamma": 1.0, "dimmer": 1.0},
     )
     range_mapping = DeviceMapping(

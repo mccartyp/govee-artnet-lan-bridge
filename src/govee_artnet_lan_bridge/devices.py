@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Set, Tuple
 
 from .capabilities import CapabilityCache, NormalizedCapabilities, validate_mapping_mode
 from .config import ManualDevice
@@ -42,6 +42,28 @@ def _deserialize_capabilities(value: Any) -> Any:
         except json.JSONDecodeError:
             return value
     return value
+
+
+def _serialize_fields(fields: Iterable[str]) -> str:
+    return json.dumps([field for field in fields])
+
+
+def _deserialize_fields(value: Any) -> Tuple[str, ...]:
+    if value is None:
+        return tuple()
+    data: Any = value
+    if isinstance(value, str):
+        try:
+            data = json.loads(value)
+        except json.JSONDecodeError:
+            return tuple()
+    if isinstance(data, Iterable) and not isinstance(data, (str, bytes)):
+        result = []
+        for item in data:
+            if isinstance(item, str) and item.strip():
+                result.append(item.strip().lower())
+        return tuple(result)
+    return tuple()
 
 
 def _coerce_mode_for_mapping(capabilities: Any, length: int) -> str:
@@ -188,14 +210,14 @@ def _mapping_fields_for_length(
     mapping_type: str,
     length: int,
     field: Optional[str],
-) -> Set[str]:
+) -> Tuple[str, ...]:
     if mapping_type == "discrete":
         normalized_field = _normalize_field_name(field)
         _validate_field_support(normalized_field, normalized_capabilities)
-        return {normalized_field}
+        return (normalized_field,)
     mode = _coerce_mode_for_mapping(capabilities, length)
     order = _coerce_order_for_mapping(capabilities, mode)
-    return set(order)
+    return order
 
 
 @dataclass(frozen=True)
@@ -220,6 +242,7 @@ class MappingRecord:
     length: int
     mapping_type: str
     field: Optional[str]
+    fields: Tuple[str, ...]
     capabilities: Any
 
 
@@ -307,6 +330,7 @@ class MappingRow:
     length: int
     mapping_type: str
     field: Optional[str]
+    fields: Tuple[str, ...]
     created_at: str
     updated_at: str
 
@@ -662,6 +686,7 @@ class DeviceStore:
                 m.length,
                 m.mapping_type,
                 m.field,
+                m.fields,
                 d.model,
                 d.capabilities
             FROM mappings m
@@ -675,6 +700,18 @@ class DeviceStore:
             normalized = self._capability_cache.normalize(
                 row["model"], _deserialize_capabilities(row["capabilities"])
             )
+            fields = _deserialize_fields(row["fields"])
+            if not fields:
+                try:
+                    fields = _mapping_fields_for_length(
+                        normalized.as_mapping(),
+                        normalized,
+                        str(row["mapping_type"]),
+                        int(row["length"]),
+                        row["field"],
+                    )
+                except ValueError:
+                    continue
             results.append(
                 MappingRecord(
                     device_id=row["device_id"],
@@ -683,6 +720,7 @@ class DeviceStore:
                     length=int(row["length"]),
                     mapping_type=str(row["mapping_type"]),
                     field=row["field"],
+                    fields=fields,
                     capabilities=normalized.as_mapping(),
                 )
             )
@@ -702,6 +740,7 @@ class DeviceStore:
                 length,
                 mapping_type,
                 field,
+                fields,
                 created_at,
                 updated_at
             FROM mappings
@@ -724,6 +763,7 @@ class DeviceStore:
                 length,
                 mapping_type,
                 field,
+                fields,
                 created_at,
                 updated_at
             FROM mappings
@@ -749,6 +789,7 @@ class DeviceStore:
                 m.length,
                 m.mapping_type,
                 m.field,
+                m.fields,
                 d.description,
                 d.ip,
                 d.model,
@@ -763,18 +804,18 @@ class DeviceStore:
             normalized_caps = self._normalized_capabilities_obj(row)
             mapping_type = _normalize_mapping_type(row["mapping_type"])
             capabilities = normalized_caps.as_mapping()
-            try:
-                fields = sorted(
-                    _mapping_fields_for_length(
+            fields = _deserialize_fields(row["fields"])
+            if not fields:
+                try:
+                    fields = _mapping_fields_for_length(
                         capabilities,
                         normalized_caps,
                         mapping_type,
                         int(row["length"]),
                         row["field"],
                     )
-                )
-            except ValueError:
-                continue
+                except ValueError:
+                    continue
             entry: Dict[str, Any] = {
                 "id": int(row["id"]),
                 "device_id": row["device_id"],
@@ -782,7 +823,7 @@ class DeviceStore:
                 "channel": int(row["channel"]),
                 "length": int(row["length"]),
                 "mapping_type": mapping_type,
-                "fields": fields,
+                "fields": list(fields),
                 "device_description": row["description"],
                 "device_ip": row["ip"],
             }
@@ -883,10 +924,18 @@ class DeviceStore:
         self._ensure_no_overlap(conn, universe, channel, length, None, allow_overlap)
         cursor = conn.execute(
             """
-            INSERT INTO mappings (device_id, universe, channel, length, mapping_type, field)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO mappings (device_id, universe, channel, length, mapping_type, field, fields)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (device_id, universe, channel, length, normalized_mapping_type, normalized_field),
+            (
+                device_id,
+                universe,
+                channel,
+                length,
+                normalized_mapping_type,
+                normalized_field,
+                _serialize_fields(new_fields),
+            ),
         )
         if commit:
             conn.commit()
@@ -901,6 +950,7 @@ class DeviceStore:
                 length,
                 mapping_type,
                 field,
+                fields,
                 created_at,
                 updated_at
             FROM mappings
@@ -1087,7 +1137,7 @@ class DeviceStore:
         conn.execute(
             """
             UPDATE mappings
-            SET device_id = ?, universe = ?, channel = ?, length = ?, mapping_type = ?, field = ?
+            SET device_id = ?, universe = ?, channel = ?, length = ?, mapping_type = ?, field = ?, fields = ?
             WHERE id = ?
             """,
             (
@@ -1097,6 +1147,7 @@ class DeviceStore:
                 new_length,
                 normalized_mapping_type,
                 normalized_field,
+                _serialize_fields(new_fields),
                 mapping_id,
             ),
         )
@@ -1111,6 +1162,7 @@ class DeviceStore:
                 length,
                 mapping_type,
                 field,
+                fields,
                 created_at,
                 updated_at
             FROM mappings
@@ -1182,7 +1234,7 @@ class DeviceStore:
         universe: int,
         capabilities: Mapping[str, Any],
         normalized_capabilities: NormalizedCapabilities,
-        new_fields: Set[str],
+        new_fields: Iterable[str],
         *,
         exclude_id: Optional[int],
     ) -> None:
@@ -1194,7 +1246,7 @@ class DeviceStore:
             normalized_capabilities,
             exclude_id=exclude_id,
         )
-        conflicts = existing_fields.intersection(new_fields)
+        conflicts = existing_fields.intersection(set(new_fields))
         if conflicts:
             conflict_list = ", ".join(sorted(conflicts))
             raise ValueError(
@@ -1213,7 +1265,7 @@ class DeviceStore:
     ) -> Set[str]:
         rows = conn.execute(
             """
-            SELECT id, length, mapping_type, field
+            SELECT id, length, mapping_type, field, fields
             FROM mappings
             WHERE device_id = ? AND universe = ?
             """,
@@ -1224,16 +1276,20 @@ class DeviceStore:
             if exclude_id is not None and int(row["id"]) == exclude_id:
                 continue
             mapping_type = _normalize_mapping_type(row["mapping_type"])
+            stored_fields = _deserialize_fields(row["fields"])
             try:
-                fields.update(
-                    _mapping_fields_for_length(
-                        capabilities,
-                        normalized_capabilities,
-                        mapping_type,
-                        int(row["length"]),
-                        row["field"],
+                if stored_fields:
+                    fields.update(stored_fields)
+                else:
+                    fields.update(
+                        _mapping_fields_for_length(
+                            capabilities,
+                            normalized_capabilities,
+                            mapping_type,
+                            int(row["length"]),
+                            row["field"],
+                        )
                     )
-                )
             except ValueError:
                 continue
         return fields
@@ -1660,6 +1716,7 @@ class DeviceStore:
             length=int(row["length"]),
             mapping_type=str(row["mapping_type"]),
             field=row["field"],
+            fields=_deserialize_fields(row["fields"] if "fields" in row.keys() else None),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
