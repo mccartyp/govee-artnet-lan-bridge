@@ -146,6 +146,29 @@ RATE_LIMIT_WAITS = Counter(
     ["scope"],
     registry=_REGISTRY,
 )
+DEVICE_POLL_RESULTS = Counter(
+    "govee_device_polls_total",
+    "Device poll outcomes",
+    ["result"],
+    registry=_REGISTRY,
+)
+DEVICE_POLL_DURATION = Histogram(
+    "govee_device_poll_duration_seconds",
+    "Time spent polling devices",
+    ["result"],
+    registry=_REGISTRY,
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+)
+DEVICE_POLL_STATE_UPDATES = Counter(
+    "govee_device_poll_state_updates_total",
+    "Device state snapshots parsed from poll responses",
+    registry=_REGISTRY,
+)
+DEVICE_POLLING_ENABLED = Gauge(
+    "govee_device_polling_enabled",
+    "Whether device polling is enabled (0/1)",
+    registry=_REGISTRY,
+)
 
 
 def get_registry() -> CollectorRegistry:
@@ -196,6 +219,30 @@ def record_send_result(result: str) -> None:
     """Record the result of a device send attempt."""
 
     DEVICE_SEND_RESULTS.labels(result=result).inc()
+
+
+def record_device_poll(result: str) -> None:
+    """Record the outcome of a device poll."""
+
+    DEVICE_POLL_RESULTS.labels(result=result).inc()
+
+
+def observe_device_poll_duration(result: str, duration_seconds: float) -> None:
+    """Record how long a device poll took."""
+
+    DEVICE_POLL_DURATION.labels(result=result).observe(duration_seconds)
+
+
+def record_device_poll_state_update() -> None:
+    """Record that a poll response included a state snapshot."""
+
+    DEVICE_POLL_STATE_UPDATES.inc()
+
+
+def set_device_polling_enabled(enabled: bool) -> None:
+    """Expose whether the poller is active."""
+
+    DEVICE_POLLING_ENABLED.set(1 if enabled else 0)
 
 
 def observe_send_duration(result: str, transport: str, duration_seconds: float) -> None:

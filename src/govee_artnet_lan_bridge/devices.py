@@ -296,6 +296,9 @@ class DeviceInfo:
     last_payload_hash: Optional[str]
     last_payload_at: Optional[str]
     last_failure_at: Optional[str]
+    poll_last_success_at: Optional[str]
+    poll_last_failure_at: Optional[str]
+    poll_failure_count: int
 
 
 @dataclass(frozen=True)
@@ -315,8 +318,25 @@ class DeviceRow:
     offline: bool
     last_seen: Optional[str]
     first_seen: Optional[str]
+    poll_last_success_at: Optional[str]
+    poll_last_failure_at: Optional[str]
+    poll_failure_count: int
+    poll_state: Any
+    poll_state_updated_at: Optional[str]
     created_at: str
     updated_at: str
+
+
+@dataclass(frozen=True)
+class PollTarget:
+    """Device metadata needed for poll requests."""
+
+    id: str
+    ip: str
+    model: Optional[str]
+    capabilities: Any
+    offline: bool
+    poll_failure_count: int
 
 
 @dataclass(frozen=True)
@@ -369,6 +389,11 @@ class DeviceStore:
                 offline,
                 last_seen,
                 first_seen,
+                poll_last_success_at,
+                poll_last_failure_at,
+                poll_failure_count,
+                poll_state,
+                poll_state_updated_at,
                 created_at,
                 updated_at
             FROM devices
@@ -397,6 +422,11 @@ class DeviceStore:
                 offline,
                 last_seen,
                 first_seen,
+                poll_last_success_at,
+                poll_last_failure_at,
+                poll_failure_count,
+                poll_state,
+                poll_state_updated_at,
                 created_at,
                 updated_at
             FROM devices
@@ -430,6 +460,11 @@ class DeviceStore:
                 offline,
                 last_seen,
                 first_seen,
+                poll_last_success_at,
+                poll_last_failure_at,
+                poll_failure_count,
+                poll_state,
+                poll_state_updated_at,
                 created_at,
                 updated_at
             FROM devices
@@ -520,6 +555,11 @@ class DeviceStore:
                 offline,
                 last_seen,
                 first_seen,
+                poll_last_success_at,
+                poll_last_failure_at,
+                poll_failure_count,
+                poll_state,
+                poll_state_updated_at,
                 created_at,
                 updated_at
             FROM devices
@@ -672,6 +712,38 @@ class DeviceStore:
             """
         ).fetchall()
         return [(row["id"], row["ip"]) for row in rows]
+
+    async def poll_targets(self) -> List[PollTarget]:
+        return await self.db.run(self._poll_targets)
+
+    def _poll_targets(self, conn: sqlite3.Connection) -> List[PollTarget]:
+        rows = conn.execute(
+            """
+            SELECT
+                id,
+                ip,
+                model,
+                capabilities,
+                offline,
+                poll_failure_count
+            FROM devices
+            WHERE enabled = 1
+              AND ip IS NOT NULL
+            """
+        ).fetchall()
+        targets: List[PollTarget] = []
+        for row in rows:
+            targets.append(
+                PollTarget(
+                    id=row["id"],
+                    ip=row["ip"],
+                    model=row["model"],
+                    capabilities=_deserialize_capabilities(row["capabilities"]),
+                    offline=bool(row["offline"]),
+                    poll_failure_count=int(row["poll_failure_count"] or 0),
+                )
+            )
+        return targets
 
     async def mappings(self) -> List[MappingRecord]:
         return await self.db.run(self._mappings)
@@ -1451,7 +1523,10 @@ class DeviceStore:
                 last_payload_at,
                 last_failure_at,
                 enabled,
-                stale
+                stale,
+                poll_last_success_at,
+                poll_last_failure_at,
+                poll_failure_count
             FROM devices
             WHERE id = ?
             """,
@@ -1471,6 +1546,9 @@ class DeviceStore:
             last_failure_at=row["last_failure_at"],
             model=row["model"],
             normalized_capabilities=normalized,
+            poll_last_success_at=row["poll_last_success_at"],
+            poll_last_failure_at=row["poll_last_failure_at"],
+            poll_failure_count=int(row["poll_failure_count"] or 0),
         )
 
     async def record_send_success(self, device_id: str, payload_hash: str) -> None:
@@ -1492,6 +1570,60 @@ class DeviceStore:
             WHERE id = ?
             """,
             (payload_hash, now, device_id),
+        )
+        conn.commit()
+        self._update_offline_metric(conn)
+
+    async def record_poll_success(self, device_id: str, state: Optional[Mapping[str, Any]]) -> None:
+        await self.db.run(lambda conn: self._record_poll_success(conn, device_id, state))
+
+    def _record_poll_success(
+        self, conn: sqlite3.Connection, device_id: str, state: Optional[Mapping[str, Any]]
+    ) -> None:
+        now = _now_iso()
+        serialized_state = _serialize_capabilities(state) if state is not None else None
+        conn.execute(
+            """
+            UPDATE devices
+            SET
+                poll_failure_count = 0,
+                poll_last_success_at = ?,
+                poll_last_failure_at = NULL,
+                poll_state = COALESCE(?, poll_state),
+                poll_state_updated_at = CASE
+                    WHEN ? IS NOT NULL THEN ?
+                    ELSE poll_state_updated_at
+                END,
+                offline = 0,
+                last_seen = ?,
+                stale = 0
+            WHERE id = ?
+            """,
+            (now, serialized_state, serialized_state, now, now, device_id),
+        )
+        conn.commit()
+        self._update_offline_metric(conn)
+
+    async def record_poll_failure(self, device_id: str, offline_threshold: int) -> None:
+        await self.db.run(lambda conn: self._record_poll_failure(conn, device_id, offline_threshold))
+
+    def _record_poll_failure(
+        self, conn: sqlite3.Connection, device_id: str, offline_threshold: int
+    ) -> None:
+        now = _now_iso()
+        conn.execute(
+            """
+            UPDATE devices
+            SET
+                poll_failure_count = poll_failure_count + 1,
+                poll_last_failure_at = ?,
+                offline = CASE
+                    WHEN (poll_failure_count + 1) >= ? THEN 1
+                    ELSE offline
+                END
+            WHERE id = ?
+            """,
+            (now, offline_threshold, device_id),
         )
         conn.commit()
         self._update_offline_metric(conn)
@@ -1548,6 +1680,27 @@ class DeviceStore:
             "devices_enabled": int(device_counts["enabled"] or 0),
             "devices_offline": int(device_counts["offline"] or 0),
             "mappings_total": int(mapping_counts["total"] or 0),
+        }
+
+    async def polling_stats(self) -> Mapping[str, int]:
+        return await self.db.run(self._polling_stats)
+
+    def _polling_stats(self, conn: sqlite3.Connection) -> Mapping[str, int]:
+        rows = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN poll_last_success_at IS NOT NULL THEN 1 ELSE 0 END) AS ever_polled,
+                SUM(CASE WHEN poll_last_failure_at IS NOT NULL THEN 1 ELSE 0 END) AS failures
+            FROM devices
+            WHERE enabled = 1
+              AND ip IS NOT NULL
+            """
+        ).fetchone()
+        return {
+            "poll_targets": int(rows["total"] or 0),
+            "poll_successes": int(rows["ever_polled"] or 0),
+            "poll_failures": int(rows["failures"] or 0),
         }
 
     async def refresh_metrics(self) -> None:
@@ -1703,6 +1856,21 @@ class DeviceStore:
             offline=bool(row["offline"]),
             last_seen=row["last_seen"],
             first_seen=row["first_seen"],
+            poll_last_success_at=row["poll_last_success_at"]
+            if "poll_last_success_at" in row.keys()
+            else None,
+            poll_last_failure_at=row["poll_last_failure_at"]
+            if "poll_last_failure_at" in row.keys()
+            else None,
+            poll_failure_count=int(row["poll_failure_count"] or 0)
+            if "poll_failure_count" in row.keys()
+            else 0,
+            poll_state=_deserialize_capabilities(row["poll_state"])
+            if "poll_state" in row.keys()
+            else None,
+            poll_state_updated_at=row["poll_state_updated_at"]
+            if "poll_state_updated_at" in row.keys()
+            else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

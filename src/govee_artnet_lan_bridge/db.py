@@ -319,6 +319,18 @@ MIGRATIONS: List[Tuple[int, Migration]] = [
     (5, _migration_dead_letter_state),
     (6, _migration_discrete_mappings),
     (7, _migration_mapping_fields),
+    (
+        8,
+        lambda conn: conn.executescript(
+            """
+            ALTER TABLE devices ADD COLUMN poll_failure_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE devices ADD COLUMN poll_last_success_at TEXT;
+            ALTER TABLE devices ADD COLUMN poll_last_failure_at TEXT;
+            ALTER TABLE devices ADD COLUMN poll_state TEXT;
+            ALTER TABLE devices ADD COLUMN poll_state_updated_at TEXT;
+            """
+        ),
+    ),
 ]
 
 
