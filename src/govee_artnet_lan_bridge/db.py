@@ -213,12 +213,22 @@ def _migration_dead_letter_state(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_discrete_mappings(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE mappings ADD COLUMN mapping_type TEXT NOT NULL DEFAULT 'range';
+        ALTER TABLE mappings ADD COLUMN field TEXT;
+        """
+    )
+
+
 MIGRATIONS: List[Tuple[int, Migration]] = [
     (1, _migration_initial_schema),
     (2, _migration_device_metadata),
     (3, _migration_device_send_tracking),
     (4, _migration_state_context_id),
     (5, _migration_dead_letter_state),
+    (6, _migration_discrete_mappings),
 ]
 
 

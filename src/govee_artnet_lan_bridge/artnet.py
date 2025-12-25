@@ -146,8 +146,12 @@ def _coerce_float(capabilities: Any, key: str, default: float) -> float:
 
 
 def _build_spec(record: MappingRecord) -> DeviceMappingSpec:
-    mode = _coerce_mode(record.capabilities, record.length)
-    order = _coerce_order(record.capabilities, mode)
+    if record.mapping_type == "discrete":
+        order = (record.field,) if record.field else ()
+        mode = "discrete"
+    else:
+        mode = _coerce_mode(record.capabilities, record.length)
+        order = _coerce_order(record.capabilities, mode)
     gamma = _coerce_float(record.capabilities, "gamma", 1.0)
     dimmer = _coerce_float(record.capabilities, "dimmer", 1.0)
     dimmer = max(0.0, min(dimmer, 1.0))
@@ -162,6 +166,8 @@ def _apply_gamma_dimmer(value: int, gamma: float, dimmer: float) -> int:
 
 
 def _payload_from_slice(mapping: DeviceMapping, slice_data: bytes) -> Optional[Mapping[str, Any]]:
+    if mapping.record.mapping_type == "discrete":
+        return _payload_from_discrete_slice(mapping, slice_data)
     spec = mapping.spec
     if len(slice_data) < spec.required_channels:
         return None
@@ -187,6 +193,30 @@ def _payload_from_slice(mapping: DeviceMapping, slice_data: bytes) -> Optional[M
     return payload if payload else None
 
 
+def _payload_from_discrete_slice(
+    mapping: DeviceMapping, slice_data: bytes
+) -> Optional[Mapping[str, Any]]:
+    if not slice_data or not mapping.record.field:
+        return None
+    value = _apply_gamma_dimmer(slice_data[0], mapping.spec.gamma, mapping.spec.dimmer)
+    field = mapping.record.field
+    if field == "brightness":
+        return {"brightness": value}
+    return {"color": {field: value}}
+
+
+def _merge_payloads(target: MutableMapping[str, Any], incoming: Mapping[str, Any]) -> None:
+    for key, value in incoming.items():
+        if key == "color":
+            color = target.setdefault("color", {})
+            if isinstance(value, Mapping):
+                color.update(value)
+            if not color:
+                target.pop("color", None)
+            continue
+        target[key] = value
+
+
 class UniverseMapping:
     """Container for all mappings within a universe."""
 
@@ -199,7 +229,8 @@ class UniverseMapping:
         self._log_sample_rate = max(0.0, min(1.0, log_sample_rate))
 
     def apply(self, data: bytes, context_id: Optional[str] = None) -> List[DeviceStateUpdate]:
-        updates: List[DeviceStateUpdate] = []
+        aggregated: Dict[str, Dict[str, Any]] = {}
+        device_order: List[str] = []
         for mapping in self._mappings:
             slice_data = mapping.slice_for(data)
             if slice_data is None:
@@ -218,14 +249,15 @@ class UniverseMapping:
             payload = _payload_from_slice(mapping, slice_data)
             if payload is None:
                 continue
-            updates.append(
-                DeviceStateUpdate(
-                    device_id=mapping.record.device_id,
-                    payload=payload,
-                    context_id=context_id,
-                )
-            )
-        return updates
+            device_id = mapping.record.device_id
+            if device_id not in aggregated:
+                aggregated[device_id] = {}
+                device_order.append(device_id)
+            _merge_payloads(aggregated[device_id], payload)
+        return [
+            DeviceStateUpdate(device_id=device_id, payload=aggregated[device_id], context_id=context_id)
+            for device_id in device_order
+        ]
 
 
 class ArtNetProtocol(asyncio.DatagramProtocol):
@@ -340,6 +372,16 @@ class ArtNetService:
                 )
                 continue
             spec = _build_spec(record)
+            if record.mapping_type == "discrete" and not record.field:
+                self.logger.warning(
+                    "Skipping mapping; discrete mapping missing field",
+                    extra={
+                        "device_id": record.device_id,
+                        "universe": record.universe,
+                        "channel": record.channel,
+                    },
+                )
+                continue
             if record.length < spec.required_channels:
                 self.logger.warning(
                     "Skipping mapping; insufficient length for required channels",

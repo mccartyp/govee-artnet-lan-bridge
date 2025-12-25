@@ -133,7 +133,18 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
     create.add_argument("--device-id", required=True, help="Device identifier")
     create.add_argument("--universe", required=True, type=int, help="DMX universe")
     create.add_argument("--channel", required=True, type=int, help="Starting DMX channel")
-    create.add_argument("--length", required=True, type=int, help="Number of channels")
+    create.add_argument("--length", type=int, help="Number of channels (defaults to 1 for discrete mappings)")
+    create.add_argument(
+        "--type",
+        dest="mapping_type",
+        choices=["range", "discrete"],
+        default="range",
+        help="Mapping type (range/discrete)",
+    )
+    create.add_argument(
+        "--field",
+        help="Payload field for discrete mappings (r, g, b, w, brightness)",
+    )
     create.add_argument("--allow-overlap", action="store_true", help="Allow overlapping ranges")
     create.set_defaults(func=_cmd_mappings_create)
 
@@ -143,6 +154,16 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
     update.add_argument("--universe", type=int, help="DMX universe")
     update.add_argument("--channel", type=int, help="Starting DMX channel")
     update.add_argument("--length", type=int, help="Number of channels")
+    update.add_argument(
+        "--type",
+        dest="mapping_type",
+        choices=["range", "discrete"],
+        help="Mapping type (range/discrete)",
+    )
+    update.add_argument(
+        "--field",
+        help="Payload field for discrete mappings (r, g, b, w, brightness)",
+    )
     update.add_argument("--allow-overlap", action="store_true", help="Allow overlapping ranges")
     update.add_argument(
         "--disallow-overlap",
@@ -154,6 +175,9 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
     delete = mapping_sub.add_parser("delete", help="Delete a mapping")
     delete.add_argument("mapping_id", type=int, help="Mapping identifier")
     delete.set_defaults(func=_cmd_mappings_delete)
+
+    channel_map = mapping_sub.add_parser("channel-map", help="Show the DMX channel map")
+    channel_map.set_defaults(func=_cmd_mappings_channel_map)
 
 
 def _load_config(args: argparse.Namespace) -> ClientConfig:
@@ -293,11 +317,14 @@ def _cmd_mappings_get(config: ClientConfig, client: httpx.Client, args: argparse
 
 
 def _cmd_mappings_create(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
+    length = args.length if args.length is not None else 1
     payload = {
         "device_id": args.device_id,
         "universe": args.universe,
         "channel": args.channel,
-        "length": args.length,
+        "length": length,
+        "mapping_type": args.mapping_type,
+        "field": args.field,
         "allow_overlap": args.allow_overlap,
     }
     data = _handle_response(client.post("/mappings", json=payload))
@@ -314,6 +341,10 @@ def _cmd_mappings_update(config: ClientConfig, client: httpx.Client, args: argpa
         payload["channel"] = args.channel
     if args.length is not None:
         payload["length"] = args.length
+    if args.mapping_type:
+        payload["mapping_type"] = args.mapping_type
+    if args.field is not None:
+        payload["field"] = args.field
     if args.allow_overlap:
         payload["allow_overlap"] = True
     if args.disallow_overlap:
@@ -329,6 +360,13 @@ def _cmd_mappings_update(config: ClientConfig, client: httpx.Client, args: argpa
 def _cmd_mappings_delete(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
     _handle_response(client.delete(f"/mappings/{args.mapping_id}"))
     _print_output({"status": "deleted", "id": args.mapping_id}, config.output)
+
+
+def _cmd_mappings_channel_map(
+    config: ClientConfig, client: httpx.Client, args: argparse.Namespace
+) -> None:
+    data = _handle_response(client.get("/channel-map"))
+    _print_output(data, config.output)
 
 
 def _parse_json_arg(value: str) -> Any:

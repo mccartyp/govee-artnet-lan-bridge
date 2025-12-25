@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from typing import Any, Awaitable, Callable, Mapping, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
@@ -95,7 +95,9 @@ class MappingCreate(BaseModel):
     device_id: str
     universe: int = Field(ge=0)
     channel: int = Field(gt=0)
-    length: int = Field(gt=0)
+    length: int = Field(default=1, gt=0)
+    mapping_type: str = Field(default="range")
+    field: Optional[str] = None
     allow_overlap: bool = False
 
 
@@ -106,6 +108,8 @@ class MappingUpdate(BaseModel):
     universe: Optional[int] = Field(default=None, ge=0)
     channel: Optional[int] = Field(default=None, gt=0)
     length: Optional[int] = Field(default=None, gt=0)
+    mapping_type: Optional[str] = None
+    field: Optional[str] = None
     allow_overlap: bool = False
 
 
@@ -117,8 +121,25 @@ class MappingOut(BaseModel):
     universe: int
     channel: int
     length: int
+    mapping_type: str
+    field: Optional[str]
     created_at: str
     updated_at: str
+
+
+class ChannelMapEntry(BaseModel):
+    """Channel map details for a single mapping slot."""
+
+    id: int
+    device_id: str
+    universe: int
+    channel: int
+    length: int
+    mapping_type: str
+    fields: List[str]
+    device_description: Optional[str]
+    device_ip: Optional[str]
+    field: Optional[str] = None
 
 
 class TestAction(BaseModel):
@@ -291,6 +312,15 @@ def create_app(
         rows = await store.mapping_rows()
         return [MappingOut(**row.__dict__) for row in rows]
 
+    @app.get(
+        "/channel-map",
+        dependencies=[Depends(auth_dependency)],
+        response_model=Dict[int, List[ChannelMapEntry]],
+    )
+    async def channel_map() -> Dict[int, List[ChannelMapEntry]]:
+        result = await store.channel_map()
+        return {int(universe): [ChannelMapEntry(**entry) for entry in entries] for universe, entries in result.items()}
+
     @app.post("/mappings", dependencies=[Depends(auth_dependency)], response_model=MappingOut, status_code=status.HTTP_201_CREATED)
     async def create_mapping(payload: MappingCreate) -> MappingOut:
         try:
@@ -299,6 +329,8 @@ def create_app(
                 universe=payload.universe,
                 channel=payload.channel,
                 length=payload.length,
+                mapping_type=payload.mapping_type,
+                field=payload.field,
                 allow_overlap=payload.allow_overlap,
             )
         except ValueError as exc:
@@ -321,6 +353,8 @@ def create_app(
                 universe=payload.universe,
                 channel=payload.channel,
                 length=payload.length,
+                mapping_type=payload.mapping_type,
+                field=payload.field,
                 allow_overlap=payload.allow_overlap,
             )
         except ValueError as exc:

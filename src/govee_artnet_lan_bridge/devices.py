@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .capabilities import CapabilityCache, NormalizedCapabilities, validate_mapping_mode
 from .config import ManualDevice
@@ -92,6 +92,53 @@ def _required_channels(capabilities: Any, length: int) -> int:
     return len(order) if mode != "custom" else length
 
 
+SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness"}
+
+
+def _normalize_mapping_type(mapping_type: Optional[str]) -> str:
+    normalized = (mapping_type or "range").strip().lower()
+    if normalized not in {"range", "discrete"}:
+        raise ValueError("Mapping type must be 'range' or 'discrete'")
+    return normalized
+
+
+def _normalize_field_name(field: Optional[str]) -> str:
+    if field is None or not str(field).strip():
+        raise ValueError("Field is required for discrete mappings")
+    normalized = str(field).strip().lower()
+    if normalized not in SUPPORTED_FIELDS:
+        raise ValueError(
+            f"Unsupported field '{field}'. Supported fields: {', '.join(sorted(SUPPORTED_FIELDS))}."
+        )
+    return normalized
+
+
+def _validate_field_support(field: str, capabilities: NormalizedCapabilities) -> None:
+    if field == "brightness" and not capabilities.supports_brightness:
+        raise ValueError("Device does not support brightness control.")
+    if field in {"r", "g", "b", "w"} and not capabilities.supports_color:
+        supported = ", ".join(capabilities.supported_modes) or "none"
+        raise ValueError(
+            f"Device does not support color control. Supported modes: {supported}."
+        )
+
+
+def _mapping_fields_for_length(
+    capabilities: Mapping[str, Any],
+    normalized_capabilities: NormalizedCapabilities,
+    mapping_type: str,
+    length: int,
+    field: Optional[str],
+) -> Set[str]:
+    if mapping_type == "discrete":
+        normalized_field = _normalize_field_name(field)
+        _validate_field_support(normalized_field, normalized_capabilities)
+        return {normalized_field}
+    mode = _coerce_mode_for_mapping(capabilities, length)
+    order = _coerce_order_for_mapping(capabilities, mode)
+    return set(order)
+
+
 @dataclass(frozen=True)
 class DiscoveryResult:
     """Parsed discovery response details."""
@@ -112,6 +159,8 @@ class MappingRecord:
     universe: int
     channel: int
     length: int
+    mapping_type: str
+    field: Optional[str]
     capabilities: Any
 
 
@@ -197,6 +246,8 @@ class MappingRow:
     universe: int
     channel: int
     length: int
+    mapping_type: str
+    field: Optional[str]
     created_at: str
     updated_at: str
 
@@ -545,7 +596,15 @@ class DeviceStore:
     def _mappings(self, conn: sqlite3.Connection) -> List[MappingRecord]:
         rows = conn.execute(
             """
-            SELECT m.device_id, m.universe, m.channel, m.length, d.model, d.capabilities
+            SELECT
+                m.device_id,
+                m.universe,
+                m.channel,
+                m.length,
+                m.mapping_type,
+                m.field,
+                d.model,
+                d.capabilities
             FROM mappings m
             JOIN devices d ON d.id = m.device_id
             WHERE d.enabled = 1
@@ -563,6 +622,8 @@ class DeviceStore:
                     universe=int(row["universe"]),
                     channel=int(row["channel"]),
                     length=int(row["length"]),
+                    mapping_type=str(row["mapping_type"]),
+                    field=row["field"],
                     capabilities=normalized.as_mapping(),
                 )
             )
@@ -574,7 +635,16 @@ class DeviceStore:
     def _mapping_rows(self, conn: sqlite3.Connection) -> List[MappingRow]:
         rows = conn.execute(
             """
-            SELECT id, device_id, universe, channel, length, created_at, updated_at
+            SELECT
+                id,
+                device_id,
+                universe,
+                channel,
+                length,
+                mapping_type,
+                field,
+                created_at,
+                updated_at
             FROM mappings
             ORDER BY universe, channel
             """
@@ -587,7 +657,16 @@ class DeviceStore:
     def _mapping_by_id(self, conn: sqlite3.Connection, mapping_id: int) -> Optional[MappingRow]:
         row = conn.execute(
             """
-            SELECT id, device_id, universe, channel, length, created_at, updated_at
+            SELECT
+                id,
+                device_id,
+                universe,
+                channel,
+                length,
+                mapping_type,
+                field,
+                created_at,
+                updated_at
             FROM mappings
             WHERE id = ?
             """,
@@ -597,6 +676,62 @@ class DeviceStore:
             return None
         return self._row_to_mapping(row)
 
+    async def channel_map(self) -> Dict[int, List[Dict[str, Any]]]:
+        return await self.db.run(self._channel_map)
+
+    def _channel_map(self, conn: sqlite3.Connection) -> Dict[int, List[Dict[str, Any]]]:
+        rows = conn.execute(
+            """
+            SELECT
+                m.id,
+                m.device_id,
+                m.universe,
+                m.channel,
+                m.length,
+                m.mapping_type,
+                m.field,
+                d.description,
+                d.ip,
+                d.model,
+                d.capabilities
+            FROM mappings m
+            JOIN devices d ON d.id = m.device_id
+            ORDER BY m.universe, m.channel
+            """
+        ).fetchall()
+        universes: Dict[int, List[Dict[str, Any]]] = {}
+        for row in rows:
+            normalized_caps = self._normalized_capabilities_obj(row)
+            mapping_type = _normalize_mapping_type(row["mapping_type"])
+            capabilities = normalized_caps.as_mapping()
+            try:
+                fields = sorted(
+                    _mapping_fields_for_length(
+                        capabilities,
+                        normalized_caps,
+                        mapping_type,
+                        int(row["length"]),
+                        row["field"],
+                    )
+                )
+            except ValueError:
+                continue
+            entry: Dict[str, Any] = {
+                "id": int(row["id"]),
+                "device_id": row["device_id"],
+                "universe": int(row["universe"]),
+                "channel": int(row["channel"]),
+                "length": int(row["length"]),
+                "mapping_type": mapping_type,
+                "fields": fields,
+                "device_description": row["description"],
+                "device_ip": row["ip"],
+            }
+            if row["field"]:
+                entry["field"] = row["field"]
+            universes.setdefault(int(row["universe"]), []).append(entry)
+        return universes
+
     async def create_mapping(
         self,
         *,
@@ -604,11 +739,13 @@ class DeviceStore:
         universe: int,
         channel: int,
         length: int,
+        mapping_type: str = "range",
+        field: Optional[str] = None,
         allow_overlap: bool = False,
     ) -> MappingRow:
         return await self.db.run(
             lambda conn: self._create_mapping(
-                conn, device_id, universe, channel, length, allow_overlap
+                conn, device_id, universe, channel, length, mapping_type, field, allow_overlap
             )
         )
 
@@ -619,10 +756,16 @@ class DeviceStore:
         universe: int,
         channel: int,
         length: int,
+        mapping_type: str,
+        field: Optional[str],
         allow_overlap: bool,
     ) -> MappingRow:
         if channel <= 0 or length <= 0:
             raise ValueError("Channel and length must be positive")
+        normalized_mapping_type = _normalize_mapping_type(mapping_type)
+        normalized_field = _normalize_field_name(field) if normalized_mapping_type == "discrete" else None
+        if normalized_mapping_type == "discrete" and length != 1:
+            raise ValueError("Discrete mappings must have a length of 1")
         device_row = conn.execute(
             "SELECT model, capabilities FROM devices WHERE id = ?",
             (device_id,),
@@ -631,24 +774,52 @@ class DeviceStore:
             raise ValueError("Device not found")
         normalized = self._normalized_capabilities_obj(device_row)
         capabilities = normalized.as_mapping()
-        required = _required_channels(capabilities, length)
-        if required > length:
-            raise ValueError("Mapping length is shorter than required channels")
-        mode = _coerce_mode_for_mapping(capabilities, length)
-        validate_mapping_mode(mode, normalized)
+        if normalized_mapping_type == "range":
+            required = _required_channels(capabilities, length)
+            if required > length:
+                raise ValueError("Mapping length is shorter than required channels")
+            mode = _coerce_mode_for_mapping(capabilities, length)
+            validate_mapping_mode(mode, normalized)
+        else:
+            _validate_field_support(normalized_field or "", normalized)
+        new_fields = _mapping_fields_for_length(
+            capabilities,
+            normalized,
+            normalized_mapping_type,
+            length,
+            normalized_field,
+        )
+        self._ensure_no_field_conflicts(
+            conn,
+            device_id,
+            universe,
+            capabilities,
+            normalized,
+            new_fields,
+            exclude_id=None,
+        )
         self._ensure_no_overlap(conn, universe, channel, length, None, allow_overlap)
         cursor = conn.execute(
             """
-            INSERT INTO mappings (device_id, universe, channel, length)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO mappings (device_id, universe, channel, length, mapping_type, field)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (device_id, universe, channel, length),
+            (device_id, universe, channel, length, normalized_mapping_type, normalized_field),
         )
         conn.commit()
         mapping_id = cursor.lastrowid
         created = conn.execute(
             """
-            SELECT id, device_id, universe, channel, length, created_at, updated_at
+            SELECT
+                id,
+                device_id,
+                universe,
+                channel,
+                length,
+                mapping_type,
+                field,
+                created_at,
+                updated_at
             FROM mappings
             WHERE id = ?
             """,
@@ -664,6 +835,8 @@ class DeviceStore:
                 "universe": universe,
                 "channel": channel,
                 "length": length,
+                "mapping_type": normalized_mapping_type,
+                "field": normalized_field,
             },
         )
         return self._row_to_mapping(created)
@@ -676,11 +849,21 @@ class DeviceStore:
         universe: Optional[int] = None,
         channel: Optional[int] = None,
         length: Optional[int] = None,
+        mapping_type: Optional[str] = None,
+        field: Optional[str] = None,
         allow_overlap: bool = False,
     ) -> Optional[MappingRow]:
         return await self.db.run(
             lambda conn: self._update_mapping(
-                conn, mapping_id, device_id, universe, channel, length, allow_overlap
+                conn,
+                mapping_id,
+                device_id,
+                universe,
+                channel,
+                length,
+                mapping_type,
+                field,
+                allow_overlap,
             )
         )
 
@@ -692,10 +875,23 @@ class DeviceStore:
         universe: Optional[int],
         channel: Optional[int],
         length: Optional[int],
+        mapping_type: Optional[str],
+        field: Optional[str],
         allow_overlap: bool,
     ) -> Optional[MappingRow]:
         existing = conn.execute(
-            "SELECT id, device_id, universe, channel, length FROM mappings WHERE id = ?",
+            """
+            SELECT
+                id,
+                device_id,
+                universe,
+                channel,
+                length,
+                mapping_type,
+                field
+            FROM mappings
+            WHERE id = ?
+            """,
             (mapping_id,),
         ).fetchone()
         if not existing:
@@ -704,6 +900,19 @@ class DeviceStore:
         new_universe = universe if universe is not None else int(existing["universe"])
         new_channel = channel if channel is not None else int(existing["channel"])
         new_length = length if length is not None else int(existing["length"])
+        normalized_mapping_type = _normalize_mapping_type(
+            mapping_type or existing["mapping_type"]
+        )
+        field_value = field if field is not None else existing["field"]
+        normalized_field = (
+            _normalize_field_name(field_value)
+            if normalized_mapping_type == "discrete"
+            else None
+        )
+        if normalized_mapping_type == "discrete" and new_length != 1:
+            raise ValueError("Discrete mappings must have a length of 1")
+        if normalized_mapping_type == "range":
+            normalized_field = None
         if new_channel <= 0 or new_length <= 0:
             raise ValueError("Channel and length must be positive")
         device_row = conn.execute(
@@ -714,26 +923,62 @@ class DeviceStore:
             raise ValueError("Device not found")
         normalized = self._normalized_capabilities_obj(device_row)
         capabilities = normalized.as_mapping()
-        required = _required_channels(capabilities, new_length)
-        if required > new_length:
-            raise ValueError("Mapping length is shorter than required channels")
-        mode = _coerce_mode_for_mapping(capabilities, new_length)
-        validate_mapping_mode(mode, normalized)
+        if normalized_mapping_type == "range":
+            required = _required_channels(capabilities, new_length)
+            if required > new_length:
+                raise ValueError("Mapping length is shorter than required channels")
+            mode = _coerce_mode_for_mapping(capabilities, new_length)
+            validate_mapping_mode(mode, normalized)
+        else:
+            _validate_field_support(normalized_field or "", normalized)
+        new_fields = _mapping_fields_for_length(
+            capabilities,
+            normalized,
+            normalized_mapping_type,
+            new_length,
+            normalized_field,
+        )
+        self._ensure_no_field_conflicts(
+            conn,
+            new_device_id,
+            new_universe,
+            capabilities,
+            normalized,
+            new_fields,
+            exclude_id=mapping_id,
+        )
         self._ensure_no_overlap(
             conn, new_universe, new_channel, new_length, mapping_id, allow_overlap
         )
         conn.execute(
             """
             UPDATE mappings
-            SET device_id = ?, universe = ?, channel = ?, length = ?
+            SET device_id = ?, universe = ?, channel = ?, length = ?, mapping_type = ?, field = ?
             WHERE id = ?
             """,
-            (new_device_id, new_universe, new_channel, new_length, mapping_id),
+            (
+                new_device_id,
+                new_universe,
+                new_channel,
+                new_length,
+                normalized_mapping_type,
+                normalized_field,
+                mapping_id,
+            ),
         )
         conn.commit()
         updated = conn.execute(
             """
-            SELECT id, device_id, universe, channel, length, created_at, updated_at
+            SELECT
+                id,
+                device_id,
+                universe,
+                channel,
+                length,
+                mapping_type,
+                field,
+                created_at,
+                updated_at
             FROM mappings
             WHERE id = ?
             """,
@@ -749,6 +994,8 @@ class DeviceStore:
                 "universe": new_universe,
                 "channel": new_channel,
                 "length": new_length,
+                "mapping_type": normalized_mapping_type,
+                "field": normalized_field,
             },
         )
         return self._row_to_mapping(updated)
@@ -793,6 +1040,69 @@ class DeviceStore:
         conflict = conn.execute(query, params).fetchone()
         if conflict:
             raise ValueError("Mapping overlaps an existing entry")
+
+    def _ensure_no_field_conflicts(
+        self,
+        conn: sqlite3.Connection,
+        device_id: str,
+        universe: int,
+        capabilities: Mapping[str, Any],
+        normalized_capabilities: NormalizedCapabilities,
+        new_fields: Set[str],
+        *,
+        exclude_id: Optional[int],
+    ) -> None:
+        existing_fields = self._existing_field_assignments(
+            conn,
+            device_id,
+            universe,
+            capabilities,
+            normalized_capabilities,
+            exclude_id=exclude_id,
+        )
+        conflicts = existing_fields.intersection(new_fields)
+        if conflicts:
+            conflict_list = ", ".join(sorted(conflicts))
+            raise ValueError(
+                f"Field(s) already mapped for device {device_id} on universe {universe}: {conflict_list}"
+            )
+
+    def _existing_field_assignments(
+        self,
+        conn: sqlite3.Connection,
+        device_id: str,
+        universe: int,
+        capabilities: Mapping[str, Any],
+        normalized_capabilities: NormalizedCapabilities,
+        *,
+        exclude_id: Optional[int],
+    ) -> Set[str]:
+        rows = conn.execute(
+            """
+            SELECT id, length, mapping_type, field
+            FROM mappings
+            WHERE device_id = ? AND universe = ?
+            """,
+            (device_id, universe),
+        ).fetchall()
+        fields: Set[str] = set()
+        for row in rows:
+            if exclude_id is not None and int(row["id"]) == exclude_id:
+                continue
+            mapping_type = _normalize_mapping_type(row["mapping_type"])
+            try:
+                fields.update(
+                    _mapping_fields_for_length(
+                        capabilities,
+                        normalized_capabilities,
+                        mapping_type,
+                        int(row["length"]),
+                        row["field"],
+                    )
+                )
+            except ValueError:
+                continue
+        return fields
 
     async def update_capabilities(
         self, device_id: str, capabilities: Mapping[str, Any]
@@ -1214,6 +1524,8 @@ class DeviceStore:
             universe=int(row["universe"]),
             channel=int(row["channel"]),
             length=int(row["length"]),
+            mapping_type=str(row["mapping_type"]),
+            field=row["field"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

@@ -50,6 +50,8 @@ def test_universe_mapping_apply() -> None:
         universe=0,
         channel=1,
         length=3,
+        mapping_type="range",
+        field=None,
         capabilities={"mode": "rgb", "order": ["r", "g", "b"], "gamma": 1.0, "dimmer": 1.0},
     )
     mapping = DeviceMapping(
@@ -61,6 +63,76 @@ def test_universe_mapping_apply() -> None:
     assert len(updates) == 1
     assert updates[0].device_id == "dev-1"
     assert updates[0].payload["color"] == {"r": 10, "g": 20, "b": 30}
+
+
+def test_universe_mapping_merges_discrete_fields() -> None:
+    red_record = MappingRecord(
+        device_id="dev-merge",
+        universe=0,
+        channel=1,
+        length=1,
+        mapping_type="discrete",
+        field="r",
+        capabilities={"gamma": 1.0, "dimmer": 1.0},
+    )
+    brightness_record = MappingRecord(
+        device_id="dev-merge",
+        universe=0,
+        channel=2,
+        length=1,
+        mapping_type="discrete",
+        field="brightness",
+        capabilities={"gamma": 1.0, "dimmer": 1.0},
+    )
+    red_mapping = DeviceMapping(
+        record=red_record,
+        spec=DeviceMappingSpec(mode="discrete", order=("r",), gamma=1.0, dimmer=1.0),
+    )
+    brightness_mapping = DeviceMapping(
+        record=brightness_record,
+        spec=DeviceMappingSpec(mode="discrete", order=("brightness",), gamma=1.0, dimmer=1.0),
+    )
+    universe_map = UniverseMapping(0, [red_mapping, brightness_mapping])
+    updates = universe_map.apply(bytes([50, 100]))
+    assert len(updates) == 1
+    payload = updates[0].payload
+    assert payload["color"] == {"r": 50}
+    assert payload["brightness"] == 100
+
+
+def test_universe_mapping_range_and_discrete_merge() -> None:
+    range_record = MappingRecord(
+        device_id="dev-range",
+        universe=0,
+        channel=1,
+        length=3,
+        mapping_type="range",
+        field=None,
+        capabilities={"mode": "rgb", "order": ["r", "g", "b"], "gamma": 1.0, "dimmer": 1.0},
+    )
+    brightness_record = MappingRecord(
+        device_id="dev-range",
+        universe=0,
+        channel=4,
+        length=1,
+        mapping_type="discrete",
+        field="brightness",
+        capabilities={"gamma": 1.0, "dimmer": 1.0},
+    )
+    range_mapping = DeviceMapping(
+        record=range_record,
+        spec=DeviceMappingSpec(mode="rgb", order=("r", "g", "b"), gamma=1.0, dimmer=1.0),
+    )
+    brightness_mapping = DeviceMapping(
+        record=brightness_record,
+        spec=DeviceMappingSpec(mode="discrete", order=("brightness",), gamma=1.0, dimmer=1.0),
+    )
+    universe_map = UniverseMapping(0, [range_mapping, brightness_mapping])
+    updates = universe_map.apply(bytes([5, 15, 25, 40]))
+    assert len(updates) == 1
+    payload = updates[0].payload
+    assert payload["color"] == {"r": 5, "g": 15, "b": 25}
+    assert payload["brightness"] == 40
 
 
 def test_artnet_reuses_last_payloads(tmp_path: Path) -> None:

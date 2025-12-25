@@ -23,6 +23,73 @@ async def test_create_mapping_rejects_unsupported_mode(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_duplicate_field_assignments_blocked(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-fields",
+            ip="127.0.0.1",
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+        )
+    )
+    await store.create_mapping(
+        device_id="dev-fields",
+        universe=0,
+        channel=1,
+        length=3,
+    )
+    with pytest.raises(ValueError) as excinfo:
+        await store.create_mapping(
+            device_id="dev-fields",
+            universe=0,
+            channel=10,
+            length=1,
+            mapping_type="discrete",
+            field="r",
+        )
+    assert "Field(s) already mapped" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_channel_map_reports_fields(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-map",
+            ip="127.0.0.1",
+            description="Fixture",
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+        )
+    )
+    await store.create_mapping(
+        device_id="dev-map",
+        universe=0,
+        channel=1,
+        length=3,
+    )
+    await store.create_mapping(
+        device_id="dev-map",
+        universe=0,
+        channel=4,
+        length=1,
+        mapping_type="discrete",
+        field="brightness",
+    )
+    channel_map = await store.channel_map()
+    assert 0 in channel_map
+    entries = channel_map[0]
+    assert any(entry["mapping_type"] == "range" and set(entry["fields"]) == {"r", "g", "b"} for entry in entries)
+    brightness_entries = [entry for entry in entries if entry.get("field") == "brightness"]
+    assert brightness_entries
+    assert brightness_entries[0]["device_description"] == "Fixture"
+    assert brightness_entries[0]["device_ip"] == "127.0.0.1"
+
+
+@pytest.mark.asyncio
 async def test_record_discovery_defaults_to_disabled(tmp_path) -> None:
     db_path = tmp_path / "bridge.sqlite3"
     apply_migrations(db_path)
