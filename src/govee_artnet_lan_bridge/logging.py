@@ -71,6 +71,10 @@ def configure_logging(config: Config) -> None:
     """Configure global logging based on the provided config."""
 
     level = config.log_level.upper()
+    discovery_level = (config.discovery_log_level or config.log_level).upper()
+    artnet_level = (config.artnet_log_level or config.log_level).upper()
+    sender_level = (config.sender_log_level or config.log_level).upper()
+    api_level = (config.api_log_level or config.log_level).upper()
     if config.log_format == "json":
         formatter = {
             "format": "json",
@@ -107,7 +111,7 @@ def configure_logging(config: Config) -> None:
                     "propagate": False,
                 },
                 "govee.discovery": {
-                    "level": level,
+                    "level": discovery_level,
                     "handlers": ["console"],
                     "propagate": False,
                 },
@@ -117,17 +121,17 @@ def configure_logging(config: Config) -> None:
                     "propagate": False,
                 },
                 "govee.artnet": {
-                    "level": level,
+                    "level": artnet_level,
                     "handlers": ["console"],
                     "propagate": False,
                 },
                 "govee.artnet.protocol": {
-                    "level": level,
+                    "level": artnet_level,
                     "handlers": ["console"],
                     "propagate": False,
                 },
                 "govee.artnet.mapping": {
-                    "level": level,
+                    "level": artnet_level,
                     "handlers": ["console"],
                     "propagate": False,
                 },
@@ -137,22 +141,22 @@ def configure_logging(config: Config) -> None:
                     "propagate": False,
                 },
                 "govee.api": {
-                    "level": level,
+                    "level": api_level,
                     "handlers": ["console"],
                     "propagate": False,
                 },
                 "govee.api.middleware": {
-                    "level": level,
+                    "level": api_level,
                     "handlers": ["console"],
                     "propagate": False,
                 },
                 "govee.discovery.protocol": {
-                    "level": level,
+                    "level": discovery_level,
                     "handlers": ["console"],
                     "propagate": False,
                 },
                 "govee.sender": {
-                    "level": level,
+                    "level": sender_level,
                     "handlers": ["console"],
                     "propagate": False,
                 },

@@ -13,6 +13,7 @@ from .capabilities import CapabilityCache, NormalizedCapabilities, validate_mapp
 from .config import ManualDevice
 from .db import DatabaseManager
 from .logging import get_logger
+from .metrics import set_offline_devices, set_queue_depth, set_total_queue_depth
 
 
 def _now_iso() -> str:
@@ -120,6 +121,7 @@ class DeviceStateUpdate:
 
     device_id: str
     payload: Mapping[str, Any]
+    context_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +132,7 @@ class PendingState:
     device_id: str
     payload: str
     created_at: str
+    context_id: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -811,15 +814,16 @@ class DeviceStore:
         serialized = _serialize_capabilities(update.payload) or "null"
         conn.execute(
             """
-            INSERT INTO state (device_id, payload)
-            VALUES (?, ?)
+            INSERT INTO state (device_id, payload, context_id)
+            VALUES (?, ?, ?)
             """,
-            (update.device_id, serialized),
+            (update.device_id, serialized, update.context_id),
         )
         conn.commit()
+        self._update_queue_metrics(conn, update.device_id)
         self.logger.debug(
             "Enqueued device update",
-            extra={"device_id": update.device_id},
+            extra={"device_id": update.device_id, "context_id": update.context_id},
         )
 
     async def set_last_seen(
@@ -862,7 +866,7 @@ class DeviceStore:
     def _next_state(self, conn: sqlite3.Connection, device_id: str) -> Optional[PendingState]:
         row = conn.execute(
             """
-            SELECT id, device_id, payload, created_at
+            SELECT id, device_id, payload, created_at, context_id
             FROM state
             WHERE device_id = ?
             ORDER BY id ASC
@@ -877,12 +881,17 @@ class DeviceStore:
             device_id=row["device_id"],
             payload=row["payload"],
             created_at=row["created_at"],
+            context_id=row["context_id"],
         )
 
     async def delete_state(self, state_id: int) -> None:
         await self.db.run(lambda conn: self._delete_state(conn, state_id))
 
     def _delete_state(self, conn: sqlite3.Connection, state_id: int) -> None:
+        row = conn.execute(
+            "SELECT device_id FROM state WHERE id = ?",
+            (state_id,),
+        ).fetchone()
         conn.execute(
             """
             DELETE FROM state
@@ -891,6 +900,12 @@ class DeviceStore:
             (state_id,),
         )
         conn.commit()
+        if row:
+            self._update_queue_metrics(conn, row["device_id"])
+        else:
+            total_row = conn.execute("SELECT COUNT(*) AS total FROM state").fetchone()
+            total = int(total_row["total"] if total_row else 0)
+            set_total_queue_depth(total)
 
     async def device_info(self, device_id: str) -> Optional[DeviceInfo]:
         return await self.db.run(lambda conn: self._device_info(conn, device_id))
@@ -966,6 +981,7 @@ class DeviceStore:
             (payload_hash, now, device_id),
         )
         conn.commit()
+        self._update_offline_metric(conn)
 
     async def record_send_failure(
         self, device_id: str, payload_hash: str, offline_threshold: int
@@ -995,6 +1011,7 @@ class DeviceStore:
             (payload_hash, now, offline_threshold, now, device_id),
         )
         conn.commit()
+        self._update_offline_metric(conn)
 
     async def stats(self) -> Mapping[str, int]:
         return await self.db.run(self._stats)
@@ -1012,12 +1029,50 @@ class DeviceStore:
         mapping_counts = conn.execute(
             "SELECT COUNT(*) AS total FROM mappings"
         ).fetchone()
+        set_offline_devices(int(device_counts["offline"] or 0))
         return {
             "devices_total": int(device_counts["total"] or 0),
             "devices_enabled": int(device_counts["enabled"] or 0),
             "devices_offline": int(device_counts["offline"] or 0),
             "mappings_total": int(mapping_counts["total"] or 0),
         }
+
+    async def refresh_metrics(self) -> None:
+        """Refresh gauges derived from the database."""
+
+        await self.db.run(self._refresh_metrics)
+
+    def _refresh_metrics(self, conn: sqlite3.Connection) -> None:
+        self._update_offline_metric(conn)
+        rows = conn.execute(
+            """
+            SELECT device_id, COUNT(*) AS depth
+            FROM state
+            GROUP BY device_id
+            """
+        ).fetchall()
+        for row in rows:
+            set_queue_depth(row["device_id"], int(row["depth"]))
+        total = conn.execute("SELECT COUNT(*) AS total FROM state").fetchone()
+        set_total_queue_depth(int(total["total"] if total else 0))
+
+    def _update_queue_metrics(self, conn: sqlite3.Connection, device_id: str) -> None:
+        depth_row = conn.execute(
+            "SELECT COUNT(*) AS depth FROM state WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+        depth = int(depth_row["depth"] if depth_row else 0)
+        set_queue_depth(device_id, depth)
+        total_row = conn.execute("SELECT COUNT(*) AS total FROM state").fetchone()
+        total = int(total_row["total"] if total_row else 0)
+        set_total_queue_depth(total)
+
+    def _update_offline_metric(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT COUNT(*) AS offline FROM devices WHERE offline = 1"
+        ).fetchone()
+        count = int(row["offline"] if row else 0)
+        set_offline_devices(count)
 
     def _normalized_capabilities_obj(self, row: sqlite3.Row) -> NormalizedCapabilities:
         model = row["model"] if "model" in row.keys() else None

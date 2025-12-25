@@ -188,6 +188,7 @@ async def _run_async(config: Config) -> None:
     stop_event = asyncio.Event()
     store = DeviceStore(config.db_path)
     await store.start()
+    await store.refresh_metrics()
     health = HealthMonitor(
         ("discovery", "sender", "artnet", "api"),
         failure_threshold=config.subsystem_failure_threshold,

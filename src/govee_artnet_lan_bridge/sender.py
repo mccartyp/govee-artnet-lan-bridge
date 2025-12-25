@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import socket
 import contextlib
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
 
@@ -13,7 +14,7 @@ from .config import Config
 from .devices import DeviceInfo, DeviceStore, PendingState
 from .health import BackoffPolicy, HealthMonitor
 from .logging import get_logger
-from .metrics import record_send_result
+from .metrics import observe_send_duration, record_send_result
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,7 @@ class DeviceSenderService:
 
     async def start(self) -> None:
         self._stop_event.clear()
+        await self.store.refresh_metrics()
         self._poll_task = asyncio.create_task(self._poll_loop())
         if self._dry_run:
             self.logger.info("Device sender service started in dry-run mode; payloads will not be sent.")
@@ -161,13 +163,23 @@ class DeviceSenderService:
                     continue
 
     async def _process_state(self, state: PendingState) -> None:
+        started = time.perf_counter()
+        transport_label = "none"
+        context_extra = {"device_id": state.device_id, "context_id": state.context_id}
+
+        def _finalize(result: str) -> None:
+            duration = time.perf_counter() - started
+            record_send_result(result)
+            observe_send_duration(result, transport_label, duration)
+
         allowed, remaining = await self._health.allow_attempt("sender")
         if not allowed:
             self.logger.warning(
                 "Send pipeline suppressed after repeated failures",
-                extra={"device_id": state.device_id, "cooldown_seconds": round(remaining, 2)},
+                extra={**context_extra, "cooldown_seconds": round(remaining, 2)},
             )
             await self._sleep_with_stop(remaining)
+            _finalize("suppressed")
             return
 
         payload_hash = hashlib.sha256(state.payload.encode("utf-8")).hexdigest()
@@ -175,67 +187,87 @@ class DeviceSenderService:
         if device is None:
             self.logger.warning(
                 "Skipping send for unknown or disabled device",
-                extra={"device_id": state.device_id},
+                extra=context_extra,
             )
-            record_send_result("skipped")
             await self.store.record_send_failure(
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
             await self._health.record_failure("sender", RuntimeError("unknown or disabled device"))
             await self._sleep_with_stop(self._backoff.delay(1))
+            _finalize("skipped")
             return
 
         target = _derive_target(self.config, device)
         if target is None:
             self.logger.warning(
                 "Device missing IP; cannot send",
-                extra={"device_id": state.device_id},
+                extra=context_extra,
             )
-            record_send_result("skipped")
             await self.store.record_send_failure(
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
             await self._health.record_failure("sender", RuntimeError("device missing IP"))
             await self._sleep_with_stop(self._backoff.delay(1))
+            _finalize("skipped")
             return
 
         if device.failure_count == 0 and device.last_payload_hash == payload_hash:
             self.logger.debug(
                 "Dropping duplicate payload",
-                extra={"device_id": state.device_id},
+                extra=context_extra,
             )
             await self.store.delete_state(state.id)
             return
 
         payload = state.payload.encode("utf-8")
-        success = await self._send_with_retries(target, payload, payload_hash)
+        transport_label = target.transport
+        try:
+            success = await self._send_with_retries(target, payload, payload_hash, state.context_id)
+        except Exception as exc:  # pragma: no cover - defensive
+            self.logger.error(
+                "Unhandled send error",
+                extra=context_extra,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
+            await self.store.record_send_failure(
+                state.device_id, payload_hash, self.config.device_offline_threshold
+            )
+            await self._health.record_failure("sender", exc)
+            await self._sleep_with_stop(self._backoff.delay(1))
+            _finalize("error")
+            return
         if success:
-            record_send_result("success" if not self._dry_run else "dry_run")
             await self._health.record_success("sender")
             await self.store.record_send_success(state.device_id, payload_hash)
             await self.store.set_last_seen([state.device_id])
             await self.store.delete_state(state.id)
+            _finalize("success" if not self._dry_run else "dry_run")
         else:
-            record_send_result("failure")
             await self.store.record_send_failure(
                 state.device_id, payload_hash, self.config.device_offline_threshold
             )
             await self._health.record_failure("sender", RuntimeError("send failed"))
             await self._sleep_with_stop(self._backoff.delay(1))
+            _finalize("failure")
 
     async def _send_with_retries(
-        self, target: DeviceTarget, payload: bytes, payload_hash: str
+        self, target: DeviceTarget, payload: bytes, payload_hash: str, context_id: Optional[str]
     ) -> bool:
         if self._dry_run:
             self.logger.info(
                 "Dry-run: would send payload",
-                extra={"device_id": target.id, "transport": target.transport, "port": target.port},
+                extra={
+                    "device_id": target.id,
+                    "transport": target.transport,
+                    "port": target.port,
+                    "context_id": context_id,
+                },
             )
             return True
         attempts = max(1, self.config.device_send_retries)
         delays = self._backoff.iter_delays(attempts)
         for attempt in range(1, attempts + 1):
-            if await self._send_once(target, payload):
+            if await self._send_once(target, payload, context_id):
                 return True
             if attempt == attempts:
                 break
@@ -248,16 +280,21 @@ class DeviceSenderService:
                 "port": target.port,
                 "hash": payload_hash,
                 "attempts": attempts,
+                "context_id": context_id,
             },
         )
         return False
 
-    async def _send_once(self, target: DeviceTarget, payload: bytes) -> bool:
+    async def _send_once(
+        self, target: DeviceTarget, payload: bytes, context_id: Optional[str]
+    ) -> bool:
         if target.transport == "tcp":
-            return await self._send_tcp(target, payload)
-        return await self._send_udp(target, payload)
+            return await self._send_tcp(target, payload, context_id)
+        return await self._send_udp(target, payload, context_id)
 
-    async def _send_udp(self, target: DeviceTarget, payload: bytes) -> bool:
+    async def _send_udp(
+        self, target: DeviceTarget, payload: bytes, context_id: Optional[str]
+    ) -> bool:
         def _send() -> bool:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -268,7 +305,7 @@ class DeviceSenderService:
                 self.logger.warning(
                     "UDP send failed",
                     exc_info=(type(exc), exc, exc.__traceback__),
-                    extra={"device_id": target.id},
+                    extra={"device_id": target.id, "context_id": context_id},
                 )
                 return False
 
@@ -280,11 +317,13 @@ class DeviceSenderService:
             self.logger.warning(
                 "UDP send timed out",
                 exc_info=(type(exc), exc, exc.__traceback__),
-                extra={"device_id": target.id},
+                extra={"device_id": target.id, "context_id": context_id},
             )
             return False
 
-    async def _send_tcp(self, target: DeviceTarget, payload: bytes) -> bool:
+    async def _send_tcp(
+        self, target: DeviceTarget, payload: bytes, context_id: Optional[str]
+    ) -> bool:
         try:
             _reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(target.ip, target.port),
@@ -302,7 +341,7 @@ class DeviceSenderService:
             self.logger.warning(
                 "TCP send failed",
                 exc_info=(type(exc), exc, exc.__traceback__),
-                extra={"device_id": target.id},
+                extra={"device_id": target.id, "context_id": context_id},
             )
             return False
 

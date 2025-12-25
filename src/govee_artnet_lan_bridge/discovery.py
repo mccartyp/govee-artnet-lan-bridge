@@ -7,12 +7,13 @@ import contextlib
 import json
 import socket
 import struct
+import time
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .config import Config
 from .devices import DeviceStore, DiscoveryResult
 from .logging import get_logger
-from .metrics import record_discovery_error, record_discovery_response
+from .metrics import observe_discovery_cycle, record_discovery_error, record_discovery_response
 
 
 def _create_multicast_socket(address: str, port: int) -> socket.socket:
@@ -188,30 +189,39 @@ class DiscoveryService:
         self.logger.info("Discovery service stopped")
 
     async def run_cycle(self) -> None:
-        if not self._protocol and not self.config.dry_run:
-            await self.start()
-        if self.config.dry_run:
-            self.logger.debug("Skipping discovery probes in dry-run mode")
-            await self.store.mark_stale(self.config.discovery_stale_after)
-            return
-
-        assert self._protocol is not None
-        self._protocol.reset_cycle()
-
-        target = (
-            self.config.discovery_multicast_address,
-            self.config.discovery_multicast_port,
-        )
-        self._protocol.send_probe(target)
-        if self.config.manual_unicast_probes:
-            for device_id, ip in await self.store.manual_probe_targets():
-                self.logger.debug(
-                    "Sending unicast probe",
-                    extra={"device_id": device_id, "ip": ip},
-                )
-                self._protocol.send_probe((ip, self.config.discovery_multicast_port))
-
+        started = time.perf_counter()
+        result = "ok"
         try:
-            await asyncio.sleep(self.config.discovery_response_timeout)
+            if not self._protocol and not self.config.dry_run:
+                await self.start()
+            if self.config.dry_run:
+                self.logger.debug("Skipping discovery probes in dry-run mode")
+                await self.store.mark_stale(self.config.discovery_stale_after)
+                result = "dry_run"
+                return
+
+            assert self._protocol is not None
+            self._protocol.reset_cycle()
+
+            target = (
+                self.config.discovery_multicast_address,
+                self.config.discovery_multicast_port,
+            )
+            self._protocol.send_probe(target)
+            if self.config.manual_unicast_probes:
+                for device_id, ip in await self.store.manual_probe_targets():
+                    self.logger.debug(
+                        "Sending unicast probe",
+                        extra={"device_id": device_id, "ip": ip},
+                    )
+                    self._protocol.send_probe((ip, self.config.discovery_multicast_port))
+
+            try:
+                await asyncio.sleep(self.config.discovery_response_timeout)
+            finally:
+                await self.store.mark_stale(self.config.discovery_stale_after)
+        except Exception:
+            result = "error"
+            raise
         finally:
-            await self.store.mark_stale(self.config.discovery_stale_after)
+            observe_discovery_cycle(result, time.perf_counter() - started)

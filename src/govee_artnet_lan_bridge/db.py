@@ -123,6 +123,7 @@ def _migration_initial_schema(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_id TEXT NOT NULL,
             payload TEXT NOT NULL,
+            context_id TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
         );
@@ -172,10 +173,26 @@ def _migration_device_send_tracking(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_state_context_id(conn: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(state)").fetchall()
+        if "name" in row.keys()
+    }
+    if "context_id" in columns:
+        return
+    conn.executescript(
+        """
+        ALTER TABLE state ADD COLUMN context_id TEXT;
+        """
+    )
+
+
 MIGRATIONS: List[Tuple[int, Migration]] = [
     (1, _migration_initial_schema),
     (2, _migration_device_metadata),
     (3, _migration_device_send_tracking),
+    (4, _migration_state_context_id),
 ]
 
 

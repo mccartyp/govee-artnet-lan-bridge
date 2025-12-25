@@ -9,11 +9,14 @@ import socket
 import struct
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from uuid import uuid4
+import time
+import random
 
 from .config import Config
 from .devices import DeviceStateUpdate, DeviceStore, MappingRecord
 from .logging import get_logger
-from .metrics import record_artnet_packet, record_artnet_update
+from .metrics import observe_artnet_ingest, record_artnet_packet, record_artnet_update
 
 ARTNET_HEADER = b"Art-Net\x00"
 OPCODE_ARTDMX = 0x5000
@@ -186,31 +189,41 @@ def _payload_from_slice(mapping: DeviceMapping, slice_data: bytes) -> Optional[M
 class UniverseMapping:
     """Container for all mappings within a universe."""
 
-    def __init__(self, universe: int, mappings: Sequence[DeviceMapping]) -> None:
+    def __init__(
+        self, universe: int, mappings: Sequence[DeviceMapping], log_sample_rate: float = 1.0
+    ) -> None:
         self.universe = universe
         self._mappings = list(mappings)
         self.logger = get_logger("govee.artnet.mapping")
+        self._log_sample_rate = max(0.0, min(1.0, log_sample_rate))
 
-    def apply(self, data: bytes) -> List[DeviceStateUpdate]:
+    def apply(self, data: bytes, context_id: Optional[str] = None) -> List[DeviceStateUpdate]:
         updates: List[DeviceStateUpdate] = []
         for mapping in self._mappings:
             slice_data = mapping.slice_for(data)
             if slice_data is None:
-                self.logger.debug(
-                    "DMX payload too short for mapping",
-                    extra={
-                        "device_id": mapping.record.device_id,
-                        "universe": mapping.record.universe,
-                        "channel": mapping.record.channel,
-                        "length": mapping.record.length,
-                        "payload_length": len(data),
-                    },
-                )
+                if random.random() <= self._log_sample_rate:
+                    self.logger.debug(
+                        "DMX payload too short for mapping",
+                        extra={
+                            "device_id": mapping.record.device_id,
+                            "universe": mapping.record.universe,
+                            "channel": mapping.record.channel,
+                            "length": mapping.record.length,
+                            "payload_length": len(data),
+                        },
+                    )
                 continue
             payload = _payload_from_slice(mapping, slice_data)
             if payload is None:
                 continue
-            updates.append(DeviceStateUpdate(device_id=mapping.record.device_id, payload=payload))
+            updates.append(
+                DeviceStateUpdate(
+                    device_id=mapping.record.device_id,
+                    payload=payload,
+                    context_id=context_id,
+                )
+            )
         return updates
 
 
@@ -253,6 +266,9 @@ class ArtNetService:
         self._debounce_tasks: MutableMapping[str, asyncio.Task[None]] = {}
         self._debounce_seconds = DEFAULT_DEBOUNCE_SECONDS
         self._error_event: asyncio.Event = asyncio.Event()
+        self._trace_context_ids = config.trace_context_ids
+        self._trace_context_sample_rate = max(0.0, min(1.0, config.trace_context_sample_rate))
+        self._log_sample_rate = max(0.0, min(1.0, config.noisy_log_sample_rate))
 
     async def start(self) -> None:
         self._error_event.clear()
@@ -330,22 +346,38 @@ class ArtNetService:
                 continue
             universes.setdefault(record.universe, []).append(DeviceMapping(record=record, spec=spec))
         self._universe_mappings = {
-            universe: UniverseMapping(universe, mappings) for universe, mappings in universes.items()
+            universe: UniverseMapping(universe, mappings, self._log_sample_rate)
+            for universe, mappings in universes.items()
         }
 
     def handle_packet(self, packet: ArtNetPacket, addr: Tuple[str, int]) -> None:
-        record_artnet_packet(packet.universe)
-        mapping = self._universe_mappings.get(packet.universe)
-        if mapping is None:
-            self.logger.debug(
-                "Ignoring ArtNet packet for unconfigured universe",
-                extra={"universe": packet.universe, "from": addr},
-            )
-            return
+        started = time.perf_counter()
+        status = "ok"
+        context_id: Optional[str] = None
+        if self._trace_context_ids and random.random() <= self._trace_context_sample_rate:
+            context_id = self._build_context_id(packet)
+        try:
+            record_artnet_packet(packet.universe)
+            mapping = self._universe_mappings.get(packet.universe)
+            if mapping is None:
+                if random.random() <= self._log_sample_rate:
+                    self.logger.debug(
+                        "Ignoring ArtNet packet for unconfigured universe",
+                        extra={"universe": packet.universe, "from": addr},
+                    )
+                status = "unmapped"
+                return
 
-        updates = mapping.apply(packet.data)
-        for update in updates:
-            self._schedule_update(update)
+            updates = mapping.apply(packet.data, context_id=context_id)
+            if not updates:
+                status = "no_updates"
+            for update in updates:
+                self._schedule_update(update)
+        except Exception:
+            status = "error"
+            raise
+        finally:
+            observe_artnet_ingest(packet.universe, status, time.perf_counter() - started)
 
     def _schedule_update(self, update: DeviceStateUpdate) -> None:
         previous = self._last_payloads.get(update.device_id)
@@ -390,3 +422,6 @@ class ArtNetService:
     def notify_error(self, exc: Exception) -> None:
         self.logger.warning("ArtNet listener reported error", extra={"error": str(exc)})
         self._error_event.set()
+
+    def _build_context_id(self, packet: ArtNetPacket) -> str:
+        return f"artnet-{packet.universe}-{packet.sequence}-{uuid4().hex}"
