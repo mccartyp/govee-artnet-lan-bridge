@@ -74,6 +74,13 @@ class Config:
     subsystem_failure_cooldown: float = 15.0
     log_format: str = "plain"
     log_level: str = "INFO"
+    discovery_log_level: Optional[str] = None
+    artnet_log_level: Optional[str] = None
+    sender_log_level: Optional[str] = None
+    api_log_level: Optional[str] = None
+    noisy_log_sample_rate: float = 1.0
+    trace_context_ids: bool = False
+    trace_context_sample_rate: float = 1.0
     migrate_only: bool = False
     dry_run: bool = False
     config_version: int = CONFIG_VERSION
@@ -128,6 +135,13 @@ class Config:
             "subsystem_failure_cooldown": self.subsystem_failure_cooldown,
             "log_format": self.log_format,
             "log_level": self.log_level,
+            "discovery_log_level": self.discovery_log_level,
+            "artnet_log_level": self.artnet_log_level,
+            "sender_log_level": self.sender_log_level,
+            "api_log_level": self.api_log_level,
+            "noisy_log_sample_rate": self.noisy_log_sample_rate,
+            "trace_context_ids": self.trace_context_ids,
+            "trace_context_sample_rate": self.trace_context_sample_rate,
             "migrate_only": self.migrate_only,
             "dry_run": self.dry_run,
         }
@@ -178,6 +192,16 @@ def _validate_config(config: Config) -> None:
     _validate_range("device_max_queue_depth", config.device_max_queue_depth, 1, 1000000)
     _validate_range("subsystem_failure_threshold", config.subsystem_failure_threshold, 1, 1000)
     _validate_range("subsystem_failure_cooldown", config.subsystem_failure_cooldown, 0.0, 3600.0)
+    _validate_range("noisy_log_sample_rate", config.noisy_log_sample_rate, 0.0, 1.0)
+    _validate_range("trace_context_sample_rate", config.trace_context_sample_rate, 0.0, 1.0)
+    for field_name, value in (
+        ("log_level", config.log_level),
+        ("discovery_log_level", config.discovery_log_level),
+        ("artnet_log_level", config.artnet_log_level),
+        ("sender_log_level", config.sender_log_level),
+        ("api_log_level", config.api_log_level),
+    ):
+        _validate_log_level_value(value, field_name)
 
 
 def _validate_version(version: int) -> None:
@@ -194,6 +218,14 @@ def _validate_version(version: int) -> None:
 def _validate_range(name: str, value: float, minimum: float, maximum: float) -> None:
     if value < minimum or value > maximum:
         raise ValueError(f"{name} must be between {minimum} and {maximum}; got {value}.")
+
+
+def _validate_log_level_value(value: Optional[str], name: str) -> None:
+    if value is None:
+        return
+    allowed = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+    if value.upper() not in allowed:
+        raise ValueError(f"{name} must be one of {sorted(allowed)}; got {value}.")
 
 
 def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
@@ -282,6 +314,41 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Log verbosity level.",
+    )
+    parser.add_argument(
+        "--discovery-log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Log verbosity for discovery.",
+    )
+    parser.add_argument(
+        "--artnet-log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Log verbosity for ArtNet handling.",
+    )
+    parser.add_argument(
+        "--sender-log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Log verbosity for sender pipeline.",
+    )
+    parser.add_argument(
+        "--api-log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Log verbosity for API server.",
+    )
+    parser.add_argument(
+        "--noisy-log-sample-rate",
+        type=float,
+        help="Sampling rate for noisy debug logs (0.0-1.0).",
+    )
+    parser.add_argument(
+        "--trace-context-ids",
+        action="store_true",
+        help="Enable context IDs tying ArtNet frames to send attempts.",
+    )
+    parser.add_argument(
+        "--trace-context-sample-rate",
+        type=float,
+        help="Sampling rate for emitting context IDs (0.0-1.0).",
     )
     parser.add_argument(
         "--manual-device",
@@ -441,6 +508,8 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             "device_queue_poll_interval",
             "device_idle_wait",
             "subsystem_failure_cooldown",
+            "noisy_log_sample_rate",
+            "trace_context_sample_rate",
         }:
             data[key] = float(value)
         elif key in {"discovery_response_timeout", "discovery_stale_after"}:
@@ -454,6 +523,8 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
                 data[key] = str(value).upper()
             else:
                 data[key] = str(value).lower()
+        elif key in {"discovery_log_level", "artnet_log_level", "sender_log_level", "api_log_level"}:
+            data[key] = str(value).upper()
         elif key == "device_default_transport":
             data[key] = str(value).lower()
         elif key in {"migrate_only", "api_docs"}:
@@ -461,6 +532,8 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
         elif key == "manual_unicast_probes":
             data[key] = _coerce_bool(value)
         elif key == "dry_run":
+            data[key] = _coerce_bool(value)
+        elif key == "trace_context_ids":
             data[key] = _coerce_bool(value)
         elif key == "manual_devices":
             data[key] = _coerce_manual_devices(value)

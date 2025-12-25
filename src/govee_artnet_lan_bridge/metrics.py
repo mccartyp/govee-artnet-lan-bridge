@@ -80,11 +80,25 @@ ARTNET_DEVICE_UPDATES = Counter(
     ["device_id"],
     registry=_REGISTRY,
 )
+ARTNET_INGEST_DURATION = Histogram(
+    "govee_artnet_ingest_duration_seconds",
+    "Time spent applying ArtNet frames",
+    ["universe", "status"],
+    registry=_REGISTRY,
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+)
 DEVICE_SEND_RESULTS = Counter(
     "govee_device_sends_total",
     "Device send outcomes",
     ["result"],
     registry=_REGISTRY,
+)
+DEVICE_SEND_DURATION = Histogram(
+    "govee_device_send_duration_seconds",
+    "Time to deliver payloads to devices",
+    ["result", "transport"],
+    registry=_REGISTRY,
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
 )
 SUBSYSTEM_FAILURES = Counter(
     "govee_subsystem_failures_total",
@@ -96,6 +110,29 @@ SUBSYSTEM_STATUS = Gauge(
     "govee_subsystem_status",
     "Subsystem health (0=suppressed,1=degraded/recovering,2=ok)",
     ["subsystem"],
+    registry=_REGISTRY,
+)
+DISCOVERY_CYCLE_DURATION = Histogram(
+    "govee_discovery_cycle_duration_seconds",
+    "Time spent performing discovery cycles",
+    ["result"],
+    registry=_REGISTRY,
+    buckets=[0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
+)
+DEVICE_QUEUE_DEPTH = Gauge(
+    "govee_device_queue_depth",
+    "Queued state payloads per device",
+    ["device_id"],
+    registry=_REGISTRY,
+)
+DEVICE_QUEUE_TOTAL = Gauge(
+    "govee_device_queue_depth_total",
+    "Total queued state payloads",
+    registry=_REGISTRY,
+)
+OFFLINE_DEVICES = Gauge(
+    "govee_offline_devices_total",
+    "Number of devices marked offline",
     registry=_REGISTRY,
 )
 
@@ -150,6 +187,12 @@ def record_send_result(result: str) -> None:
     DEVICE_SEND_RESULTS.labels(result=result).inc()
 
 
+def observe_send_duration(result: str, transport: str, duration_seconds: float) -> None:
+    """Record how long a send attempt took."""
+
+    DEVICE_SEND_DURATION.labels(result=result, transport=transport).observe(duration_seconds)
+
+
 def record_subsystem_failure(subsystem: str) -> None:
     """Record a subsystem failure triggering suppression."""
 
@@ -165,6 +208,36 @@ def record_subsystem_status(subsystem: str, status: str) -> None:
     elif status in {"recovering", "degraded"}:
         code = 1
     SUBSYSTEM_STATUS.labels(subsystem=subsystem).set(code)
+
+
+def observe_discovery_cycle(result: str, duration_seconds: float) -> None:
+    """Record the duration of a discovery cycle."""
+
+    DISCOVERY_CYCLE_DURATION.labels(result=result).observe(duration_seconds)
+
+
+def observe_artnet_ingest(universe: int, status: str, duration_seconds: float) -> None:
+    """Record time spent handling an ArtNet frame."""
+
+    ARTNET_INGEST_DURATION.labels(universe=str(universe), status=status).observe(duration_seconds)
+
+
+def set_queue_depth(device_id: str, depth: int) -> None:
+    """Set the queued payload depth for a device."""
+
+    DEVICE_QUEUE_DEPTH.labels(device_id=device_id).set(depth)
+
+
+def set_total_queue_depth(total: int) -> None:
+    """Set the total queued payload depth across devices."""
+
+    DEVICE_QUEUE_TOTAL.set(total)
+
+
+def set_offline_devices(count: int) -> None:
+    """Set the number of offline devices."""
+
+    OFFLINE_DEVICES.set(count)
 
 
 METRICS_CONTENT_TYPE = CONTENT_TYPE_LATEST
