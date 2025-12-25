@@ -100,6 +100,51 @@ async def test_channel_map_endpoint(tmp_path) -> None:
     brightness_entries = [entry for entry in entries if entry.get("field") == "brightness"]
     assert brightness_entries
     assert brightness_entries[0]["device_description"] == "API Fixture"
+    assert brightness_entries[0]["fields"] == ["brightness"]
+    assert any(set(entry["fields"]) == {"r", "g", "b"} for entry in entries if entry["mapping_type"] == "range")
+
+
+@pytest.mark.asyncio
+async def test_mappings_endpoint_includes_fields(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="api-mappings",
+            ip="10.0.3.1",
+            description="API Fixture",
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+        )
+    )
+    await store.create_mapping(
+        device_id="api-mappings",
+        universe=1,
+        channel=1,
+        length=3,
+    )
+    await store.create_mapping(
+        device_id="api-mappings",
+        universe=1,
+        channel=4,
+        length=1,
+        mapping_type="discrete",
+        field="brightness",
+    )
+
+    app = create_app(Config(), store=store, health=None, reload_callback=None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/mappings")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 2
+    range_entry = next(entry for entry in payload if entry["mapping_type"] == "range")
+    discrete_entry = next(entry for entry in payload if entry["mapping_type"] == "discrete")
+    assert set(range_entry["fields"]) == {"r", "g", "b"}
+    assert discrete_entry["field"] == "brightness"
+    assert discrete_entry["fields"] == ["brightness"]
 
 
 @pytest.mark.asyncio

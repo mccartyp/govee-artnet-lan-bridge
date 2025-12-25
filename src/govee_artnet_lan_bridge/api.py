@@ -125,6 +125,7 @@ class MappingOut(BaseModel):
     length: int
     mapping_type: str
     field: Optional[str]
+    fields: List[str]
     created_at: str
     updated_at: str
 

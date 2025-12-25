@@ -147,11 +147,11 @@ def _coerce_float(capabilities: Any, key: str, default: float) -> float:
 
 def _build_spec(record: MappingRecord) -> DeviceMappingSpec:
     if record.mapping_type == "discrete":
-        order = (record.field,) if record.field else ()
+        order = tuple(record.fields) if record.fields else ((record.field,) if record.field else ())
         mode = "discrete"
     else:
         mode = _coerce_mode(record.capabilities, record.length)
-        order = _coerce_order(record.capabilities, mode)
+        order = tuple(record.fields) if record.fields else _coerce_order(record.capabilities, mode)
     gamma = _coerce_float(record.capabilities, "gamma", 1.0)
     dimmer = _coerce_float(record.capabilities, "dimmer", 1.0)
     dimmer = max(0.0, min(dimmer, 1.0))
