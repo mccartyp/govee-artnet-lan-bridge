@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import string
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 import uvicorn
 
-from .capabilities import validate_command_payload
+from .capabilities import NormalizedCapabilities, validate_command_payload
 from .config import Config, ManualDevice
 from .devices import DeviceStateUpdate, DeviceStore
 from .health import HealthMonitor
@@ -154,6 +155,91 @@ class TestAction(BaseModel):
     """Test payload to enqueue to a device."""
 
     payload: Any
+
+
+class DeviceCommand(BaseModel):
+    """Command payload for simple device control."""
+
+    on: bool = False
+    off: bool = False
+    brightness: Optional[int] = Field(default=None, ge=0, le=255)
+    color: Optional[str] = None
+    kelvin: Optional[int] = Field(default=None, ge=0, le=255)
+
+    @field_validator("color")
+    @classmethod
+    def _validate_color(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if normalized.startswith("#"):
+            normalized = normalized[1:]
+        if len(normalized) == 3:
+            normalized = "".join(ch * 2 for ch in normalized)
+        if len(normalized) != 6 or any(ch not in string.hexdigits for ch in normalized):
+            raise ValueError("Color must be an RGB hex string like ff3366.")
+        return normalized.lower()
+
+    @model_validator(mode="after")
+    def _validate_actions(self) -> "DeviceCommand":
+        if self.on and self.off:
+            raise ValueError("Choose either on or off, not both.")
+        if not any(
+            [
+                self.on,
+                self.off,
+                self.brightness is not None,
+                self.color,
+                self.kelvin is not None,
+            ]
+        ):
+            raise ValueError("At least one action is required.")
+        return self
+
+
+def _parse_hex_color(value: str) -> Mapping[str, int]:
+    normalized = value.strip().lower()
+    if normalized.startswith("#"):
+        normalized = normalized[1:]
+    if len(normalized) == 3:
+        normalized = "".join(ch * 2 for ch in normalized)
+    if len(normalized) != 6 or any(ch not in string.hexdigits for ch in normalized):
+        raise ValueError("Color must be an RGB hex string like ff3366.")
+    return {
+        "r": int(normalized[0:2], 16),
+        "g": int(normalized[2:4], 16),
+        "b": int(normalized[4:6], 16),
+    }
+
+
+def _scale_color_temp(value: int, capabilities: NormalizedCapabilities) -> int:
+    low, high = capabilities.color_temp_range or (2000, 9000)
+    scaled = low + (high - low) * (max(0, min(255, value)) / 255.0)
+    return int(round(scaled))
+
+
+def _build_command_payload(
+    command: DeviceCommand, capabilities: NormalizedCapabilities
+) -> tuple[Mapping[str, Any], list[str]]:
+    payload: Dict[str, Any] = {}
+    if command.brightness is not None:
+        payload["brightness"] = command.brightness
+    if command.color:
+        payload["color"] = _parse_hex_color(command.color)
+    if command.kelvin is not None:
+        payload["color_temp"] = _scale_color_temp(command.kelvin, capabilities)
+    if not payload:
+        return {}, []
+    sanitized, warnings = validate_command_payload(payload, capabilities)
+    return sanitized, warnings
+
+
+def _build_turn_payload(command: DeviceCommand) -> Optional[Mapping[str, Any]]:
+    if command.on:
+        return {"msg": {"cmd": "turn", "data": {"value": "on"}}}
+    if command.off:
+        return {"msg": {"cmd": "turn", "data": {"value": "off"}}}
+    return None
 
 
 def _overall_status(subsystems: Mapping[str, Mapping[str, Any]]) -> str:
@@ -317,6 +403,38 @@ def create_app(
             return response
         except Exception as exc:  # pragma: no cover - defensive
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/devices/{device_id}/command",
+        dependencies=[Depends(auth_dependency)],
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def command_device(device_id: str, payload: DeviceCommand) -> dict[str, Any]:
+        device = await store.device(device_id)
+        if not device:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+        capabilities = await store.normalized_capabilities(device_id)
+        if capabilities is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+        try:
+            turn_payload = _build_turn_payload(payload)
+            state_payload, warnings = _build_command_payload(payload, capabilities)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        payloads: list[Mapping[str, Any]] = []
+        if turn_payload:
+            payloads.append(turn_payload)
+        if state_payload:
+            payloads.append(state_payload)
+        if not payloads:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No actions to enqueue")
+        for entry in payloads:
+            update = DeviceStateUpdate(device_id=device_id, payload=entry, context_id="command")
+            await store.enqueue_state(update)
+        response: dict[str, Any] = {"status": "queued", "payloads": payloads}
+        if warnings:
+            response["detail"] = "; ".join(warnings)
+        return response
 
     @app.get("/mappings", dependencies=[Depends(auth_dependency)], response_model=list[MappingOut])
     async def list_mappings() -> list[MappingOut]:

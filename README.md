@@ -102,7 +102,15 @@ govee-artnet devices add --id "..." --ip "192.168.1.100"
 # Enable/disable a device
 govee-artnet devices enable "AA:BB:CC:DD:EE:FF"
 govee-artnet devices disable "AA:BB:CC:DD:EE:FF"
+
+# Send a quick command (on/off/brightness/color/kelvin)
+govee-artnet devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
+govee-artnet devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
 ```
+
+- `--on`/`--off` send the native Govee LAN `turn` command instead of manipulating brightness.
+- `--brightness` and `--kelvin` accept 0-255 sliders. Kelvin values are scaled to the device's supported color-temperature range when available.
+- `--color` accepts RGB hex strings (e.g., `ff3366` or `#ff3366`); shorthand three-character forms expand automatically.
 
 ### Mapping Management
 

@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
@@ -210,3 +212,78 @@ async def test_template_validation_returns_actionable_error(tmp_path) -> None:
 
     assert response.status_code == 400
     assert "brightness" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_command_endpoint_enqueues_sanitized_payload(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="cmd-device",
+            ip="10.0.5.1",
+            capabilities={
+                "color_modes": ["color", "ct"],
+                "supports_brightness": True,
+                "color_temp_range": [2000, 6500],
+            },
+        )
+    )
+
+    app = create_app(Config(), store=store, health=None, reload_callback=None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/devices/cmd-device/command",
+            json={"on": True, "brightness": 10, "color": "336699", "kelvin": 128},
+        )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert len(payload["payloads"]) == 2
+
+    turn_state = await store.next_state("cmd-device")
+    assert turn_state is not None
+    turn_payload = json.loads(turn_state.payload)
+    assert turn_payload["msg"]["cmd"] == "turn"
+    assert turn_payload["msg"]["data"]["value"] == "on"
+    await store.delete_state(turn_state.id)
+
+    state = await store.next_state("cmd-device")
+    assert state is not None
+    queued = json.loads(state.payload)
+    assert queued["brightness"] == 10
+    assert queued["color"] == {"r": 51, "g": 102, "b": 153}
+    expected_kelvin = int(round(2000 + (6500 - 2000) * (128 / 255)))
+    assert queued["color_temp"] == expected_kelvin
+
+
+@pytest.mark.asyncio
+async def test_command_endpoint_turn_only(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="cmd-turn",
+            ip="10.0.5.2",
+            capabilities={"supports_brightness": True},
+        )
+    )
+
+    app = create_app(Config(), store=store, health=None, reload_callback=None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/devices/cmd-turn/command",
+            json={"off": True},
+        )
+
+    assert response.status_code == 202
+    state = await store.next_state("cmd-turn")
+    assert state is not None
+    payload = json.loads(state.payload)
+    assert payload["msg"]["cmd"] == "turn"
+    assert payload["msg"]["data"]["value"] == "off"
