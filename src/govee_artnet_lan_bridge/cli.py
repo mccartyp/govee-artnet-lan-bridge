@@ -12,6 +12,8 @@ from typing import Any, Callable, Iterable, Mapping, MutableMapping, Optional
 
 import httpx
 import yaml
+from rich.console import Console
+from rich.table import Table
 
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
@@ -477,11 +479,68 @@ def _build_client(config: ClientConfig) -> httpx.Client:
 
 
 def _print_output(data: Any, output: str) -> None:
+    """
+    Print output in specified format.
+
+    Args:
+        data: Data to print
+        output: Output format (json, yaml, or table)
+    """
     if output == "yaml":
         yaml.safe_dump(data, sys.stdout, sort_keys=False)
+    elif output == "table":
+        console = Console()
+        _print_table(data, console)
     else:
         json.dump(data, sys.stdout, indent=2)
         sys.stdout.write("\n")
+
+
+def _print_table(data: Any, console: Console) -> None:
+    """
+    Print data as a rich table.
+
+    Args:
+        data: Data to print (dict or list of dicts)
+        console: Rich console instance
+    """
+    if data is None:
+        console.print("[dim]No data[/]")
+        return
+
+    # Handle list of items (most common case)
+    if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+        table = Table(show_header=True, header_style="bold magenta")
+
+        # Add columns from first item
+        for key in data[0].keys():
+            table.add_column(str(key), style="cyan")
+
+        # Add rows
+        for item in data:
+            table.add_row(*[str(v) for v in item.values()])
+
+        console.print(table)
+
+    # Handle single dict
+    elif isinstance(data, dict):
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Key", style="cyan")
+        table.add_column("Value", style="yellow")
+
+        for key, value in data.items():
+            # Format nested structures as JSON
+            if isinstance(value, (dict, list)):
+                value_str = json.dumps(value, indent=2)
+            else:
+                value_str = str(value)
+            table.add_row(str(key), value_str)
+
+        console.print(table)
+
+    # Fallback to JSON for other types
+    else:
+        console.print_json(data=data)
 
 
 def _handle_response(response: httpx.Response) -> Any:
