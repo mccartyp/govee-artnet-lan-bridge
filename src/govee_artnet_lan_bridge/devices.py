@@ -9,7 +9,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Set, Tuple
 
-from .capabilities import CapabilityCache, NormalizedCapabilities, validate_mapping_mode
+from .capabilities import (
+    CapabilityCache,
+    CapabilityCatalog,
+    NormalizedCapabilities,
+    load_embedded_catalog,
+    validate_mapping_mode,
+)
 from .config import ManualDevice
 from .db import DatabaseManager
 from .logging import get_logger
@@ -358,10 +364,11 @@ class MappingRow:
 class DeviceStore:
     """SQLite-backed persistence for device metadata."""
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, capability_catalog: Optional[CapabilityCatalog] = None) -> None:
         self.db = DatabaseManager(db_path)
         self.logger = get_logger("govee.devices")
-        self._capability_cache = CapabilityCache()
+        self._capability_catalog = capability_catalog or load_embedded_catalog()
+        self._capability_cache = CapabilityCache(self._capability_catalog)
 
     async def start(self) -> None:
         await self.db.start_integrity_checks()
@@ -591,7 +598,7 @@ class DeviceStore:
         now = _now_iso()
         normalized = (
             self._capability_cache.normalize(device.model, device.capabilities)
-            if device.capabilities is not None
+            if device.capabilities is not None or self._capability_cache.has_catalog_entry(device.model)
             else None
         )
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
@@ -629,7 +636,7 @@ class DeviceStore:
         now = _now_iso()
         normalized = (
             self._capability_cache.normalize(result.model, result.capabilities)
-            if result.capabilities is not None
+            if result.capabilities is not None or self._capability_cache.has_catalog_entry(result.model)
             else None
         )
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
@@ -732,12 +739,13 @@ class DeviceStore:
         ).fetchall()
         targets: List[PollTarget] = []
         for row in rows:
+            normalized = self._normalized_capabilities_obj(row)
             targets.append(
                 PollTarget(
                     id=row["id"],
                     ip=row["ip"],
                     model=row["model"],
-                    capabilities=_deserialize_capabilities(row["capabilities"]),
+                    capabilities=normalized.as_mapping(),
                     offline=bool(row["offline"]),
                     poll_failure_count=int(row["poll_failure_count"] or 0),
                 )

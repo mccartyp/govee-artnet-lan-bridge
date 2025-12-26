@@ -7,8 +7,10 @@ import contextlib
 import signal
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable, List, Mapping, Optional
 
+from .capabilities import CapabilityCatalog
 from .config import Config, load_config
 from .db import apply_migrations
 from .devices import DeviceStore
@@ -280,14 +282,32 @@ def _load_reloaded_config(
             extra={"current_db_path": str(current_config.db_path), "new_db_path": str(new_config.db_path)},
         )
         return None
+    if new_config.capability_catalog_path != current_config.capability_catalog_path:
+        logger.error(
+            "Config reload rejected because capability_catalog_path changed; restart required",
+            extra={
+                "current_catalog_path": str(current_config.capability_catalog_path),
+                "new_catalog_path": str(new_config.capability_catalog_path),
+            },
+        )
+        return None
     return new_config
+
+
+def _load_capability_catalog(path: Path, logger: logging.Logger) -> CapabilityCatalog:
+    try:
+        return CapabilityCatalog.from_path(path)
+    except Exception:
+        logger.exception("Failed to load capability catalog", extra={"path": str(path)})
+        raise
 
 
 async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -> None:
     logger = get_logger("govee")
     shutdown_event = asyncio.Event()
     reload_event = asyncio.Event()
-    store = DeviceStore(config.db_path)
+    catalog = _load_capability_catalog(config.capability_catalog_path, logger)
+    store = DeviceStore(config.db_path, capability_catalog=catalog)
     await store.start()
     await store.refresh_metrics()
 

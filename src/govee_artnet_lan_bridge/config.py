@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import sysconfig
 import json
 import re
 from dataclasses import dataclass, replace
@@ -25,6 +26,16 @@ MIN_SUPPORTED_CONFIG_VERSION = 1
 def _default_db_path() -> Path:
     base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
     return base / "govee-artnet-lan-bridge" / "bridge.sqlite3"
+
+
+def _default_capability_catalog_path() -> Path:
+    repo_path = Path(__file__).resolve().parents[2] / "res" / "capability_catalog.json"
+    data_base = Path(sysconfig.get_path("data") or "").expanduser()
+    share_path = data_base / "share" / "govee_artnet_lan_bridge" / "capability_catalog.json"
+    for path in (repo_path, share_path):
+        if path.exists():
+            return path
+    return repo_path
 
 
 @dataclass(frozen=True)
@@ -48,6 +59,7 @@ class Config:
     api_bearer_token: Optional[str] = None
     api_docs: bool = True
     db_path: Path = _default_db_path()
+    capability_catalog_path: Path = _default_capability_catalog_path()
     discovery_interval: float = 30.0
     rate_limit_per_second: float = 10.0
     rate_limit_burst: int = 20
@@ -124,6 +136,7 @@ class Config:
             "api_port": self.api_port,
             "api_docs": self.api_docs,
             "db_path": str(self.db_path),
+            "capability_catalog_path": str(self.capability_catalog_path),
             "discovery_interval": self.discovery_interval,
             "discovery_multicast_address": self.discovery_multicast_address,
             "discovery_multicast_port": self.discovery_multicast_port,
@@ -231,6 +244,8 @@ def _validate_config(config: Config) -> None:
     _validate_range("subsystem_failure_cooldown", config.subsystem_failure_cooldown, 0.0, 3600.0)
     _validate_range("noisy_log_sample_rate", config.noisy_log_sample_rate, 0.0, 1.0)
     _validate_range("trace_context_sample_rate", config.trace_context_sample_rate, 0.0, 1.0)
+    if not config.capability_catalog_path or not Path(config.capability_catalog_path).exists():
+        raise ValueError("capability_catalog_path must point to an existing file.")
     for field_name, value in (
         ("log_level", config.log_level),
         ("discovery_log_level", config.discovery_log_level),
@@ -301,6 +316,11 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         "--db-path",
         type=Path,
         help="Path to the SQLite database file.",
+    )
+    parser.add_argument(
+        "--capability-catalog-path",
+        type=Path,
+        help="Path to a JSON capability catalog file.",
     )
     parser.add_argument(
         "--discovery-interval",
@@ -590,7 +610,7 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
     for key, value in overrides.items():
         if value is None:
             continue
-        if key == "db_path":
+        if key in {"db_path", "capability_catalog_path"}:
             data[key] = _coerce_path(value)
         elif key in {
             "artnet_port",
