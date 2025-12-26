@@ -80,12 +80,48 @@ maybe_setcap() {
   fi
 }
 
+ensure_build_deps() {
+  log "Checking Python build dependencies..."
+
+  # Check if setuptools and wheel are available
+  if "${PYTHON_BIN}" -c "import setuptools, wheel" 2>/dev/null; then
+    log "Build dependencies already available."
+    return 0
+  fi
+
+  log "Build dependencies missing (setuptools, wheel)."
+
+  # If running as root, try to install via apt
+  if [[ "${EUID}" -eq 0 ]]; then
+    if command -v apt-get >/dev/null 2>&1; then
+      log "Attempting to install build dependencies via apt..."
+      if apt-get update -qq && apt-get install -y python3-setuptools python3-wheel 2>/dev/null; then
+        log "Build dependencies installed via apt."
+        return 0
+      else
+        warn "Failed to install build dependencies via apt."
+      fi
+    fi
+  fi
+
+  # Final check - maybe they were just installed
+  if "${PYTHON_BIN}" -c "import setuptools, wheel" 2>/dev/null; then
+    return 0
+  fi
+
+  echo "ERROR: Missing Python build dependencies (setuptools, wheel)." >&2
+  echo "Please install them with: sudo apt install python3-setuptools python3-wheel" >&2
+  echo "Or ensure you have network connectivity for pip to download them." >&2
+  exit 1
+}
+
 install_system() {
   require_root
   require_command systemctl
+  ensure_build_deps
 
   log "Installing Python package (system)..."
-  "${PYTHON_BIN}" -m pip install --upgrade "${REPO_ROOT}"
+  "${PYTHON_BIN}" -m pip install --break-system-packages --upgrade "${REPO_ROOT}"
 
   if id -u govee-bridge >/dev/null 2>&1; then
     log "User govee-bridge already exists."
@@ -123,6 +159,7 @@ install_system() {
 
 install_user() {
   require_command systemctl
+  ensure_build_deps
 
   log "Installing Python package for current user..."
   "${PYTHON_BIN}" -m pip install --user --upgrade "${REPO_ROOT}"
@@ -167,7 +204,7 @@ uninstall_system() {
   rm -f /etc/systemd/system/govee-bridge.service
   systemctl daemon-reload
 
-  "${PYTHON_BIN}" -m pip uninstall -y govee-artnet-lan-bridge || true
+  "${PYTHON_BIN}" -m pip uninstall --break-system-packages -y govee-artnet-lan-bridge || true
   log "System files removed. Configuration and data were left in place."
 }
 
