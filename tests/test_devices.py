@@ -161,9 +161,80 @@ async def test_rediscovery_preserves_user_enabled_state(tmp_path) -> None:
     assert device is not None
     assert device.ip == "10.0.0.4"
     assert device.enabled is False
-    assert device.configured is True
+    assert device.configured is False
     assert device.last_seen != old_last_seen
     assert device.capabilities.get("color_temp_range") == [1800, 6500]
+
+
+@pytest.mark.asyncio
+async def test_manual_device_remains_unconfigured_until_mapped(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-configured",
+            ip="127.0.0.10",
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+        )
+    )
+
+    device = await store.device("dev-configured")
+    assert device is not None
+    assert device.configured is False
+
+    mapping = await store.create_mapping(
+        device_id="dev-configured",
+        universe=0,
+        channel=1,
+        length=3,
+    )
+
+    device = await store.device("dev-configured")
+    assert device is not None
+    assert device.configured is True
+
+    await store.delete_mapping(mapping.id)
+    device = await store.device("dev-configured")
+    assert device is not None
+    assert device.configured is False
+
+
+@pytest.mark.asyncio
+async def test_remapping_updates_configured_flags(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-source",
+            ip="127.0.0.20",
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+        )
+    )
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-target",
+            ip="127.0.0.21",
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+        )
+    )
+    mapping = await store.create_mapping(
+        device_id="dev-source",
+        universe=0,
+        channel=1,
+        length=3,
+    )
+
+    await store.update_mapping(mapping.id, device_id="dev-target")
+
+    source = await store.device("dev-source")
+    target = await store.device("dev-target")
+    assert source is not None
+    assert source.configured is False
+    assert target is not None
+    assert target.configured is True
+
 
 
 @pytest.mark.asyncio
