@@ -37,27 +37,46 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="CLI for the Govee Artnet LAN bridge API")
+    parser = argparse.ArgumentParser(
+        description=(
+            "CLI for the Govee Artnet LAN bridge API. Uses GOVEE_ARTNET_* env vars "
+            "for defaults and prints JSON (default) or YAML. Examples: "
+            "`govee-artnet devices list`, `govee-artnet mappings create "
+            "--device-id <id> --universe 0 --start-channel 1 --template rgb`."
+        )
+    )
     parser.add_argument(
         "--server-url",
         default=_env("SERVER_URL", DEFAULT_SERVER_URL),
-        help="Base URL for the bridge API (env: GOVEE_ARTNET_SERVER_URL)",
+        help=(
+            f"Base URL for the bridge API (env: {ENV_PREFIX}SERVER_URL). "
+            f"Defaults to {DEFAULT_SERVER_URL}."
+        ),
     )
     parser.add_argument(
         "--api-key",
         default=_env("API_KEY"),
-        help="API key for authentication (env: GOVEE_ARTNET_API_KEY)",
+        help=(
+            f"API key for authentication (env: {ENV_PREFIX}API_KEY). Sets both "
+            "'X-API-Key' and 'Authorization: ApiKey <key>' headers when provided."
+        ),
     )
     parser.add_argument(
         "--api-bearer-token",
         default=_env("API_BEARER_TOKEN"),
-        help="Bearer token for authentication (env: GOVEE_ARTNET_API_BEARER_TOKEN)",
+        help=(
+            f"Bearer token for authentication (env: {ENV_PREFIX}API_BEARER_TOKEN). "
+            "Overrides Authorization header when set."
+        ),
     )
     parser.add_argument(
         "--output",
         choices=["json", "yaml"],
         default=_env("OUTPUT", "json"),
-        help="Output format (env: GOVEE_ARTNET_OUTPUT)",
+        help=(
+            f"Output format for responses (env: {ENV_PREFIX}OUTPUT). "
+            "Defaults to 'json'; use 'yaml' for YAML output."
+        ),
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -70,90 +89,218 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _add_status_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    health = subparsers.add_parser("health", help="Check API health")
+    health = subparsers.add_parser(
+        "health",
+        help="Check API health (GET /health returns {'status': 'ok'} when healthy)",
+        description="Checks bridge liveness; prints a short JSON/YAML status payload.",
+    )
     health.set_defaults(func=_cmd_health)
 
-    status = subparsers.add_parser("status", help="Show API status/metrics")
+    status = subparsers.add_parser(
+        "status",
+        help="Show API status/metrics (GET /status with queues, discovery info, etc.)",
+        description="Returns JSON/YAML metrics including discovery state and queue depth.",
+    )
     status.set_defaults(func=_cmd_status)
 
 
 def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    devices = subparsers.add_parser("devices", help="Device management commands")
+    devices = subparsers.add_parser(
+        "devices",
+        help="Device management commands (list/add/update/enable/disable/test)",
+        description=(
+            "Manage discovered and manual devices. Responses are device JSON objects "
+            "with id, ip, model, description, enabled, and capabilities."
+        ),
+    )
     device_sub = devices.add_subparsers(dest="device_command", required=True)
 
-    list_cmd = device_sub.add_parser("list", help="List devices")
+    list_cmd = device_sub.add_parser(
+        "list",
+        help="List devices (GET /devices -> array of device objects)",
+        description=(
+            "Shows discovered + manual devices. Output includes capabilities such as "
+            "supports_brightness/supports_color and current enabled state."
+        ),
+    )
     list_cmd.set_defaults(func=_cmd_devices_list)
 
-    add = device_sub.add_parser("add", help="Add a manual device")
-    add.add_argument("--id", required=True, help="Device identifier")
+    add = device_sub.add_parser(
+        "add",
+        help="Add a manual device (POST /devices)",
+        description=(
+            "Creates a manual device entry. Example payload: "
+            '`{"id": "AA:BB", "ip": "192.168.1.10", "model": "H6160", '
+            '"capabilities": {"supports_color": true}}`. Existing discovery entries are untouched.'
+        ),
+    )
+    add.add_argument("--id", required=True, help="Device identifier (e.g., MAC address)")
     add.add_argument("--ip", required=True, help="Device IP address")
-    add.add_argument("--model", help="Device model")
-    add.add_argument("--description", help="Device description")
-    add.add_argument("--capabilities", help="JSON string describing capabilities")
-    add.add_argument("--enabled", action="store_true", default=None, help="Create device as enabled")
-    add.add_argument("--disabled", action="store_true", help="Create device as disabled")
+    add.add_argument("--model", help="Device model string shown in responses")
+    add.add_argument("--description", help="Optional human-readable label")
+    add.add_argument(
+        "--capabilities",
+        help=(
+            "JSON string describing capabilities (e.g., "
+            '\'{"supports_color":true,"supports_brightness":true}\').'
+        ),
+    )
+    add.add_argument(
+        "--enabled",
+        action="store_true",
+        default=None,
+        help="Create device as enabled (default: leave unchanged/auto-detected).",
+    )
+    add.add_argument(
+        "--disabled",
+        action="store_true",
+        help="Create device as disabled (overrides --enabled).",
+    )
     add.set_defaults(func=_cmd_devices_add)
 
-    update = device_sub.add_parser("update", help="Update a manual device")
+    update = device_sub.add_parser(
+        "update",
+        help="Update a manual device (PATCH /devices/{id})",
+        description=(
+            "Partially updates a manual device. Only provided fields are changed; "
+            "omitting all fields raises an error."
+        ),
+    )
     update.add_argument("device_id", help="Device identifier")
     update.add_argument("--ip", help="Device IP address")
     update.add_argument("--model", help="Device model")
     update.add_argument("--description", help="Device description")
-    update.add_argument("--capabilities", help="JSON string describing capabilities")
+    update.add_argument(
+        "--capabilities",
+        help=(
+            "JSON string describing capabilities to replace current values "
+            "(same shape as devices add)."
+        ),
+    )
     update.add_argument("--enable", action="store_true", help="Enable the device")
-    update.add_argument("--disable", action="store_true", help="Disable the device")
+    update.add_argument(
+        "--disable",
+        action="store_true",
+        help="Disable the device (overrides --enable when both set).",
+    )
     update.set_defaults(func=_cmd_devices_update)
 
-    enable = device_sub.add_parser("enable", help="Enable a device")
+    enable = device_sub.add_parser(
+        "enable",
+        help="Enable a device (PATCH /devices/{id} enabled=true)",
+        description="Marks the device as enabled so it receives mapping updates.",
+    )
     enable.add_argument("device_id", help="Device identifier")
     enable.set_defaults(func=_cmd_devices_enable)
 
-    disable = device_sub.add_parser("disable", help="Disable a device")
+    disable = device_sub.add_parser(
+        "disable",
+        help="Disable a device (PATCH /devices/{id} enabled=false)",
+        description="Disables the device; mappings remain but are inactive until re-enabled.",
+    )
     disable.add_argument("device_id", help="Device identifier")
     disable.set_defaults(func=_cmd_devices_disable)
 
-    test = device_sub.add_parser("test", help="Send a test payload to a device")
+    test = device_sub.add_parser(
+        "test",
+        help="Send a test payload to a device (POST /devices/{id}/test)",
+        description=(
+            "Enqueues a device-specific JSON payload for testing. Example: "
+            "`--payload '{\"cmd\":\"turn\",\"turn\":\"on\"}'`. Does not persist mappings."
+        ),
+    )
     test.add_argument("device_id", help="Device identifier")
-    test.add_argument("--payload", required=True, help="JSON payload to enqueue")
+    test.add_argument(
+        "--payload",
+        required=True,
+        help="JSON payload to enqueue (stringified). Must be valid JSON.",
+    )
     test.set_defaults(func=_cmd_devices_test)
 
 
 def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    mappings = subparsers.add_parser("mappings", help="Mapping management commands")
+    mappings = subparsers.add_parser(
+        "mappings",
+        help="Mapping management commands (list/get/create/update/delete/channel-map)",
+        description=(
+            "Configure ArtNet -> device field mappings. Mapping JSON includes id, "
+            "device_id, universe, channel range, and field details."
+        ),
+    )
     mapping_sub = mappings.add_subparsers(dest="mapping_command", required=True)
 
-    list_cmd = mapping_sub.add_parser("list", help="List mappings")
+    list_cmd = mapping_sub.add_parser(
+        "list",
+        help="List mappings (GET /mappings -> array of mapping objects)",
+        description="Shows all mappings with device_id, universe, channel, length, type, and fields.",
+    )
     list_cmd.set_defaults(func=_cmd_mappings_list)
 
-    get = mapping_sub.add_parser("get", help="Get a mapping by ID")
+    get = mapping_sub.add_parser(
+        "get",
+        help="Get a mapping by ID (GET /mappings/{id})",
+        description="Fetch a single mapping JSON object by numeric ID.",
+    )
     get.add_argument("mapping_id", type=int, help="Mapping identifier")
     get.set_defaults(func=_cmd_mappings_get)
 
-    create = mapping_sub.add_parser("create", help="Create a mapping")
-    create.add_argument("--device-id", required=True, help="Device identifier")
-    create.add_argument("--universe", required=True, type=int, help="DMX universe")
+    create = mapping_sub.add_parser(
+        "create",
+        help="Create a mapping (POST /mappings; supports templates or manual ranges)",
+        description=(
+            "Creates mappings for a device. Template example: "
+            "`--device-id <id> --universe 0 --start-channel 1 --template rgbw` "
+            "expands to consecutive color fields. Manual example: "
+            "`--channel 10 --length 3 --type range` for RGB. Prevents overlap unless "
+            "--allow-overlap is set."
+        ),
+    )
+    create.add_argument("--device-id", required=True, help="Device identifier to map")
+    create.add_argument("--universe", required=True, type=int, help="DMX universe number")
     create.add_argument("--channel", type=int, help="Starting DMX channel")
-    create.add_argument("--start-channel", type=int, help="Starting channel when using a template")
-    create.add_argument("--length", type=int, help="Number of channels (defaults to 1 for discrete mappings)")
+    create.add_argument(
+        "--start-channel",
+        type=int,
+        help="Starting channel when using a template (falls back to --channel).",
+    )
+    create.add_argument(
+        "--length",
+        type=int,
+        help="Number of channels (defaults to 1 for discrete mappings; auto-set for templates).",
+    )
     create.add_argument(
         "--type",
         dest="mapping_type",
         choices=["range", "discrete"],
         default="range",
-        help="Mapping type (range/discrete)",
+        help="Mapping type (default: range). Use discrete for single-field channels.",
     )
     create.add_argument(
         "--template",
-        help="Mapping template to expand (rgb, rgbw, brightness_rgb, master_only, rgbwa, rgbaw)",
+        help=(
+            "Mapping template to expand (rgb, rgbw, brightness_rgb, master_only, "
+            "rgbwa, rgbaw). Requires --start-channel/--channel."
+        ),
     )
     create.add_argument(
         "--field",
-        help="Payload field for discrete mappings (r, g, b, w, brightness)",
+        help="Payload field for discrete mappings (r, g, b, w, brightness). Required for discrete.",
     )
-    create.add_argument("--allow-overlap", action="store_true", help="Allow overlapping ranges")
+    create.add_argument(
+        "--allow-overlap",
+        action="store_true",
+        help="Allow overlapping ranges (default: overlaps rejected by server).",
+    )
     create.set_defaults(func=_cmd_mappings_create)
 
-    update = mapping_sub.add_parser("update", help="Update a mapping")
+    update = mapping_sub.add_parser(
+        "update",
+        help="Update a mapping (PUT /mappings/{id})",
+        description=(
+            "Replaces provided mapping fields. Use --allow-overlap/--disallow-overlap "
+            "to control overlap behavior. At least one field is required."
+        ),
+    )
     update.add_argument("mapping_id", type=int, help="Mapping identifier")
     update.add_argument("--device-id", help="Device identifier")
     update.add_argument("--universe", type=int, help="DMX universe")
@@ -177,11 +324,22 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
     )
     update.set_defaults(func=_cmd_mappings_update)
 
-    delete = mapping_sub.add_parser("delete", help="Delete a mapping")
+    delete = mapping_sub.add_parser(
+        "delete",
+        help="Delete a mapping (DELETE /mappings/{id})",
+        description="Deletes a mapping by ID and returns a JSON status object.",
+    )
     delete.add_argument("mapping_id", type=int, help="Mapping identifier")
     delete.set_defaults(func=_cmd_mappings_delete)
 
-    channel_map = mapping_sub.add_parser("channel-map", help="Show the DMX channel map")
+    channel_map = mapping_sub.add_parser(
+        "channel-map",
+        help="Show the DMX channel map (GET /channel-map -> universe keyed map)",
+        description=(
+            "Displays a JSON/YAML map of universes to their channel ranges and mapping "
+            "assignments for quick visualization."
+        ),
+    )
     channel_map.set_defaults(func=_cmd_mappings_channel_map)
 
 
