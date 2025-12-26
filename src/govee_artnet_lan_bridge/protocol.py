@@ -92,13 +92,17 @@ class GoveeProtocol(asyncio.DatagramProtocol):
         if "msg" in payload and isinstance(payload["msg"], Mapping):
             cmd = payload["msg"].get("cmd")
 
-        self.logger.debug(
-            "Received message",
-            extra={"from": addr, "cmd": cmd, "payload": payload},
+        self.logger.info(
+            "Received UDP message",
+            extra={"from": addr, "cmd": cmd, "has_handler": cmd in self._handlers if cmd else False},
         )
 
         # Dispatch to registered handler
         if cmd and cmd in self._handlers:
+            self.logger.info(
+                "Dispatching to handler",
+                extra={"cmd": cmd, "from": addr},
+            )
             try:
                 self._handlers[cmd](payload, addr)
             except Exception as exc:

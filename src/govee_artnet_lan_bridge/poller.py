@@ -214,6 +214,11 @@ class DevicePollerService:
 
     def _handle_poll_response(self, payload: Mapping[str, Any], addr: Tuple[str, int]) -> None:
         """Handle devStatus responses from the shared protocol."""
+        self.logger.info(
+            "Poller received devStatus response",
+            extra={"from": addr, "payload": payload},
+        )
+
         # Extract device ID from response
         device_id = None
         if "msg" in payload and isinstance(payload["msg"], Mapping):
@@ -226,16 +231,25 @@ class DevicePollerService:
                 )
 
         if not device_id:
-            self.logger.debug("Poll response missing device ID", extra={"payload": payload, "from": addr})
+            self.logger.info("Poll response missing device ID", extra={"payload": payload, "from": addr})
             return
+
+        self.logger.info(
+            "Extracted device ID from poll response",
+            extra={"device_id": device_id, "pending_polls": list(self._pending_polls.keys())},
+        )
 
         # Find pending poll for this device
         future = self._pending_polls.pop(str(device_id), None)
         if not future or future.done():
-            self.logger.debug("No pending poll for device", extra={"device_id": device_id})
+            self.logger.info(
+                "No pending poll for device",
+                extra={"device_id": device_id, "has_future": future is not None, "is_done": future.done() if future else None},
+            )
             return
 
         # Resolve the future with the payload
+        self.logger.info("Resolving poll future for device", extra={"device_id": device_id})
         future.set_result(payload)
 
     async def _send_poll(self, target: PollTarget) -> Optional[Mapping[str, Any]]:
