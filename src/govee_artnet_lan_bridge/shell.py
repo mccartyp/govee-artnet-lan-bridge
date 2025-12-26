@@ -39,15 +39,22 @@ class GoveeShell(cmd.Cmd):
         self.client: Optional[httpx.Client] = None
         self.console = Console()
 
-        # Set up command history
-        history_dir = Path.home() / ".govee_artnet"
-        history_dir.mkdir(exist_ok=True)
-        history_file = history_dir / "shell_history"
+        # Set up command history and data directory
+        self.data_dir = Path.home() / ".govee_artnet"
+        self.data_dir.mkdir(exist_ok=True)
+        history_file = self.data_dir / "shell_history"
+        self.bookmarks_file = self.data_dir / "bookmarks.json"
+        self.aliases_file = self.data_dir / "aliases.json"
+
+        # Load bookmarks and aliases
+        self.bookmarks = self._load_json(self.bookmarks_file, {})
+        self.aliases = self._load_json(self.aliases_file, {})
 
         # Set up autocomplete with all command names
         commands = [
             "connect", "disconnect", "status", "health",
             "devices", "mappings", "logs", "monitor",
+            "bookmark", "alias", "watch", "batch", "session",
             "output", "clear", "exit", "quit", "help"
         ]
         completer = WordCompleter(commands, ignore_case=True)
@@ -61,6 +68,24 @@ class GoveeShell(cmd.Cmd):
 
         self._connect()
 
+    def _load_json(self, file_path: Path, default: Any) -> Any:
+        """Load JSON data from file with fallback to default."""
+        try:
+            if file_path.exists():
+                with open(file_path, "r") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return default
+
+    def _save_json(self, file_path: Path, data: Any) -> None:
+        """Save JSON data to file."""
+        try:
+            with open(file_path, "w") as f:
+                json.dump(data, f, indent=2)
+        except Exception as exc:
+            self.console.print(f"[red]Error saving to {file_path}: {exc}[/]")
+
     def _connect(self) -> None:
         """Establish connection to the bridge server."""
         try:
@@ -73,6 +98,22 @@ class GoveeShell(cmd.Cmd):
             print(f"Warning: Could not connect to {self.config.server_url}: {exc}")
             print("Some commands may not work. Use 'connect' to retry.")
             self.client = None
+
+    def precmd(self, line: str) -> str:
+        """Preprocess commands to expand aliases."""
+        if not line:
+            return line
+
+        # Check if line starts with an alias
+        parts = shlex.split(line) if line else []
+        if parts and parts[0] in self.aliases:
+            # Expand alias
+            alias_value = self.aliases[parts[0]]
+            expanded = alias_value + " " + " ".join(parts[1:]) if len(parts) > 1 else alias_value
+            self.console.print(f"[dim](expanding: {expanded})[/]")
+            return expanded
+
+        return line
 
     def do_connect(self, arg: str) -> None:
         """Connect or reconnect to the bridge server."""
@@ -469,6 +510,294 @@ class GoveeShell(cmd.Cmd):
         )
         print(f"Output format set to: {new_format}")
 
+    def do_bookmark(self, arg: str) -> None:
+        """
+        Manage bookmarks for devices and servers.
+        Usage: bookmark add <name> <value>
+               bookmark list
+               bookmark delete <name>
+               bookmark use <name>
+        Examples:
+            bookmark add myserver http://192.168.1.100:8000
+            bookmark add light1 ABC123DEF456
+            bookmark list
+            bookmark use myserver
+            bookmark delete light1
+        """
+        args = shlex.split(arg)
+        if not args:
+            self.console.print("Usage: bookmark add|list|delete|use <name> [value]")
+            return
+
+        command = args[0]
+
+        if command == "add" and len(args) >= 3:
+            name = args[1]
+            value = args[2]
+            self.bookmarks[name] = value
+            self._save_json(self.bookmarks_file, self.bookmarks)
+            self.console.print(f"[green]Bookmark '{name}' added: {value}[/]")
+
+        elif command == "list":
+            if not self.bookmarks:
+                self.console.print("[dim]No bookmarks saved[/]")
+                return
+
+            table = Table(title="Bookmarks", show_header=True, header_style="bold magenta")
+            table.add_column("Name", style="cyan")
+            table.add_column("Value", style="yellow")
+
+            for name, value in self.bookmarks.items():
+                table.add_row(name, value)
+
+            self.console.print(table)
+
+        elif command == "delete" and len(args) >= 2:
+            name = args[1]
+            if name in self.bookmarks:
+                del self.bookmarks[name]
+                self._save_json(self.bookmarks_file, self.bookmarks)
+                self.console.print(f"[green]Bookmark '{name}' deleted[/]")
+            else:
+                self.console.print(f"[red]Bookmark '{name}' not found[/]")
+
+        elif command == "use" and len(args) >= 2:
+            name = args[1]
+            if name in self.bookmarks:
+                value = self.bookmarks[name]
+                # Detect if it's a URL or device ID
+                if value.startswith("http://") or value.startswith("https://"):
+                    self.do_connect(value)
+                else:
+                    self.console.print(f"[cyan]Bookmark value: {value}[/]")
+                    self.console.print("[dim]Use this value in your commands[/]")
+            else:
+                self.console.print(f"[red]Bookmark '{name}' not found[/]")
+
+        else:
+            self.console.print("Usage: bookmark add|list|delete|use <name> [value]")
+
+    def do_alias(self, arg: str) -> None:
+        """
+        Manage command aliases (shortcuts).
+        Usage: alias add <name> <command>
+               alias list
+               alias delete <name>
+        Examples:
+            alias add dl "devices list"
+            alias add status-check "status"
+            alias list
+            alias delete dl
+        """
+        args = shlex.split(arg)
+        if not args:
+            self.console.print("Usage: alias add|list|delete <name> [command]")
+            return
+
+        command = args[0]
+
+        if command == "add" and len(args) >= 3:
+            name = args[1]
+            value = " ".join(args[2:])
+            self.aliases[name] = value
+            self._save_json(self.aliases_file, self.aliases)
+            self.console.print(f"[green]Alias '{name}' -> '{value}' added[/]")
+
+        elif command == "list":
+            if not self.aliases:
+                self.console.print("[dim]No aliases defined[/]")
+                return
+
+            table = Table(title="Aliases", show_header=True, header_style="bold magenta")
+            table.add_column("Alias", style="cyan")
+            table.add_column("Command", style="yellow")
+
+            for name, value in self.aliases.items():
+                table.add_row(name, value)
+
+            self.console.print(table)
+
+        elif command == "delete" and len(args) >= 2:
+            name = args[1]
+            if name in self.aliases:
+                del self.aliases[name]
+                self._save_json(self.aliases_file, self.aliases)
+                self.console.print(f"[green]Alias '{name}' deleted[/]")
+            else:
+                self.console.print(f"[red]Alias '{name}' not found[/]")
+
+        else:
+            self.console.print("Usage: alias add|list|delete <name> [command]")
+
+    def do_watch(self, arg: str) -> None:
+        """
+        Watch devices or status with continuous updates.
+        Usage: watch devices [interval]
+               watch status [interval]
+               watch dashboard [interval]
+        Examples:
+            watch devices        # Update every 2 seconds
+            watch status 5       # Update every 5 seconds
+            watch dashboard 3    # Update every 3 seconds
+        """
+        if not self.client:
+            self.console.print("[red]Not connected. Use 'connect' first.[/]")
+            return
+
+        args = shlex.split(arg)
+        if not args:
+            self.console.print("Usage: watch devices|status|dashboard [interval]")
+            return
+
+        command = args[0]
+        interval = float(args[1]) if len(args) > 1 else 2.0
+
+        self.console.print(f"[cyan]Watching {command} (Press Ctrl+C to stop, updating every {interval}s)[/]")
+        self.console.print()
+
+        try:
+            import time
+
+            while True:
+                # Clear screen
+                os.system("cls" if os.name == "nt" else "clear")
+
+                # Execute command
+                if command == "devices":
+                    self.do_devices("list")
+                elif command == "status":
+                    self.do_status("")
+                elif command == "dashboard":
+                    self._monitor_dashboard()
+                else:
+                    self.console.print(f"[red]Unknown watch target: {command}[/]")
+                    break
+
+                # Wait
+                time.sleep(interval)
+
+        except KeyboardInterrupt:
+            self.console.print("\n[yellow]Watch stopped[/]")
+
+    def do_batch(self, arg: str) -> None:
+        """
+        Execute commands from a file.
+        Usage: batch <filename>
+        Examples:
+            batch setup.txt
+            batch /path/to/commands.txt
+        """
+        args = shlex.split(arg)
+        if not args:
+            self.console.print("Usage: batch <filename>")
+            return
+
+        filename = args[0]
+        file_path = Path(filename)
+
+        if not file_path.exists():
+            self.console.print(f"[red]File not found: {filename}[/]")
+            return
+
+        try:
+            with open(file_path, "r") as f:
+                lines = f.readlines()
+
+            self.console.print(f"[cyan]Executing {len(lines)} commands from {filename}[/]")
+            self.console.print()
+
+            for i, line in enumerate(lines, 1):
+                line = line.strip()
+
+                # Skip empty lines and comments
+                if not line or line.startswith("#"):
+                    continue
+
+                self.console.print(f"[dim]({i}) {line}[/]")
+                self.onecmd(line)
+                self.console.print()
+
+            self.console.print("[green]Batch execution complete[/]")
+
+        except Exception as exc:
+            self.console.print(f"[red]Error executing batch: {exc}[/]")
+
+    def do_session(self, arg: str) -> None:
+        """
+        Save or restore shell session (server URL, output format).
+        Usage: session save <name>
+               session load <name>
+               session list
+               session delete <name>
+        Examples:
+            session save prod
+            session load prod
+            session list
+            session delete prod
+        """
+        args = shlex.split(arg)
+        if not args:
+            self.console.print("Usage: session save|load|list|delete <name>")
+            return
+
+        command = args[0]
+        sessions_file = self.data_dir / "sessions.json"
+        sessions = self._load_json(sessions_file, {})
+
+        if command == "save" and len(args) >= 2:
+            name = args[1]
+            session_data = {
+                "server_url": self.config.server_url,
+                "output": self.config.output,
+            }
+            sessions[name] = session_data
+            self._save_json(sessions_file, sessions)
+            self.console.print(f"[green]Session '{name}' saved[/]")
+
+        elif command == "load" and len(args) >= 2:
+            name = args[1]
+            if name in sessions:
+                session_data = sessions[name]
+                self.config = ClientConfig(
+                    server_url=session_data["server_url"],
+                    api_key=self.config.api_key,
+                    api_bearer_token=self.config.api_bearer_token,
+                    output=session_data["output"],
+                )
+                self._connect()
+                self.console.print(f"[green]Session '{name}' loaded[/]")
+                self.console.print(f"  Server: {self.config.server_url}")
+                self.console.print(f"  Output: {self.config.output}")
+            else:
+                self.console.print(f"[red]Session '{name}' not found[/]")
+
+        elif command == "list":
+            if not sessions:
+                self.console.print("[dim]No sessions saved[/]")
+                return
+
+            table = Table(title="Sessions", show_header=True, header_style="bold magenta")
+            table.add_column("Name", style="cyan")
+            table.add_column("Server URL", style="yellow")
+            table.add_column("Output Format", style="green")
+
+            for name, data in sessions.items():
+                table.add_row(name, data["server_url"], data["output"])
+
+            self.console.print(table)
+
+        elif command == "delete" and len(args) >= 2:
+            name = args[1]
+            if name in sessions:
+                del sessions[name]
+                self._save_json(sessions_file, sessions)
+                self.console.print(f"[green]Session '{name}' deleted[/]")
+            else:
+                self.console.print(f"[red]Session '{name}' not found[/]")
+
+        else:
+            self.console.print("Usage: session save|load|list|delete <name>")
+
     def do_help(self, arg: str) -> None:
         """Show help for commands with examples."""
         if arg:
@@ -522,6 +851,31 @@ class GoveeShell(cmd.Cmd):
             "monitor",
             "Real-time monitoring",
             "monitor dashboard\nmonitor stats"
+        )
+        help_table.add_row(
+            "bookmark",
+            "Save device IDs and URLs",
+            "bookmark add light1 ABC123\nbookmark list\nbookmark use light1"
+        )
+        help_table.add_row(
+            "alias",
+            "Create command shortcuts",
+            "alias add dl \"devices list\"\nalias list"
+        )
+        help_table.add_row(
+            "watch",
+            "Continuous monitoring",
+            "watch devices\nwatch dashboard 5"
+        )
+        help_table.add_row(
+            "batch",
+            "Execute commands from file",
+            "batch setup.txt"
+        )
+        help_table.add_row(
+            "session",
+            "Save/restore shell state",
+            "session save prod\nsession load prod"
         )
         help_table.add_row(
             "output",
