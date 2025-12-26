@@ -26,6 +26,18 @@ MAX_DMX_CHANNELS = 512
 DEFAULT_DEBOUNCE_SECONDS = 0.05
 
 
+def _create_artnet_socket(port: int) -> socket.socket:
+    """Create a UDP socket for ArtNet with proper reuse options."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    with contextlib.suppress(AttributeError):
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.bind(("0.0.0.0", port))
+    sock.setblocking(False)
+    return sock
+
+
 @dataclass(frozen=True)
 class ArtNetPacket:
     """Parsed ArtNet ArtDMX payload."""
@@ -324,19 +336,11 @@ class ArtNetService:
             return
 
         loop = asyncio.get_running_loop()
-        try:
-            transport, protocol = await loop.create_datagram_endpoint(
-                lambda: ArtNetProtocol(self),
-                local_addr=("0.0.0.0", self.config.artnet_port),
-                allow_broadcast=True,
-                reuse_port=True,
-            )
-        except OSError:
-            transport, protocol = await loop.create_datagram_endpoint(
-                lambda: ArtNetProtocol(self),
-                local_addr=("0.0.0.0", self.config.artnet_port),
-                allow_broadcast=True,
-            )
+        sock = _create_artnet_socket(self.config.artnet_port)
+        transport, protocol = await loop.create_datagram_endpoint(
+            lambda: ArtNetProtocol(self),
+            sock=sock,
+        )
         self._transport = transport  # type: ignore[assignment]
         self._protocol = protocol  # type: ignore[assignment]
         self.logger.info(
