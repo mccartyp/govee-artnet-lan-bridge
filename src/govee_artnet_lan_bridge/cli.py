@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import string
 import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, MutableMapping, Optional
@@ -216,6 +217,42 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
         help="JSON payload to enqueue (stringified). Must be valid JSON.",
     )
     test.set_defaults(func=_cmd_devices_test)
+
+    command = device_sub.add_parser(
+        "command",
+        help="Send on/off/brightness/color/kelvin commands to a device (POST /devices/{id}/command)",
+        description=(
+            "Queues a simple command for a device with basic validation. Supports "
+            "on/off via the Govee LAN turn command, brightness 0-255, RGB hex color, and color "
+            "temperature slider (0-255 scaled)."
+        ),
+    )
+    command.add_argument("device_id", help="Device identifier")
+    command.add_argument(
+        "--on",
+        action="store_true",
+        help="Turn the device on (sends the LAN turn command)",
+    )
+    command.add_argument(
+        "--off",
+        action="store_true",
+        help="Turn the device off (sends the LAN turn command)",
+    )
+    command.add_argument(
+        "--brightness",
+        type=int,
+        help="Brightness level (0-255). Required when setting an explicit brightness.",
+    )
+    command.add_argument(
+        "--color",
+        help="RGB hex color (e.g., ff3366 or #ff3366). Expands 3-digit shorthand values.",
+    )
+    command.add_argument(
+        "--kelvin",
+        type=int,
+        help="Color temperature slider (0-255) scaled to the device-supported range.",
+    )
+    command.set_defaults(func=_cmd_devices_command)
 
 
 def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -469,6 +506,41 @@ def _cmd_devices_test(config: ClientConfig, client: httpx.Client, args: argparse
     _print_output(data, config.output)
 
 
+def _cmd_devices_command(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
+    if args.on and args.off:
+        raise CliError("Choose either --on or --off, not both.")
+    if not any(
+        [
+            args.on,
+            args.off,
+            args.brightness is not None,
+            args.color,
+            args.kelvin is not None,
+        ]
+    ):
+        raise CliError("At least one action is required (on, off, brightness, color, kelvin).")
+    if args.brightness is not None:
+        _validate_byte_range("brightness", args.brightness)
+    if args.kelvin is not None:
+        _validate_byte_range("kelvin", args.kelvin)
+    color = _normalize_color_hex(args.color) if args.color else None
+    payload: MutableMapping[str, Any] = {}
+    if args.on:
+        payload["on"] = True
+    if args.off:
+        payload["off"] = True
+    if args.brightness is not None:
+        payload["brightness"] = args.brightness
+    if color:
+        payload["color"] = color
+    if args.kelvin is not None:
+        payload["kelvin"] = args.kelvin
+    data = _handle_response(
+        client.post(f"/devices/{args.device_id}/command", json=payload)
+    )
+    _print_output(data, config.output)
+
+
 def _cmd_mappings_list(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
     data = _handle_response(client.get("/mappings"))
     _print_output(data, config.output)
@@ -552,6 +624,22 @@ def _parse_json_arg(value: str) -> Any:
         return json.loads(value)
     except json.JSONDecodeError as exc:
         raise CliError("Failed to parse JSON argument") from exc
+
+
+def _validate_byte_range(name: str, value: int) -> None:
+    if value < 0 or value > 255:
+        raise CliError(f"{name.capitalize()} must be between 0 and 255.")
+
+
+def _normalize_color_hex(value: str) -> str:
+    normalized = value.strip()
+    if normalized.startswith("#"):
+        normalized = normalized[1:]
+    if len(normalized) == 3:
+        normalized = "".join(ch * 2 for ch in normalized)
+    if len(normalized) != 6 or any(ch not in string.hexdigits for ch in normalized):
+        raise CliError("Color must be a hex value like ff3366 or #ff3366.")
+    return normalized.lower()
 
 
 def main(argv: Optional[Iterable[str]] = None) -> None:

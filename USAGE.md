@@ -424,7 +424,17 @@ govee-artnet devices disable "AA:BB:CC:DD:EE:FF"
 # Send a test payload to a device
 govee-artnet devices test "AA:BB:CC:DD:EE:FF" \
   --payload '{"cmd":"turn","turn":"on"}'
+
+# Send a quick command (on/off/brightness/color/kelvin)
+govee-artnet devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
+govee-artnet devices command "AA:BB:CC:DD:EE:FF" --kelvin 32
 ```
+
+The `devices command` helper accepts the following actions:
+- `--on` / `--off`: convenience toggles (sends the Govee LAN `turn` command without forcing brightness)
+- `--brightness <0-255>`: raw brightness level
+- `--color <hex>`: RGB hex string (`ff3366`, `#00ccff`, or three-digit shorthand like `0cf`)
+- `--kelvin <0-255>`: 0-255 slider scaled to the device's supported color-temperature range (defaults to 2000-9000K when the range is unknown)
 
 ### Mapping Management
 
