@@ -52,7 +52,7 @@ class Config:
     rate_limit_per_second: float = 10.0
     rate_limit_burst: int = 20
     discovery_multicast_address: str = "239.255.255.250"
-    discovery_multicast_port: int = 4003
+    discovery_multicast_port: int = 4001
     discovery_reply_port: int = 4002
     discovery_probe_payload: str = '{"msg":{"cmd":"scan","data":{"account_topic":"reserve"}}}'
     discovery_response_timeout: float = 2.0
