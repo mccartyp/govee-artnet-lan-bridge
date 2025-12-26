@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "devices": [
+    {
+      "model_number": "H6000",
+      "product_name": "Catalog RGB Bulb",
+      "aliases": ["h6000"],
+      "capabilities": {
+        "color_modes": ["color", "ct"],
+        "color_temp_range": [2200, 6500],
+        "mode": "rgb",
+        "order": ["r", "g", "b"],
+        "brightness": true
+      },
+      "transport": "udp"
+    },
+    {
+      "model_number": "H6050",
+      "product_name": "Catalog Strip",
+      "capabilities": {
+        "color_modes": ["color"],
+        "mode": "rgbw",
+        "order": ["r", "g", "b", "w"],
+        "brightness": true,
+        "effects": ["sunset", "candle"]
+      }
+    },
+    {
+      "model_number": "H7001",
+      "product_name": "Catalog Panel",
+      "capabilities": {
+        "color_modes": ["ct"],
+        "color_temp_range": [2700, 5000],
+        "brightness": true
+      },
+      "metadata": {
+        "note": "Warm-white only"
+      }
+    }
+  ]
+}

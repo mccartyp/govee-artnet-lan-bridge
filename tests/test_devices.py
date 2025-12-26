@@ -1,5 +1,6 @@
 import pytest
 
+from govee_artnet_lan_bridge.capabilities import load_embedded_catalog
 from govee_artnet_lan_bridge.config import ManualDevice
 from govee_artnet_lan_bridge.db import apply_migrations
 from govee_artnet_lan_bridge.devices import DeviceStore, DiscoveryResult
@@ -167,6 +168,27 @@ async def test_rediscovery_preserves_user_enabled_state(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_catalog_hydrates_missing_capabilities(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    catalog = load_embedded_catalog()
+    store = DeviceStore(db_path, capability_catalog=catalog)
+
+    await store.record_discovery(
+        DiscoveryResult(
+            id="dev-catalog",
+            ip="10.0.0.5",
+            model="H6050",
+        )
+    )
+
+    device = await store.device("dev-catalog")
+    assert device is not None
+    assert "color" in device.capabilities.get("color_modes", [])
+    assert device.capabilities.get("brightness") is True
+
+
+@pytest.mark.asyncio
 async def test_manual_device_remains_unconfigured_until_mapped(tmp_path) -> None:
     db_path = tmp_path / "bridge.sqlite3"
     apply_migrations(db_path)
@@ -235,6 +257,31 @@ async def test_remapping_updates_configured_flags(tmp_path) -> None:
     assert target is not None
     assert target.configured is True
 
+
+@pytest.mark.asyncio
+async def test_poll_targets_use_catalog_when_missing_capabilities(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    catalog = load_embedded_catalog()
+    store = DeviceStore(db_path, capability_catalog=catalog)
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-poll",
+            ip="127.0.0.30",
+            model="H7001",
+        )
+    )
+
+    def _clear_capabilities(conn) -> None:
+        conn.execute("UPDATE devices SET capabilities = NULL WHERE id = ?", ("dev-poll",))
+        conn.commit()
+
+    await store.db.run(_clear_capabilities)
+
+    targets = await store.poll_targets()
+    target = next(target for target in targets if target.id == "dev-poll")
+    assert "ct" in target.capabilities.get("color_modes", [])
+    assert target.capabilities.get("brightness") is True
 
 
 @pytest.mark.asyncio

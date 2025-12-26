@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Mapping, MutableMapping, Optional, Sequence, Set, Tuple
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict, Mapping, MutableMapping, Optional, Sequence, Set, Tuple
+
+from .config import _default_capability_catalog_path
 
 
 def _coerce_bool(value: Any, default: bool = True) -> bool:
@@ -28,6 +32,117 @@ def _fingerprint(value: Any) -> str:
         return json.dumps(value, sort_keys=True, default=str)
     except TypeError:
         return str(value)
+
+
+def _normalize_model_number(model: Optional[str]) -> Optional[str]:
+    if model is None:
+        return None
+    normalized = str(model).strip()
+    return normalized.upper() if normalized else None
+
+
+def _capabilities_missing(capabilities: Any) -> bool:
+    if capabilities is None:
+        return True
+    if isinstance(capabilities, Mapping):
+        return not bool(capabilities)
+    return False
+
+
+@dataclass(frozen=True)
+class CapabilityCatalogEntry:
+    """Single catalog entry describing a device model."""
+
+    model_number: str
+    capabilities: Mapping[str, Any]
+    metadata: Mapping[str, Any]
+
+
+class CapabilityCatalog:
+    """Capability catalog loaded from JSON data."""
+
+    def __init__(
+        self,
+        entries: Mapping[str, CapabilityCatalogEntry],
+        *,
+        schema: Optional[int] = None,
+    ) -> None:
+        self._entries = dict(entries)
+        self.schema = schema
+
+    @classmethod
+    def from_path(cls, path: Path) -> "CapabilityCatalog":
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return cls.from_data(data)
+
+    @classmethod
+    def from_data(cls, data: Any) -> "CapabilityCatalog":
+        schema = None
+        entries_data: Any = data
+        if isinstance(data, Mapping):
+            schema = data.get("schema") or data.get("version")
+            for key in ("devices", "models", "entries", "capabilities"):
+                if key in data:
+                    entries_data = data[key]
+                    break
+        if not isinstance(entries_data, Sequence) or isinstance(entries_data, (bytes, bytearray, str)):
+            raise ValueError("Capability catalog must contain a list of entries.")
+
+        entries: Dict[str, CapabilityCatalogEntry] = {}
+        for raw in entries_data:
+            if not isinstance(raw, Mapping):
+                raise ValueError("Capability catalog entries must be objects.")
+            model_number = raw.get("model_number") or raw.get("modelNumber")
+            if not model_number:
+                raise ValueError("Catalog entries must include a model_number.")
+            capabilities = raw.get("capabilities") or {}
+            if not isinstance(capabilities, Mapping):
+                raise ValueError("Catalog entry capabilities must be a mapping.")
+            metadata: Dict[str, Any] = {}
+            if isinstance(raw.get("metadata"), Mapping):
+                metadata.update(raw["metadata"])  # type: ignore[index]
+            metadata.update(
+                {
+                    key: value
+                    for key, value in raw.items()
+                    if key not in {"model_number", "modelNumber", "capabilities", "aliases", "metadata"}
+                }
+            )
+            entry = CapabilityCatalogEntry(
+                model_number=str(model_number),
+                capabilities=dict(capabilities),
+                metadata=metadata,
+            )
+            normalized_model = _normalize_model_number(model_number)
+            if normalized_model:
+                entries[normalized_model] = entry
+            aliases = raw.get("aliases")
+            if isinstance(aliases, Sequence) and not isinstance(aliases, (str, bytes, bytearray)):
+                for alias in aliases:
+                    normalized_alias = (
+                        _normalize_model_number(alias) if isinstance(alias, (str, int, float)) else None
+                    )
+                    if normalized_alias and normalized_alias not in entries:
+                        entries[normalized_alias] = entry
+        return cls(entries, schema=schema)
+
+    @classmethod
+    def from_embedded(cls) -> "CapabilityCatalog":
+        return cls.from_path(_default_capability_catalog_path())
+
+    def lookup(self, model_number: Optional[str]) -> Optional[CapabilityCatalogEntry]:
+        normalized = _normalize_model_number(model_number)
+        if normalized is None:
+            return None
+        return self._entries.get(normalized)
+
+
+@lru_cache(maxsize=1)
+def load_embedded_catalog() -> CapabilityCatalog:
+    """Load and cache the embedded capability catalog."""
+
+    return CapabilityCatalog.from_embedded()
 
 
 def _normalize_string_set(value: Any) -> Set[str]:
@@ -282,11 +397,26 @@ def normalize_capabilities(
 class CapabilityCache:
     """Cache normalized capabilities keyed by model/firmware."""
 
-    def __init__(self) -> None:
+    def __init__(self, catalog: Optional[CapabilityCatalog] = None) -> None:
         self._cache: MutableMapping[Tuple[str, str], Tuple[str, NormalizedCapabilities]] = {}
+        self._catalog = catalog
+
+    def has_catalog_entry(self, model: Optional[str]) -> bool:
+        if not self._catalog or model is None:
+            return False
+        return self._catalog.lookup(model) is not None
 
     def normalize(self, model: Optional[str], capabilities: Any) -> NormalizedCapabilities:
-        normalized = normalize_capabilities(model, capabilities)
+        missing_caps = _capabilities_missing(capabilities)
+        catalog_entry = self._catalog.lookup(model) if self._catalog and model else None
+        normalized_model = model
+        source_capabilities: Any = None
+        if missing_caps and catalog_entry is not None:
+            source_capabilities = catalog_entry.capabilities
+            normalized_model = catalog_entry.model_number
+        elif not missing_caps:
+            source_capabilities = capabilities
+        normalized = normalize_capabilities(normalized_model, source_capabilities)
         cached = self._cache.get(normalized.cache_key)
         if cached and cached[0] == normalized.fingerprint:
             return cached[1]

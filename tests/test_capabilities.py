@@ -1,4 +1,9 @@
-from govee_artnet_lan_bridge.capabilities import CapabilityCache, validate_command_payload
+from govee_artnet_lan_bridge.capabilities import (
+    CapabilityCache,
+    CapabilityCatalog,
+    load_embedded_catalog,
+    validate_command_payload,
+)
 
 
 def test_normalize_capabilities_handles_modes_and_effects() -> None:
@@ -67,3 +72,23 @@ def test_normalize_capabilities_detects_color_temp_hints() -> None:
     assert normalized.supports_color_temperature is True
     assert normalized.color_temp_range == (2200, 6000)
     assert "ct" in normalized.color_modes
+
+
+def test_capability_catalog_lookup_and_aliases() -> None:
+    catalog = CapabilityCatalog.from_embedded()
+    entry = catalog.lookup("h6000")
+
+    assert entry is not None
+    assert entry.metadata.get("product_name") == "Catalog RGB Bulb"
+    assert "color" in entry.capabilities.get("color_modes", [])
+    assert catalog.lookup("H6000") is entry
+
+
+def test_cache_uses_catalog_when_capabilities_missing() -> None:
+    catalog = load_embedded_catalog()
+    cache = CapabilityCache(catalog)
+
+    normalized = cache.normalize("H6050", None)
+
+    assert "color" in normalized.color_modes
+    assert normalized.supports_brightness is True
