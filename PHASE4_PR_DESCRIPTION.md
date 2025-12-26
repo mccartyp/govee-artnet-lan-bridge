@@ -1,403 +1,236 @@
-## Phase 4: Advanced Features - Bookmarks, Aliases, Watch, Batch, Sessions
+# Phase 4: Security and Robustness Improvements
 
-**⚠️ Builds on:** Phase 3 (already merged to main) - This PR builds on Phase 3's rich UI and enhanced shell.
+This PR implements Phase 4 of the CLI Framework Improvement Plan, focusing on security, validation, and robustness enhancements for better error handling and reliability.
 
-**Base branch:** `main`
+## Changes Implemented
 
-### Overview
-This PR implements Phase 4 of the [CLI Shell Expansion Plan](./CLI_SHELL_EXPANSION_PLAN.md), adding powerful productivity features including bookmarks, aliases, watch mode, batch execution, and session management.
+### 1. JSON Schema Validation for User Data
 
-### New Features
+**Added comprehensive validation functions:**
 
-#### 1. 🔖 Bookmarks
-Save frequently used device IDs and server URLs for quick access:
+- **`_validate_capabilities()`** - Validates device capabilities JSON structure
+  - Ensures capabilities is a dictionary
+  - Validates keys: `color`, `brightness`, `temperature`
+  - Ensures all values are boolean
+  - Clear error messages with valid key suggestions
 
-```bash
-# Save bookmarks
-govee> bookmark add myserver http://192.168.1.100:8000
-Bookmark 'myserver' added: http://192.168.1.100:8000
+- **`_validate_device_payload()`** - Validates device payloads
+  - Required fields for create: `id`, `ip`
+  - IPv4 address format validation
+  - Numeric field validation (all must be > 0)
+  - Supports both "create" and "update" operations
 
-govee> bookmark add light1 ABC123DEF456
-Bookmark 'light1' added: ABC123DEF456
+- **`_validate_mapping_payload()`** - Validates mapping payloads
+  - Required fields for create: `device_id`, `universe`
+  - Universe validation (0-32767 range)
+  - Channel validation (1-512 range)
+  - Length validation (>= 1)
+  - Template validation: `rgb`, `rgbw`, `brightness`, `temperature`
 
-# List all bookmarks
-govee> bookmark list
-┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Name     ┃ Value                        ┃
-┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ myserver │ http://192.168.1.100:8000    │
-│ light1   │ ABC123DEF456                 │
-└──────────┴──────────────────────────────┘
-
-# Use bookmarks
-govee> bookmark use myserver
-Connected to http://192.168.1.100:8000
-
-govee> bookmark use light1
-Bookmark value: ABC123DEF456
-Use this value in your commands
-
-# Delete bookmarks
-govee> bookmark delete light1
-Bookmark 'light1' deleted
-```
-
-**Features:**
-- Persistent storage in `~/.govee_artnet/bookmarks.json`
-- Auto-connect when using server URL bookmarks
-- Display device ID bookmarks for manual use
-- Rich table display for listing
-
-#### 2. ⚡ Aliases
-Create shortcuts for frequently used commands:
-
-```bash
-# Create aliases
-govee> alias add dl "devices list"
-Alias 'dl' -> 'devices list' added
-
-govee> alias add status-check "monitor dashboard"
-Alias 'status-check' -> 'monitor dashboard' added
-
-# List all aliases
-govee> alias list
-┏━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┓
-┃ Alias       ┃ Command          ┃
-┡━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━┩
-│ dl          │ devices list     │
-│ status-check│ monitor dashboard│
-└─────────────┴──────────────────┘
-
-# Use aliases (auto-expands)
-govee> dl
-(expanding: devices list)
-[Shows device list...]
-
-# Delete aliases
-govee> alias delete dl
-Alias 'dl' deleted
-```
-
-**Features:**
-- Persistent storage in `~/.govee_artnet/aliases.json`
-- Automatic expansion in `precmd()` hook
-- Shows expansion message for transparency
-- Supports command arguments (e.g., `dl --filter`)
-
-#### 3. 👁️ Watch Mode
-Continuous monitoring with auto-refresh:
-
-```bash
-# Watch devices (updates every 2 seconds)
-govee> watch devices
-Watching devices (Press Ctrl+C to stop, updating every 2.0s)
-
-[Device list updates automatically...]
-
-# Watch status with custom interval (5 seconds)
-govee> watch status 5
-Watching status (Press Ctrl+C to stop, updating every 5.0s)
-
-[Status updates automatically...]
-
-# Watch dashboard with 3-second interval
-govee> watch dashboard 3
-Watching dashboard (Press Ctrl+C to stop, updating every 3.0s)
-
-[Dashboard updates automatically with rich formatting...]
-
-# Press Ctrl+C to stop
-^C
-Watch stopped
-```
-
-**Features:**
-- Three watch targets: devices, status, dashboard
-- Configurable refresh interval (default: 2 seconds)
-- Screen clears before each update
-- Keyboard interrupt (Ctrl+C) to stop
-- Uses existing command rendering (with rich formatting)
-
-#### 4. 📜 Batch Execution
-Execute multiple commands from a file:
-
-**Example file (`setup.txt`):**
-```bash
-# Connect to server
-connect http://localhost:8000
-
-# Set output format
-output table
-
-# List devices
-devices list
-
-# Show status
-status
-```
-
-**Shell usage:**
-```bash
-govee> batch setup.txt
-Executing 4 commands from setup.txt
-
-(1) connect http://localhost:8000
-Connected to http://localhost:8000
-
-(2) output table
-Output format set to: table
-
-(3) devices list
-[Shows device list in table format...]
-
-(4) status
-[Shows status...]
-
-Batch execution complete
-```
-
-**Features:**
-- Supports comments (lines starting with `#`)
-- Skips empty lines
-- Shows progress with line numbers
-- Executes commands sequentially
-- Errors don't stop execution
-
-#### 5. 💾 Session Management
-Save and restore shell configuration:
-
-```bash
-# Save current session
-govee> session save prod
-Session 'prod' saved
-
-# Save another session
-govee> session save dev
-Session 'dev' saved
-
-# List all sessions
-govee> session list
-┏━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
-┃ Name ┃ Server URL             ┃ Output Format┃
-┡━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
-│ prod │ http://192.168.1.100:8000 │ table      │
-│ dev  │ http://localhost:8000     │ json       │
-└──────┴────────────────────────┴─────────────┘
-
-# Load a session
-govee> session load dev
-Session 'dev' loaded
-  Server: http://localhost:8000
-  Output: json
-Connected to http://localhost:8000
-
-# Delete a session
-govee> session delete dev
-Session 'dev' deleted
-```
-
-**Features:**
-- Saves server URL and output format
-- Persistent storage in `~/.govee_artnet/sessions.json`
-- Auto-reconnects when loading
-- Rich table display for listing
-
-### Technical Implementation
-
-**Shell Changes** (`shell.py` +350 lines):
-
-**Initialization:**
+**Enhanced JSON parsing error messages:**
 ```python
-# Set up data directory and files
-self.data_dir = Path.home() / ".govee_artnet"
-self.bookmarks_file = self.data_dir / "bookmarks.json"
-self.aliases_file = self.data_dir / "aliases.json"
+# Before
+raise CliError("Failed to parse JSON argument")
 
-# Load persistent data
-self.bookmarks = self._load_json(self.bookmarks_file, {})
-self.aliases = self._load_json(self.aliases_file, {})
+# After
+raise CliError(f"Failed to parse JSON argument: {exc.msg} at position {exc.pos}")
 ```
 
-**Helper Methods:**
-- `_load_json()` - Load JSON with fallback to default
-- `_save_json()` - Save JSON with error handling
-
-**Alias Expansion:**
-```python
-def precmd(self, line: str) -> str:
-    """Preprocess commands to expand aliases."""
-    parts = shlex.split(line) if line else []
-    if parts and parts[0] in self.aliases:
-        alias_value = self.aliases[parts[0]]
-        expanded = alias_value + " " + " ".join(parts[1:])
-        self.console.print(f"[dim](expanding: {expanded})[/]")
-        return expanded
-    return line
-```
-
-**New Commands:**
-- `do_bookmark()` - add, list, delete, use
-- `do_alias()` - add, list, delete
-- `do_watch()` - devices, status, dashboard with interval
-- `do_batch()` - execute commands from file
-- `do_session()` - save, load, list, delete
-
-**Updated Help:**
-- Added 5 new commands to help table
-- Included examples and descriptions
-- Rich formatting with colors
-
-### File Structure
-
-```
-~/.govee_artnet/
-├── shell_history          # Command history (Phase 3)
-├── bookmarks.json         # Saved bookmarks (Phase 4)
-├── aliases.json           # Command aliases (Phase 4)
-└── sessions.json          # Saved sessions (Phase 4)
-```
-
-### Example Workflows
-
-**Workflow 1: Multi-Environment Management**
+**Example validation errors:**
 ```bash
-# Save production session
-govee> connect http://prod-server:8000
-govee> output table
-govee> session save prod
+$ govee-artnet devices add --capabilities '{"invalid_key": true}'
+Error: Invalid capability key 'invalid_key'. Valid keys: brightness, color, temperature
 
-# Save development session
-govee> connect http://localhost:8000
-govee> output json
-govee> session save dev
+$ govee-artnet devices add --id test --ip 999.999.999.999
+Error: Invalid IP address: 999.999.999.999 (octet out of range)
 
-# Switch between environments
-govee> session load prod
-govee> session load dev
+$ govee-artnet mappings create --universe 99999
+Error: Universe must be between 0 and 32767, got: 99999
 ```
-
-**Workflow 2: Bookmark Frequently Used Devices**
-```bash
-# Save important device IDs
-govee> bookmark add living-room ABC123DEF456
-govee> bookmark add bedroom GHI789JKL012
-
-# Use in commands
-govee> bookmark use living-room
-Bookmark value: ABC123DEF456
-govee> devices enable ABC123DEF456
-```
-
-**Workflow 3: Create Productivity Aliases**
-```bash
-# Create shortcuts
-govee> alias add dl "devices list"
-govee> alias add ml "mappings list"
-govee> alias add dash "monitor dashboard"
-
-# Use shortcuts
-govee> dl              # Lists devices
-govee> ml              # Lists mappings
-govee> dash            # Shows dashboard
-```
-
-**Workflow 4: Automated Setup with Batch**
-```bash
-# Create setup.txt
-echo "connect http://localhost:8000" > setup.txt
-echo "output table" >> setup.txt
-echo "devices list" >> setup.txt
-echo "monitor dashboard" >> setup.txt
-
-# Run setup
-govee> batch setup.txt
-```
-
-**Workflow 5: Continuous Monitoring**
-```bash
-# Watch dashboard with 5-second updates
-govee> watch dashboard 5
-
-# In another terminal, make changes
-# Dashboard auto-updates every 5 seconds
-```
-
-### Testing
-
-**Manual Testing Performed:**
-- ✅ Bookmark add/list/delete/use for URLs
-- ✅ Bookmark add/list/delete/use for device IDs
-- ✅ Alias add/list/delete with auto-expansion
-- ✅ Alias with command arguments
-- ✅ Watch devices/status/dashboard
-- ✅ Watch with custom intervals
-- ✅ Keyboard interrupt in watch mode
-- ✅ Batch execution with comments and empty lines
-- ✅ Batch error handling
-- ✅ Session save/load/list/delete
-- ✅ Session auto-reconnect on load
-- ✅ Persistence across shell restarts
-- ✅ All JSON files created in correct location
-
-**Integration:**
-- ✅ Works with Phase 1's log buffer and event bus
-- ✅ Works with Phase 2's WebSocket streaming
-- ✅ Works with Phase 3's rich formatting
-- ✅ Backward compatible with all existing commands
-- ✅ Help command updated with new commands
-
-### Files Changed
-- `src/govee_artnet_lan_bridge/shell.py` (+358 lines, -4 lines)
-
-**Total:** +354 net lines of productivity features
-
-### Performance & Scalability
-- JSON files are small (<10KB typical)
-- Fast load/save operations
-- Watch mode doesn't impact server
-- Batch execution is sequential (safe)
-- No memory leaks or resource issues
-
-### User Experience
-
-**Before (Phase 3):**
-- Manual typing of long commands
-- Re-entering server URLs
-- No automation support
-- Static views only
-
-**After (Phase 4):**
-- Quick access with bookmarks
-- Command shortcuts with aliases
-- Automated batch operations
-- Continuous monitoring with watch
-- Easy environment switching with sessions
-- All data persists across sessions
-
-### Documentation
-- Each command has comprehensive docstrings
-- Help command shows all new features
-- Examples in docstrings and help table
-- Clear usage messages for errors
-
-### Related
-- **Builds on:** Phases 1, 2, 3 (merged via PRs #33, #34, #35)
-- **Implements:** [CLI_SHELL_EXPANSION_PLAN.md](./CLI_SHELL_EXPANSION_PLAN.md) Phase 4
-- **Next:** Phase 5 will add polish, testing, and documentation
-
-### Checklist
-- [x] Bookmarks implemented (add, list, delete, use)
-- [x] Aliases implemented (add, list, delete, auto-expand)
-- [x] Watch mode implemented (devices, status, dashboard)
-- [x] Batch execution implemented
-- [x] Session management implemented
-- [x] Persistent storage working
-- [x] Rich formatting for all new commands
-- [x] Help command updated
-- [x] Manual testing completed
-- [x] Backward compatible
-- [x] Documentation updated
 
 ---
 
-**Ready for review!** This adds powerful productivity features that significantly enhance the shell experience. 🚀
+### 2. Connection Pooling and Retry Logic
+
+**Enhanced HTTP client with connection pooling:**
+
+```python
+limits = httpx.Limits(
+    max_connections=10,              # Maximum total connections
+    max_keepalive_connections=5,     # Maximum idle connections
+    keepalive_expiry=30.0,           # Keepalive timeout
+)
+
+transport = httpx.HTTPTransport(
+    retries=3,    # Retry failed connections up to 3 times
+    limits=limits,
+)
+```
+
+**Benefits:**
+- ✅ Connection reuse for better performance
+- ✅ Automatic retry of failed connections (up to 3 attempts)
+- ✅ Proper resource limits prevent exhaustion
+- ✅ Keepalive connections reduce latency
+- ✅ Automatic redirect following
+
+---
+
+### 3. Graceful API Endpoint Detection
+
+**Added API availability checking:**
+
+```python
+def _check_api_available(client):
+    """Check if API is responding."""
+    try:
+        response = client.get("/health", timeout=5.0)
+        return response.status_code == 200
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError):
+        return False
+
+def _ensure_api_available(client, config):
+    """Ensure API is available, raise friendly error if not."""
+    if not _check_api_available(client):
+        raise CliError(
+            f"Unable to connect to the bridge API at {config.server_url}. "
+            "Please check that the bridge is running and the URL is correct. "
+            f"You can verify with: curl {config.server_url}/health"
+        )
+```
+
+**Integrated into command flow:**
+- Checks API availability before executing any command (except health check)
+- Provides actionable error messages with troubleshooting steps
+- Prevents cryptic error messages from failed requests
+
+**Enhanced error handling:**
+
+```bash
+# Before
+HTTP request failed: ConnectError(...)
+
+# After
+Unable to connect to the bridge API at http://127.0.0.1:8000.
+Please check that the bridge is running and the URL is correct.
+You can verify with: curl http://127.0.0.1:8000/health
+```
+
+---
+
+## Security Improvements
+
+**Input Validation:**
+- ✅ All user-provided JSON validated before use
+- ✅ IP addresses validated for correct format
+- ✅ Numeric ranges enforced (universe, channel, lengths)
+- ✅ Template/capability keys validated against allowed sets
+- ✅ Prevents injection attacks through validation
+
+**Error Handling:**
+- ✅ Detailed error messages with actionable information
+- ✅ Validation errors include valid ranges/options
+- ✅ Connection errors provide troubleshooting steps
+- ✅ Clear distinction between error types
+
+**Robustness:**
+- ✅ Connection pooling prevents resource exhaustion
+- ✅ Automatic retries handle transient failures
+- ✅ API availability check prevents cryptic errors
+- ✅ Graceful degradation when API unavailable
+
+---
+
+## Code Quality Improvements
+
+**Maintainability:**
+- ✅ Centralized validation in dedicated functions
+- ✅ Reusable validation components
+- ✅ Clear function documentation
+- ✅ Consistent error formatting
+
+**User Experience:**
+- ✅ Clear, actionable error messages
+- ✅ Suggestions for valid options
+- ✅ Troubleshooting hints for connection issues
+- ✅ Fast failure with helpful feedback
+
+**Performance:**
+- ✅ Connection pooling reduces overhead
+- ✅ Keepalive reduces latency
+- ✅ Automatic retries prevent user intervention
+
+---
+
+## Examples
+
+### JSON Validation
+```bash
+# Invalid capabilities structure
+$ govee-artnet devices add --id AA:BB --ip 192.168.1.10 \
+  --capabilities '{"invalid": true}'
+Error: Invalid capability key 'invalid'. Valid keys: brightness, color, temperature
+
+# Invalid IP address
+$ govee-artnet devices add --id AA:BB --ip 192.168.1.999
+Error: Invalid IP address: 192.168.1.999 (octet out of range)
+
+# Invalid universe range
+$ govee-artnet mappings create --device-id AA:BB --universe 50000
+Error: Universe must be between 0 and 32767, got: 50000
+```
+
+### API Availability
+```bash
+# Bridge not running
+$ govee-artnet devices list
+Unable to connect to the bridge API at http://127.0.0.1:8000.
+Please check that the bridge is running and the URL is correct.
+You can verify with: curl http://127.0.0.1:8000/health
+```
+
+### Connection Errors
+```bash
+# Connection timeout
+$ govee-artnet status
+Request timeout: Timeout('Request timeout')
+The bridge at http://127.0.0.1:8000 is not responding
+```
+
+---
+
+## Testing
+
+- [x] Python syntax validation passed
+- [x] All changes are backward compatible
+- [x] Validation functions provide clear error messages
+- [x] Connection pooling configured appropriately
+- [x] API availability check prevents execution when API down
+- [x] Error messages tested for clarity
+
+---
+
+## Impact
+
+**Files Modified:** 1 (cli.py)  
+**Lines Added:** ~200  
+**Validation Functions:** 3 new  
+**Commands Enhanced:** 4 (devices add/update, mappings create/update)  
+**Error Handling:** 5+ improvements  
+
+---
+
+## Related
+
+- Part of CLI Framework Improvement Plan (Phase 4)
+- Focus: Security & Robustness
+- Estimated effort: 6-8 hours ✅ Completed
+
+---
+
+## Next Steps
+
+After Phase 4 merge:
+- **Phase 5:** Configuration & Documentation
+- **Phase 6:** Performance Optimizations
+- **Phase 7:** Advanced Features
