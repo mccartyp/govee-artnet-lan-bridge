@@ -76,7 +76,7 @@ class Config:
     device_poll_rate_per_second: float = 2.0
     device_poll_rate_burst: int = 5
     device_poll_offline_threshold: int = 2
-    device_poll_payload: str = '{"cmd":"devStatus"}'
+    device_poll_payload: str = '{"msg":{"cmd":"devStatus","data":{"account_topic":"reserve"}}}'
     device_poll_port: Optional[int] = None
     device_poll_backoff_base: float = 1.0
     device_poll_backoff_factor: float = 2.0
@@ -576,9 +576,11 @@ def _load_env_config(prefix: str) -> Dict[str, Any]:
 
 
 def _cli_overrides(args: argparse.Namespace) -> Dict[str, Any]:
-    mapping = {k: v for k, v in vars(args).items() if k not in ("config", "no_api_docs") and v is not None}
+    mapping = {k: v for k, v in vars(args).items() if k not in ("config", "no_api_docs", "device_poll_enabled") and v is not None}
     if args.no_api_docs:
         mapping["api_docs"] = False
+    if args.device_poll_enabled:
+        mapping["device_poll_enabled"] = True
     return mapping
 
 

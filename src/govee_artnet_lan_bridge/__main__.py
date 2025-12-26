@@ -17,6 +17,7 @@ from .artnet import ArtNetService
 from .discovery import DiscoveryService
 from .health import BackoffPolicy, HealthMonitor
 from .poller import DevicePollerService
+from .protocol import GoveeProtocolService
 from .sender import DeviceSenderService
 from .logging import configure_logging, get_logger
 
@@ -25,6 +26,7 @@ from .logging import configure_logging, get_logger
 class RunningServices:
     """Track running service instances for state capture."""
 
+    protocol: Optional[GoveeProtocolService] = None
     discovery: Optional[DiscoveryService] = None
     artnet: Optional[ArtNetService] = None
     sender: Optional[DeviceSenderService] = None
@@ -32,11 +34,32 @@ class RunningServices:
     api: Optional[ApiService] = None
 
 
+async def _protocol_loop(
+    stop_event: asyncio.Event,
+    config: Config,
+    services: Optional[RunningServices] = None,
+) -> None:
+    logger = get_logger("govee.protocol")
+    service = GoveeProtocolService(config)
+    if services is not None:
+        services.protocol = service
+    await service.start()
+    logger.info("Protocol service started")
+    try:
+        await stop_event.wait()
+    finally:
+        await service.stop()
+        if services is not None:
+            services.protocol = None
+        logger.info("Protocol service stopped")
+
+
 async def _discovery_loop(
     stop_event: asyncio.Event,
     config: Config,
     store: DeviceStore,
     health: HealthMonitor,
+    protocol: Optional[GoveeProtocolService] = None,
     services: Optional[RunningServices] = None,
 ) -> None:
     logger = get_logger("govee.discovery")
@@ -45,7 +68,8 @@ async def _discovery_loop(
         factor=config.device_backoff_factor,
         maximum=config.device_backoff_max,
     )
-    service = DiscoveryService(config, store)
+    proto_inst = protocol.protocol if protocol else None
+    service = DiscoveryService(config, store, protocol=proto_inst)
     if services is not None:
         services.discovery = service
     start_failures = 0
@@ -232,10 +256,12 @@ async def _poller_loop(
     config: Config,
     store: DeviceStore,
     health: HealthMonitor,
+    protocol: Optional[GoveeProtocolService] = None,
     services: Optional[RunningServices] = None,
 ) -> None:
     logger = get_logger("govee.poller")
-    service = DevicePollerService(config, store, health=health)
+    proto_inst = protocol.protocol if protocol else None
+    service = DevicePollerService(config, store, protocol=proto_inst, health=health)
     if services is not None:
         services.poller = service
     await service.start()
@@ -319,12 +345,20 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
         )
         services = RunningServices()
         stop_event = asyncio.Event()
+
+        # Start protocol service first (provides shared UDP listener)
+        protocol_task = asyncio.create_task(_protocol_loop(stop_event, current_config, services))
+        # Wait for protocol to be ready
+        await asyncio.sleep(0.1)
+        protocol_service = services.protocol
+
         tasks: List[asyncio.Task[None]] = [
-            asyncio.create_task(_discovery_loop(stop_event, current_config, store, health, services)),
+            protocol_task,
+            asyncio.create_task(_discovery_loop(stop_event, current_config, store, health, protocol_service, services)),
             asyncio.create_task(_rate_limit_monitor(stop_event, current_config)),
             asyncio.create_task(_artnet_loop(stop_event, current_config, store, health, services, artnet_state)),
             asyncio.create_task(_sender_loop(stop_event, current_config, store, health, services)),
-            asyncio.create_task(_poller_loop(stop_event, current_config, store, health, services)),
+            asyncio.create_task(_poller_loop(stop_event, current_config, store, health, protocol_service, services)),
             asyncio.create_task(_api_loop(stop_event, current_config, store, health, services, _request_reload)),
         ]
         logger.info(

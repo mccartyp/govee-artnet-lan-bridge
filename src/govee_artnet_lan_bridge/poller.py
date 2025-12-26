@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import socket
 import time
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .config import Config
 from .devices import DeviceStore, PollTarget
@@ -20,6 +19,7 @@ from .metrics import (
     record_device_poll_state_update,
     set_device_polling_enabled,
 )
+from .protocol import GoveeProtocol
 
 
 @dataclass(frozen=True)
@@ -49,10 +49,11 @@ class DevicePollerService:
     """Periodically poll devices for reachability and lightweight state."""
 
     def __init__(
-        self, config: Config, store: DeviceStore, health: Optional[HealthMonitor] = None
+        self, config: Config, store: DeviceStore, protocol: Optional[GoveeProtocol] = None, health: Optional[HealthMonitor] = None
     ) -> None:
         self.config = config
         self.store = store
+        self.protocol = protocol
         self.logger = get_logger("govee.poller")
         self._health = health or HealthMonitor(
             ("poller",),
@@ -71,6 +72,7 @@ class DevicePollerService:
         self._rate_last_refill = time.perf_counter()
         self._rate_lock = asyncio.Lock()
         self._batch_cursor = 0
+        self._pending_polls: Dict[str, asyncio.Future[Optional[Mapping[str, Any]]]] = {}
 
     async def start(self) -> None:
         if self._task or not self.config.device_poll_enabled:
@@ -78,6 +80,13 @@ class DevicePollerService:
             if not self.config.device_poll_enabled:
                 self.logger.info("Device polling disabled; skipping poller startup.")
             return
+
+        if not self.protocol:
+            raise RuntimeError("Device poller requires a GoveeProtocol instance")
+
+        # Register handler for devStatus responses
+        self.protocol.register_handler("devStatus", self._handle_poll_response)
+
         self._stop_event.clear()
         set_device_polling_enabled(True)
         self._task = asyncio.create_task(self._run())
@@ -154,17 +163,13 @@ class DevicePollerService:
         state: Optional[Mapping[str, Any]] = None
         try:
             await self._acquire_rate_limit()
-            response = await self._send_poll(target)
-            if response is None:
+            payload = await self._send_poll(target)
+            if payload is None:
                 await self.store.record_poll_failure(
                     target.id, self.config.device_poll_offline_threshold
                 )
                 status = "timeout"
                 return
-            try:
-                payload = json.loads(response)
-            except json.JSONDecodeError:
-                payload = None
             state = _extract_state(payload)
             if state:
                 record_device_poll_state_update()
@@ -207,26 +212,56 @@ class DevicePollerService:
                 )
             await self._sleep_with_stop(wait_seconds)
 
-    async def _send_poll(self, target: PollTarget) -> Optional[str]:
+    def _handle_poll_response(self, payload: Mapping[str, Any], addr: Tuple[str, int]) -> None:
+        """Handle devStatus responses from the shared protocol."""
+        # Extract device ID from response
+        device_id = None
+        if "msg" in payload and isinstance(payload["msg"], Mapping):
+            msg_data = payload["msg"].get("data")
+            if isinstance(msg_data, Mapping):
+                device_id = (
+                    msg_data.get("device")
+                    or msg_data.get("id")
+                    or msg_data.get("device_id")
+                )
+
+        if not device_id:
+            self.logger.debug("Poll response missing device ID", extra={"payload": payload, "from": addr})
+            return
+
+        # Find pending poll for this device
+        future = self._pending_polls.pop(str(device_id), None)
+        if not future or future.done():
+            self.logger.debug("No pending poll for device", extra={"device_id": device_id})
+            return
+
+        # Resolve the future with the payload
+        future.set_result(payload)
+
+    async def _send_poll(self, target: PollTarget) -> Optional[Mapping[str, Any]]:
+        """Send poll request and wait for response via protocol handler."""
+        if not self.protocol:
+            return None
+
         timeout = self.config.device_poll_timeout
         port = self.config.device_poll_port or self.config.device_default_port
 
-        def _send() -> Optional[str]:
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                    sock.settimeout(timeout)
-                    sent = sock.sendto(self._payload, (target.ip, port))
-                    if sent != len(self._payload):
-                        return None
-                    data, _ = sock.recvfrom(2048)
-                    return data.decode("utf-8")
-            except (OSError, TimeoutError):
-                return None
+        # Create future for this poll
+        future: asyncio.Future[Optional[Mapping[str, Any]]] = asyncio.Future()
+        self._pending_polls[target.id] = future
 
         try:
-            return await asyncio.wait_for(asyncio.to_thread(_send), timeout=timeout)
+            # Send poll request via protocol
+            self.protocol.send_to(self._payload, (target.ip, port))
+
+            # Wait for response with timeout
+            return await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError:
+            self._pending_polls.pop(target.id, None)
             return None
+        except Exception:
+            self._pending_polls.pop(target.id, None)
+            raise
 
     async def _sleep_with_stop(self, delay: float) -> None:
         if delay <= 0:
