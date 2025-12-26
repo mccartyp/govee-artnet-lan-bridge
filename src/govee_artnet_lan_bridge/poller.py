@@ -32,20 +32,134 @@ class PollResult:
 
 
 def _extract_state(payload: Any) -> Optional[Mapping[str, Any]]:
-    """Attempt to extract a minimal state snapshot from a poll response."""
+    """Attempt to extract and normalize a state snapshot from a poll response."""
 
     if not isinstance(payload, Mapping):
         return None
-    envelope = payload
-    if "msg" in payload and isinstance(payload["msg"], Mapping):
-        envelope = payload["msg"]
-    data = envelope.get("data") if isinstance(envelope.get("data"), Mapping) else envelope
-    state = data.get("state") if isinstance(data.get("state"), Mapping) else data
-    if not isinstance(state, Mapping):
+
+    def _coerce_int(value: Any) -> Optional[int]:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _coerce_number(value: Any) -> Optional[float]:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _normalize_power(value: Any) -> Optional[bool]:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(int(value))
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"on", "1", "true"}:
+                return True
+            if lowered in {"off", "0", "false"}:
+                return False
         return None
-    keys = ("power", "brightness", "color")
-    result = {key: value for key, value in state.items() if key in keys}
-    return result or None
+
+    def _normalize_color(value: Any) -> Optional[Dict[str, int]]:
+        if not isinstance(value, Mapping):
+            return None
+        channels = {}
+        for channel in ("r", "g", "b", "w"):
+            coerced = _coerce_int(value.get(channel))
+            if coerced is not None:
+                channels[channel] = coerced
+        return channels or None
+
+    def _pop_first(keys: Tuple[str, ...], source: Dict[str, Any]) -> Any:
+        for key in keys:
+            if key in source:
+                return source.pop(key)
+        return None
+
+    envelope = payload["msg"] if isinstance(payload.get("msg"), Mapping) else payload
+    data = envelope.get("data") if isinstance(envelope.get("data"), Mapping) else envelope
+    if not isinstance(data, Mapping):
+        return None
+
+    merged: Dict[str, Any] = {}
+    merged.update({k: v for k, v in data.items() if k not in {"state", "property", "properties"}})
+
+    # Merge nested state/property blocks commonly present in devStatus responses
+    for key in ("state", "property", "properties"):
+        nested = data.get(key)
+        if isinstance(nested, Mapping):
+            merged.update(nested)
+        elif isinstance(nested, list):
+            for entry in nested:
+                if isinstance(entry, Mapping):
+                    merged.update(entry)
+
+    normalized: Dict[str, Any] = {}
+
+    device_id = _pop_first(("device", "device_id", "id"), merged)
+    if device_id is not None:
+        normalized["device"] = str(device_id)
+
+    model = _pop_first(("model", "model_number", "sku"), merged)
+    if model is not None:
+        normalized["model"] = str(model)
+
+    firmware = _pop_first(("firmware", "fwVersion", "fw_version", "version"), merged)
+    if firmware is not None:
+        normalized["firmware"] = str(firmware)
+
+    power = _normalize_power(_pop_first(("power", "powerState", "onOff", "switch"), merged))
+    if power is not None:
+        normalized["power"] = power
+
+    brightness = _coerce_int(_pop_first(("brightness", "bright", "level"), merged))
+    if brightness is not None:
+        normalized["brightness"] = brightness
+
+    color_temp = _coerce_int(
+        _pop_first(
+            (
+                "color_temperature",
+                "colorTemp",
+                "colorTem",
+                "colorTempInKelvin",
+                "colorTemInKelvin",
+                "color_temp",
+                "ct",
+            ),
+            merged,
+        )
+    )
+    if color_temp is not None:
+        normalized["color_temperature"] = color_temp
+
+    temperature = _coerce_number(_pop_first(("temperature", "temp", "tem"), merged))
+    if temperature is not None:
+        normalized["temperature"] = temperature
+
+    mode = _pop_first(("mode", "workMode", "scene", "sceneId", "sceneNum"), merged)
+    if mode is not None:
+        normalized["mode"] = mode
+
+    effects = _pop_first(("effects", "lightingEffects", "sceneMode", "scene_modes"), merged)
+    if effects is not None:
+        normalized["effects"] = effects
+
+    color = _normalize_color(_pop_first(("color", "colors", "rgb"), merged))
+    if color is not None:
+        normalized["color"] = color
+
+    ext = _pop_first(("ext",), merged)
+    if isinstance(ext, Mapping):
+        normalized["ext"] = ext
+
+    # Preserve any remaining fields that we haven't normalized explicitly
+    for key, value in merged.items():
+        normalized[key] = value
+
+    return normalized or None
 
 
 class DevicePollerService:

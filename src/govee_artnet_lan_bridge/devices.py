@@ -1976,7 +1976,7 @@ class DeviceStore:
                 poll_failure_count = 0,
                 poll_last_success_at = ?,
                 poll_last_failure_at = NULL,
-                poll_state = COALESCE(?, poll_state),
+                poll_state = ?,
                 poll_state_updated_at = CASE
                     WHEN ? IS NOT NULL THEN ?
                     ELSE poll_state_updated_at

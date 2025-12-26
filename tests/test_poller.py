@@ -58,7 +58,25 @@ async def test_poller_marks_device_online_with_state(tmp_path: Path) -> None:
 
     # Create protocol and responder
     protocol = GoveeProtocol(config, loop)
-    responder_payload = {"msg": {"cmd": "devStatus", "data": {"device": "poll-ok", "state": {"brightness": 42}}}}
+    responder_payload = {
+        "msg": {
+            "cmd": "devStatus",
+            "data": {
+                "device": "poll-ok",
+                "state": {
+                    "onOff": 1,
+                    "brightness": 42,
+                    "color": {"r": 12, "g": 34, "b": 56, "w": 78},
+                    "colorTemp": 3200,
+                    "temp": 23.5,
+                    "workMode": "music",
+                    "lightingEffects": ["sunrise"],
+                    "ext": {"seg": 1},
+                },
+                "property": [{"fwVersion": "1.2.3"}],
+            },
+        }
+    }
     responder = _Responder(responder_payload)
 
     # Start protocol on reply_port
@@ -84,7 +102,18 @@ async def test_poller_marks_device_online_with_state(tmp_path: Path) -> None:
     assert device is not None
     assert device.offline is False
     assert device.poll_last_success_at is not None
-    assert device.poll_state == {"brightness": 42}
+    assert device.poll_state == {
+        "device": "poll-ok",
+        "firmware": "1.2.3",
+        "power": True,
+        "brightness": 42,
+        "color_temperature": 3200,
+        "temperature": 23.5,
+        "mode": "music",
+        "effects": ["sunrise"],
+        "color": {"r": 12, "g": 34, "b": 56, "w": 78},
+        "ext": {"seg": 1},
+    }
 
 
 @pytest.mark.asyncio
