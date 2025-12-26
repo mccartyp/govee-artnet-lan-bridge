@@ -238,9 +238,18 @@ async def _api_loop(
     health: HealthMonitor,
     services: Optional[RunningServices] = None,
     reload_callback: Optional[Callable[[], Awaitable[None]]] = None,
+    log_buffer: Optional[Any] = None,
+    event_bus: Optional[Any] = None,
 ) -> None:
     logger = get_logger("govee.api")
-    service = ApiService(config, store, health=health, reload_callback=reload_callback)
+    service = ApiService(
+        config,
+        store,
+        health=health,
+        reload_callback=reload_callback,
+        log_buffer=log_buffer,
+        event_bus=event_bus,
+    )
     if services is not None:
         services.api = service
     await service.start()
@@ -337,6 +346,24 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
     await store.start()
     await store.refresh_metrics()
 
+    # Initialize log buffer and event_bus
+    log_buffer = None
+    event_bus = None
+    if config.log_buffer_enabled:
+        from .log_buffer import LogBuffer
+        log_buffer = LogBuffer(max_size=config.log_buffer_size)
+        logger.info("Log buffer enabled", extra={"size": config.log_buffer_size})
+
+    if config.event_bus_enabled:
+        from .events import EventBus
+        event_bus = EventBus()
+        logger.info("Event bus enabled")
+
+    # Reconfigure logging with log buffer
+    if log_buffer is not None:
+        configure_logging(config, log_buffer)
+        logger = get_logger("govee")  # Get logger again after reconfiguration
+
     def _request_shutdown(sig: Optional[int] = None) -> None:
         if not shutdown_event.is_set():
             logger.warning("Shutdown requested", extra={"signal": sig})
@@ -379,7 +406,7 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
             asyncio.create_task(_artnet_loop(stop_event, current_config, store, health, services, artnet_state)),
             asyncio.create_task(_sender_loop(stop_event, current_config, store, health, services)),
             asyncio.create_task(_poller_loop(stop_event, current_config, store, health, protocol_service, services)),
-            asyncio.create_task(_api_loop(stop_event, current_config, store, health, services, _request_reload)),
+            asyncio.create_task(_api_loop(stop_event, current_config, store, health, services, _request_reload, log_buffer, event_bus)),
         ]
         logger.info(
             "Bridge services started",
@@ -418,7 +445,8 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
             if artnet_service is not None:
                 artnet_state = artnet_service.snapshot_last_payloads()
             current_config = new_config
-            configure_logging(current_config)
+            configure_logging(current_config, log_buffer)
+            logger = get_logger("govee")  # Get logger again after reconfiguration
             logger.info("Configuration reloaded", extra={"config": current_config.logging_dict()})
             break
 

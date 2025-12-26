@@ -54,6 +54,84 @@ class JsonFormatter(logging.Formatter):
 _REDACT_KEYS = {"authorization", "x-api-key", "cookie"}
 
 
+class BufferHandler(logging.Handler):
+    """Logging handler that feeds log entries to a LogBuffer."""
+
+    def __init__(self, log_buffer: Any) -> None:
+        """
+        Initialize buffer handler.
+
+        Args:
+            log_buffer: LogBuffer instance to feed log entries to
+        """
+        super().__init__()
+        self.log_buffer = log_buffer
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """
+        Emit a log record to the buffer.
+
+        Args:
+            record: Log record to emit
+        """
+        try:
+            # Import here to avoid circular dependency
+            from .log_buffer import LogEntry
+            import asyncio
+
+            # Build log entry data
+            entry_data = {
+                "ts": datetime.now(tz=timezone.utc).isoformat(),
+                "level": record.levelname,
+                "logger": record.name,
+                "message": record.getMessage(),
+            }
+
+            # Add exception info if present
+            if record.exc_info:
+                entry_data["exc_info"] = self.format(record)
+
+            # Add extra fields
+            for key, value in record.__dict__.items():
+                if key.startswith("_") or key in {
+                    "name",
+                    "levelno",
+                    "pathname",
+                    "filename",
+                    "module",
+                    "exc_info",
+                    "exc_text",
+                    "stack_info",
+                    "lineno",
+                    "msg",
+                    "args",
+                    "created",
+                    "msecs",
+                    "relativeCreated",
+                    "thread",
+                    "threadName",
+                    "processName",
+                    "process",
+                    "levelname",
+                }:
+                    continue
+                entry_data[key] = value
+
+            # Create log entry and append to buffer
+            entry = LogEntry.from_record(entry_data)
+
+            # Try to add to buffer asynchronously
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.create_task(self.log_buffer.append(entry))
+            except RuntimeError:
+                # No event loop running, skip buffer update
+                pass
+        except Exception:
+            # Silently ignore errors to prevent logging from breaking the app
+            pass
+
+
 def redact_mapping(values: Mapping[str, Any], extra_keys: Iterable[str] = ()) -> Dict[str, Any]:
     """Return a shallow copy of `values` with sensitive keys redacted."""
 
@@ -67,9 +145,14 @@ def redact_mapping(values: Mapping[str, Any], extra_keys: Iterable[str] = ()) ->
     return redacted
 
 
-def configure_logging(config: Config) -> None:
-    """Configure global logging based on the provided config."""
+def configure_logging(config: Config, log_buffer: Any = None) -> None:
+    """
+    Configure global logging based on the provided config.
 
+    Args:
+        config: Configuration object
+        log_buffer: Optional LogBuffer instance to attach as a handler
+    """
     level = config.log_level.upper()
     discovery_level = (config.discovery_log_level or config.log_level).upper()
     artnet_level = (config.artnet_log_level or config.log_level).upper()
@@ -164,6 +247,29 @@ def configure_logging(config: Config) -> None:
             "root": {"level": level, "handlers": ["console"]},
         }
     )
+
+    # Add buffer handler to all govee loggers if provided
+    if log_buffer is not None and config.log_buffer_enabled:
+        buffer_handler = BufferHandler(log_buffer)
+        buffer_handler.setLevel(level)
+
+        # Add to all govee loggers
+        for logger_name in [
+            "govee",
+            "govee.metrics",
+            "govee.discovery",
+            "govee.rate_limit",
+            "govee.artnet",
+            "govee.artnet.protocol",
+            "govee.artnet.mapping",
+            "govee.devices",
+            "govee.api",
+            "govee.api.middleware",
+            "govee.discovery.protocol",
+            "govee.sender",
+        ]:
+            logger = logging.getLogger(logger_name)
+            logger.addHandler(buffer_handler)
 
 
 def get_logger(name: str) -> logging.Logger:

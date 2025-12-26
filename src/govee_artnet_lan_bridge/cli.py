@@ -72,15 +72,29 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output",
-        choices=["json", "yaml"],
+        choices=["json", "yaml", "table"],
         default=_env("OUTPUT", "json"),
         help=(
             f"Output format for responses (env: {ENV_PREFIX}OUTPUT). "
-            "Defaults to 'json'; use 'yaml' for YAML output."
+            "Defaults to 'json'; use 'yaml' for YAML output, 'table' for formatted tables."
         ),
     )
+    parser.add_argument(
+        "--shell",
+        "-i",
+        action="store_true",
+        help="Start interactive shell mode",
+    )
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=False)
+
+    # Add shell command
+    shell_parser = subparsers.add_parser(
+        "shell",
+        help="Start interactive shell mode",
+        description="Launch an interactive shell for managing the bridge",
+    )
+    shell_parser.set_defaults(func=lambda config, client, args: None)  # Handled specially
 
     _add_status_commands(subparsers)
     _add_device_commands(subparsers)
@@ -731,6 +745,18 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
 
     try:
         config = _load_config(args)
+
+        # Check for shell mode
+        if args.shell or args.command == "shell":
+            from .shell import run_shell
+            run_shell(config)
+            return
+
+        # Check if command was provided
+        if not args.command:
+            parser.print_help()
+            sys.exit(1)
+
         client = _build_client(config)
         with client:
             func: Callable[[ClientConfig, httpx.Client, argparse.Namespace], None] = args.func

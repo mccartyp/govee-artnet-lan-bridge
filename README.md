@@ -97,6 +97,32 @@ govee-artnet mappings create \
 
 Point your lighting software at the bridge server's IP address and start controlling your lights!
 
+## Interactive CLI Shell
+
+The `govee-artnet` CLI now includes a powerful interactive shell mode with real-time monitoring and log viewing:
+
+```bash
+# Start interactive shell
+govee-artnet shell
+
+# Shell features:
+govee> logs tail                    # Tail logs in real-time (like tail -f)
+govee> logs search "error"          # Search through logs
+govee> monitor dashboard            # Live system dashboard
+govee> devices watch                # Watch device state changes
+govee> devices list                 # All existing CLI commands work!
+```
+
+**Key Shell Features:**
+- 📊 **Real-time monitoring** - Live dashboards for devices, ArtNet, queue, and health
+- 📝 **Log viewing & tailing** - View, search, and stream logs with filtering
+- ⌨️  **Command history & autocomplete** - Tab completion and persistent history
+- 🔖 **Bookmarks & aliases** - Save frequently used devices and commands
+- 📜 **Scripting support** - Execute batch commands from files
+- 🎨 **Rich formatting** - Beautiful tables and colored output
+
+See the **[CLI Shell Guide](CLI_SHELL_README.md)** for complete documentation and examples.
+
 ## Available Templates
 
 | Template | Channels | Layout | Use Case |
@@ -205,6 +231,7 @@ See [USAGE.md](USAGE.md) for detailed configuration options.
 
 - **[INSTALL.md](INSTALL.md)** - Installation instructions, systemd setup, and deployment options
 - **[USAGE.md](USAGE.md)** - Detailed usage guide, mapping strategies, and troubleshooting
+- **[CLI Shell Guide](CLI_SHELL_README.md)** - Interactive shell features, log viewing, and real-time monitoring
 - **[Configuration Guide](USAGE.md#configuration)** - Server configuration options
 - **[Template Reference](USAGE.md#available-templates)** - Complete template documentation
 
