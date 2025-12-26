@@ -2,6 +2,48 @@
 
 The `govee-artnet` CLI now includes a powerful interactive shell mode that provides real-time monitoring, log viewing, and comprehensive management capabilities.
 
+## Features Overview
+
+The interactive shell includes the following major features (developed across 5 phases):
+
+### Phase 1: Core Shell & Log Viewing
+- ✅ Interactive shell with command history
+- ✅ Log buffer with in-memory storage (10,000 entries)
+- ✅ Log viewing with filters (level, logger, lines)
+- ✅ Log search with pattern matching and regex
+- ✅ Event bus for pub/sub system events
+- ✅ REST API endpoints for logs (`/logs`, `/logs/search`)
+
+### Phase 2: WebSocket Streaming & Real-time Monitoring
+- ✅ WebSocket log streaming (`/logs/stream`)
+- ✅ WebSocket event streaming (`/events/stream`)
+- ✅ Real-time log tailing (`logs tail`)
+- ✅ Interactive monitoring commands (`monitor dashboard`, `monitor stats`)
+- ✅ Client-side log filtering
+
+### Phase 3: Enhanced UI with Rich Formatting
+- ✅ Tab autocomplete for all commands
+- ✅ Persistent command history (`~/.govee_artnet/shell_history`)
+- ✅ Rich formatted tables with colors and borders
+- ✅ Enhanced help system with examples
+- ✅ Loading spinners and status indicators
+- ✅ Color-coded output (green/red status, warnings, errors)
+- ✅ Table output format option
+
+### Phase 4: Advanced Productivity Features
+- ✅ **Bookmarks**: Save device IDs and server URLs
+- ✅ **Aliases**: Create command shortcuts
+- ✅ **Watch Mode**: Continuous monitoring with auto-refresh
+- ✅ **Batch Execution**: Run commands from files
+- ✅ **Session Management**: Save and restore shell configuration
+
+### Phase 5: Polish & User Experience
+- ✅ Version command with feature list
+- ✅ Tips command with helpful hints
+- ✅ Improved welcome message with quick tips
+- ✅ Better error handling and user feedback
+- ✅ Comprehensive documentation
+
 ## Table of Contents
 
 - [Getting Started](#getting-started)
