@@ -1008,7 +1008,7 @@ class DeviceStore:
                 _serialize_fields(new_fields),
             ),
         )
-        self._set_configured_state(conn, device_id, True, commit=False)
+        self._refresh_configured_from_mappings(conn, device_id, commit=False)
         if commit:
             conn.commit()
         mapping_id = cursor.lastrowid
@@ -1225,7 +1225,7 @@ class DeviceStore:
         )
         if existing["device_id"] != new_device_id:
             self._refresh_configured_from_mappings(conn, existing["device_id"], commit=False)
-        self._set_configured_state(conn, new_device_id, True, commit=False)
+        self._refresh_configured_from_mappings(conn, new_device_id, commit=False)
         conn.commit()
         updated = conn.execute(
             """
@@ -1281,6 +1281,17 @@ class DeviceStore:
         if cursor.rowcount:
             self.logger.info("Deleted mapping", extra={"mapping_id": mapping_id})
         return cursor.rowcount > 0
+
+    def _mapping_count(
+        self, conn: sqlite3.Connection, *, device_id: str, universe: Optional[int] = None
+    ) -> int:
+        query = "SELECT COUNT(1) FROM mappings WHERE device_id = ?"
+        params: Tuple[Any, ...] = (device_id,)
+        if universe is not None:
+            query += " AND universe = ?"
+            params += (universe,)
+        row = conn.execute(query, params).fetchone()
+        return int(row[0]) if row else 0
 
     def _ensure_no_overlap(
         self,
@@ -1392,13 +1403,15 @@ class DeviceStore:
             conn.commit()
 
     def _refresh_configured_from_mappings(
-        self, conn: sqlite3.Connection, device_id: str, *, commit: bool = False
+        self,
+        conn: sqlite3.Connection,
+        device_id: str,
+        *,
+        universe: Optional[int] = None,
+        commit: bool = False,
     ) -> None:
-        row = conn.execute(
-            "SELECT 1 FROM mappings WHERE device_id = ? LIMIT 1",
-            (device_id,),
-        ).fetchone()
-        self._set_configured_state(conn, device_id, row is not None, commit=commit)
+        count = self._mapping_count(conn, device_id=device_id, universe=universe)
+        self._set_configured_state(conn, device_id, count > 0, commit=commit)
 
     async def update_capabilities(
         self, device_id: str, capabilities: Mapping[str, Any]
