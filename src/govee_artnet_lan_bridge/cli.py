@@ -121,7 +121,7 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
         help="List devices (GET /devices -> array of device objects)",
         description=(
             "Shows discovered + manual devices. Output includes capabilities such as "
-            "supports_brightness/supports_color and current enabled state."
+            "brightness/color and current enabled state."
         ),
     )
     list_cmd.set_defaults(func=_cmd_devices_list)
@@ -132,7 +132,7 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
         description=(
             "Creates a manual device entry. Example payload: "
             '`{"id": "AA:BB", "ip": "192.168.1.10", "model": "H6160", '
-            '"capabilities": {"supports_color": true}}`. Existing discovery entries are untouched.'
+            '"capabilities": {"color": true, "brightness": true}}`. Existing discovery entries are untouched.'
         ),
     )
     add.add_argument("--id", required=True, help="Device identifier (e.g., MAC address)")
@@ -143,7 +143,7 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
         "--capabilities",
         help=(
             "JSON string describing capabilities (e.g., "
-            '\'{"supports_color":true,"supports_brightness":true}\').'
+            '\'{"color":true,"brightness":true}\').'
         ),
     )
     add.add_argument(
