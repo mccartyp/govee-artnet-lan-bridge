@@ -642,7 +642,9 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
     return replace(config, **data)
 
 
-def _coerce_path(value: Any) -> Path:
+def _coerce_path(value: Any) -> Optional[Path]:
+    if value is None:
+        return None
     return value if isinstance(value, Path) else Path(str(value)).expanduser()
 
 
