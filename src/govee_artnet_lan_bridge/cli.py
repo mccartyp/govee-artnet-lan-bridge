@@ -462,6 +462,15 @@ def _load_config(args: argparse.Namespace) -> ClientConfig:
 
 
 def _build_client(config: ClientConfig) -> httpx.Client:
+    """
+    Build HTTP client with connection pooling and retry-friendly configuration.
+
+    Args:
+        config: Client configuration
+
+    Returns:
+        Configured httpx.Client with connection pooling
+    """
     headers: MutableMapping[str, str] = {}
     if config.api_key:
         headers["X-API-Key"] = config.api_key
@@ -469,7 +478,26 @@ def _build_client(config: ClientConfig) -> httpx.Client:
     if config.api_bearer_token:
         headers["Authorization"] = f"Bearer {config.api_bearer_token}"
 
-    return httpx.Client(base_url=config.server_url, headers=headers, timeout=config.timeout)
+    # Connection pooling limits for better resource management
+    limits = httpx.Limits(
+        max_connections=10,  # Maximum total connections
+        max_keepalive_connections=5,  # Maximum idle connections to keep alive
+        keepalive_expiry=30.0,  # Keepalive connections expire after 30s
+    )
+
+    # Retry-friendly transport (httpx doesn't have built-in retries, but we can configure transport)
+    transport = httpx.HTTPTransport(
+        retries=3,  # Retry failed connections up to 3 times
+        limits=limits,
+    )
+
+    return httpx.Client(
+        base_url=config.server_url,
+        headers=headers,
+        timeout=config.timeout,
+        transport=transport,
+        follow_redirects=True,  # Follow redirects automatically
+    )
 
 
 def _print_output(data: Any, output: str) -> None:
@@ -648,6 +676,9 @@ def _cmd_devices_list(config: ClientConfig, client: httpx.Client, args: argparse
 
 def _cmd_devices_add(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
     capabilities = _parse_json_arg(args.capabilities) if args.capabilities else None
+    if capabilities is not None:
+        capabilities = _validate_capabilities(capabilities)
+
     enabled: Optional[bool]
     if args.disabled:
         enabled = False
@@ -655,7 +686,7 @@ def _cmd_devices_add(config: ClientConfig, client: httpx.Client, args: argparse.
         enabled = True
     else:
         enabled = None
-    payload: Mapping[str, Any] = {
+    payload: MutableMapping[str, Any] = {
         "id": args.id,
         "ip": args.ip,
         "description": args.description,
@@ -677,6 +708,8 @@ def _cmd_devices_add(config: ClientConfig, client: httpx.Client, args: argparse.
         payload["segment_count"] = args.segment_count
     if enabled is not None:
         payload["enabled"] = enabled
+
+    _validate_device_payload(payload, "create")
     data = _handle_response(client.post("/devices", json=payload))
     _print_output(data, config.output)
 
@@ -702,13 +735,16 @@ def _cmd_devices_update(config: ClientConfig, client: httpx.Client, args: argpar
     if args.segment_count is not None:
         payload["segment_count"] = args.segment_count
     if args.capabilities is not None:
-        payload["capabilities"] = _parse_json_arg(args.capabilities)
+        capabilities = _parse_json_arg(args.capabilities)
+        payload["capabilities"] = _validate_capabilities(capabilities)
     if args.enable:
         payload["enabled"] = True
     if args.disable:
         payload["enabled"] = False
     if not payload:
         raise CliError("No updates provided")
+
+    _validate_device_payload(payload, "update")
     data = _handle_response(client.patch(f"/devices/{args.device_id}", json=payload))
     _print_output(data, config.output)
 
@@ -798,6 +834,8 @@ def _cmd_mappings_create(config: ClientConfig, client: httpx.Client, args: argpa
                 "field": args.field,
             }
         )
+
+    _validate_mapping_payload(payload, "create")
     data = _handle_response(client.post("/mappings", json=payload))
     _print_output(data, config.output)
 
@@ -822,6 +860,8 @@ def _cmd_mappings_update(config: ClientConfig, client: httpx.Client, args: argpa
         payload["allow_overlap"] = False
     if not payload:
         raise CliError("No updates provided")
+
+    _validate_mapping_payload(payload, "update")
     data = _handle_response(
         client.put(f"/mappings/{args.mapping_id}", json=payload)
     )
@@ -842,7 +882,139 @@ def _parse_json_arg(value: str) -> Any:
     try:
         return json.loads(value)
     except json.JSONDecodeError as exc:
-        raise CliError("Failed to parse JSON argument") from exc
+        raise CliError(f"Failed to parse JSON argument: {exc.msg} at position {exc.pos}") from exc
+
+
+def _validate_capabilities(capabilities: Any) -> dict[str, Any]:
+    """
+    Validate capabilities JSON structure.
+
+    Args:
+        capabilities: Capabilities data to validate
+
+    Returns:
+        Validated capabilities dictionary
+
+    Raises:
+        CliError: If capabilities structure is invalid
+    """
+    if not isinstance(capabilities, dict):
+        raise CliError("Capabilities must be a JSON object (dictionary)")
+
+    valid_keys = {"color", "brightness", "temperature"}
+    for key in capabilities.keys():
+        if key not in valid_keys:
+            raise CliError(
+                f"Invalid capability key '{key}'. Valid keys: {', '.join(sorted(valid_keys))}"
+            )
+
+    for key, value in capabilities.items():
+        if not isinstance(value, bool):
+            raise CliError(f"Capability '{key}' must be a boolean value (true/false)")
+
+    return capabilities
+
+
+def _validate_device_payload(payload: dict[str, Any], operation: str = "create") -> None:
+    """
+    Validate device payload structure.
+
+    Args:
+        payload: Device payload to validate
+        operation: Operation type ("create" or "update")
+
+    Raises:
+        CliError: If payload is invalid
+    """
+    # Required fields for create operation
+    if operation == "create":
+        if "id" not in payload or not payload["id"]:
+            raise CliError("Device ID is required")
+        if "ip" not in payload or not payload["ip"]:
+            raise CliError("Device IP address is required")
+
+    # Validate IP address format if present
+    if "ip" in payload:
+        ip = payload["ip"]
+        parts = ip.split(".")
+        if len(parts) != 4:
+            raise CliError(f"Invalid IP address format: {ip}")
+        try:
+            for part in parts:
+                num = int(part)
+                if num < 0 or num > 255:
+                    raise CliError(f"Invalid IP address: {ip} (octet out of range)")
+        except ValueError:
+            raise CliError(f"Invalid IP address: {ip}")
+
+    # Validate numeric fields
+    if "length_meters" in payload and payload["length_meters"] is not None:
+        if payload["length_meters"] <= 0:
+            raise CliError("Device length must be greater than 0")
+
+    if "led_count" in payload and payload["led_count"] is not None:
+        if payload["led_count"] <= 0:
+            raise CliError("LED count must be greater than 0")
+
+    if "led_density_per_meter" in payload and payload["led_density_per_meter"] is not None:
+        if payload["led_density_per_meter"] <= 0:
+            raise CliError("LED density must be greater than 0")
+
+    if "segment_count" in payload and payload["segment_count"] is not None:
+        if payload["segment_count"] <= 0:
+            raise CliError("Segment count must be greater than 0")
+
+
+def _validate_mapping_payload(payload: dict[str, Any], operation: str = "create") -> None:
+    """
+    Validate mapping payload structure.
+
+    Args:
+        payload: Mapping payload to validate
+        operation: Operation type ("create" or "update")
+
+    Raises:
+        CliError: If payload is invalid
+    """
+    # Required fields for create operation
+    if operation == "create":
+        if "device_id" not in payload or not payload["device_id"]:
+            raise CliError("Device ID is required for mapping")
+        if "universe" not in payload or payload["universe"] is None:
+            raise CliError("Universe is required for mapping")
+
+    # Validate universe
+    if "universe" in payload and payload["universe"] is not None:
+        universe = payload["universe"]
+        if not isinstance(universe, int) or universe < 0 or universe > 32767:
+            raise CliError(f"Universe must be between 0 and 32767, got: {universe}")
+
+    # Validate channel
+    if "channel" in payload and payload["channel"] is not None:
+        channel = payload["channel"]
+        if not isinstance(channel, int) or channel < 1 or channel > 512:
+            raise CliError(f"Channel must be between 1 and 512, got: {channel}")
+
+    # Validate start_channel
+    if "start_channel" in payload and payload["start_channel"] is not None:
+        start_channel = payload["start_channel"]
+        if not isinstance(start_channel, int) or start_channel < 1 or start_channel > 512:
+            raise CliError(f"Start channel must be between 1 and 512, got: {start_channel}")
+
+    # Validate length
+    if "length" in payload and payload["length"] is not None:
+        length = payload["length"]
+        if not isinstance(length, int) or length < 1:
+            raise CliError(f"Length must be at least 1, got: {length}")
+
+    # Validate template if present
+    if "template" in payload:
+        valid_templates = {"rgb", "rgbw", "brightness", "temperature"}
+        template = payload["template"]
+        if template not in valid_templates:
+            raise CliError(
+                f"Invalid template '{template}'. Valid templates: {', '.join(sorted(valid_templates))}"
+            )
 
 
 def _validate_byte_range(name: str, value: int) -> None:
@@ -859,6 +1031,42 @@ def _normalize_color_hex(value: str) -> str:
     if len(normalized) != 6 or any(ch not in string.hexdigits for ch in normalized):
         raise CliError("Color must be a hex value like ff3366 or #ff3366.")
     return normalized.lower()
+
+
+def _check_api_available(client: httpx.Client) -> bool:
+    """
+    Check if the API is available and responding.
+
+    Args:
+        client: HTTP client
+
+    Returns:
+        True if API is available, False otherwise
+    """
+    try:
+        response = client.get("/health", timeout=5.0)
+        return response.status_code == 200
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError):
+        return False
+
+
+def _ensure_api_available(client: httpx.Client, config: ClientConfig) -> None:
+    """
+    Ensure API is available, raise friendly error if not.
+
+    Args:
+        client: HTTP client
+        config: Client configuration
+
+    Raises:
+        CliError: If API is not available
+    """
+    if not _check_api_available(client):
+        raise CliError(
+            f"Unable to connect to the bridge API at {config.server_url}. "
+            "Please check that the bridge is running and the URL is correct. "
+            "You can verify with: curl {config.server_url}/health"
+        )
 
 
 def main(argv: Optional[Iterable[str]] = None) -> None:
@@ -881,13 +1089,22 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
 
         client = _build_client(config)
         with client:
+            # Check API availability before executing commands (except health check itself)
+            if args.command != "health":
+                _ensure_api_available(client, config)
+
             func: Callable[[ClientConfig, httpx.Client, argparse.Namespace], None] = args.func
             func(config, client, args)
     except CliError as exc:  # pragma: no cover - CLI feedback path
         sys.stderr.write(f"Error: {exc}\n")
         sys.exit(1)
     except httpx.RequestError as exc:  # pragma: no cover - CLI feedback path
-        sys.stderr.write(f"HTTP request failed: {exc}\n")
+        sys.stderr.write(f"Connection error: {exc}\n")
+        sys.stderr.write(f"Make sure the bridge is running at {config.server_url}\n")
+        sys.exit(1)
+    except httpx.TimeoutException as exc:  # pragma: no cover - CLI feedback path
+        sys.stderr.write(f"Request timeout: {exc}\n")
+        sys.stderr.write(f"The bridge at {config.server_url} is not responding\n")
         sys.exit(1)
 
 
