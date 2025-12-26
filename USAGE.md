@@ -77,6 +77,43 @@ govee-artnet devices list
 govee-artnet devices list --output yaml
 ```
 
+### Interactive Shell Mode
+
+For an enhanced user experience with real-time monitoring and log viewing, use the interactive shell:
+
+```bash
+# Start interactive shell
+govee-artnet shell
+```
+
+The shell provides:
+- **Real-time monitoring** - Live dashboards for system metrics
+- **Log viewing and tailing** - View and stream logs with filtering
+- **Command history** - Tab completion and persistent history
+- **Bookmarks and aliases** - Save frequently used devices and commands
+- **Batch execution** - Run commands from scripts
+- **Enhanced output** - Beautiful formatted tables
+
+See the **[CLI Shell Guide](CLI_SHELL_README.md)** for complete shell documentation, configuration options, and examples.
+
+#### Shell Configuration
+
+Create a configuration file at `~/.govee_artnet/shell_config.toml`:
+
+```toml
+[shell]
+default_output = "table"    # Default output format
+history_size = 1000         # Command history size
+
+[connection]
+server_url = "http://127.0.0.1:8000"  # Default server URL
+timeout = 10.0                        # Request timeout
+
+[monitoring]
+watch_interval = 2.0        # Default watch interval (seconds)
+log_lines = 50              # Default log lines to show
+```
+
 ## DMX Channel Mapping
 
 The bridge maps ArtNet DMX channels to Govee device controls. Each device can be mapped to one or more DMX channels to control brightness, color (RGB), and white channels.

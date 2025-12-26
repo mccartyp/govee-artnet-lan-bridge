@@ -61,6 +61,22 @@ class GoveeShell:
         history_file = self.data_dir / "shell_history"
         self.bookmarks_file = self.data_dir / "bookmarks.json"
         self.aliases_file = self.data_dir / "aliases.json"
+        self.config_file = self.data_dir / "shell_config.toml"
+
+        # Load shell configuration
+        self.shell_config = self._load_shell_config()
+
+        # Apply default output format from config if not already set
+        default_output = self.shell_config.get("shell", {}).get("default_output", config.output)
+        if config.output == "json" and default_output != "json":
+            # Override default output if user hasn't specified one
+            self.config = ClientConfig(
+                server_url=config.server_url,
+                api_key=config.api_key,
+                api_bearer_token=config.api_bearer_token,
+                output=default_output,
+                timeout=config.timeout,
+            )
 
         # Load bookmarks and aliases
         self.bookmarks = self._load_json(self.bookmarks_file, {})
@@ -121,6 +137,58 @@ class GoveeShell:
                 json.dump(data, f, indent=2)
         except Exception as exc:
             self.console.print(f"[red]Error saving to {file_path}: {exc}[/]")
+
+    def _load_shell_config(self) -> dict[str, Any]:
+        """
+        Load shell configuration from TOML file.
+
+        Returns:
+            Configuration dictionary with defaults
+        """
+        defaults = {
+            "shell": {
+                "default_output": "table",
+                "history_size": 1000,
+                "autocomplete": True,
+            },
+            "connection": {
+                "timeout": 10.0,
+            },
+            "monitoring": {
+                "watch_interval": 2.0,
+                "log_lines": 50,
+            },
+            "appearance": {
+                "colors": True,
+                "timestamps": False,
+            },
+        }
+
+        if not self.config_file.exists():
+            return defaults
+
+        try:
+            import tomllib  # Python 3.11+
+        except ImportError:
+            try:
+                import tomli as tomllib  # Fallback for Python < 3.11
+            except ImportError:
+                # TOML library not available, use defaults
+                return defaults
+
+        try:
+            with open(self.config_file, "rb") as f:
+                config = tomllib.load(f)
+            # Merge with defaults (config file values override defaults)
+            for section, values in config.items():
+                if section in defaults:
+                    defaults[section].update(values)
+                else:
+                    defaults[section] = values
+            return defaults
+        except Exception:
+            # If config file is invalid, use defaults
+            return defaults
 
     def _connect(self) -> None:
         """Establish connection to the bridge server."""
