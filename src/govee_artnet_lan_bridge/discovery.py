@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Coroutine, Dict, Mapping, Optional, Tuple
 
 from .config import Config
 from .devices import DeviceStore, DiscoveryResult
@@ -47,7 +47,13 @@ def _parse_payload(
         return None
 
     ip = data.get("ip") or addr[0]
-    model = data.get("model") or data.get("sku") or data.get("type")
+    model_number = data.get("model") or data.get("sku") or data.get("type")
+    device_type = data.get("device_type") or data.get("deviceType")
+    length_meters = data.get("length_meters") or data.get("lengthMeters")
+    led_count = data.get("led_count") or data.get("ledCount")
+    led_density_per_meter = data.get("led_density_per_meter") or data.get("ledDensityPerMeter")
+    has_segments = data.get("has_segments") or data.get("hasSegments")
+    segment_count = data.get("segment_count") or data.get("segmentCount")
     description = data.get("description") or data.get("name")
     capabilities = data.get("capabilities") or data.get("capability") or data.get("features")
     color_temp_hints: Dict[str, Any] = {}
@@ -73,11 +79,27 @@ def _parse_payload(
     return DiscoveryResult(
         id=str(device_id),
         ip=str(ip),
-        model=str(model) if model is not None else None,
+        model_number=str(model_number) if model_number is not None else None,
+        device_type=str(device_type) if device_type is not None else None,
+        length_meters=length_meters,
+        led_count=led_count,
+        led_density_per_meter=led_density_per_meter,
+        has_segments=has_segments,
+        segment_count=segment_count,
         description=str(description) if description is not None else None,
         capabilities=capabilities,
         manual=False,
     )
+
+
+class DiscoveryProtocol(GoveeProtocol):
+    """Datagram protocol with discovery handling wired in for backward compatibility."""
+
+    def __init__(self, config: Config, store: DeviceStore, loop: asyncio.AbstractEventLoop) -> None:
+        super().__init__(config, loop)
+        self._discovery = DiscoveryService(config, store, protocol=self)
+        self.register_handler("scan", self._discovery._handle_scan_response)
+        self.register_default_handler(self._discovery._handle_scan_response)
 
 
 class DiscoveryService:
@@ -115,6 +137,17 @@ class DiscoveryService:
         """Service cleanup (handler remains registered with protocol)."""
         self.logger.info("Discovery service stopped")
 
+    def _schedule(self, coro: asyncio.Future | Coroutine[Any, Any, Any]) -> None:
+        """Schedule a coroutine on the protocol loop when available."""
+        loop: Optional[asyncio.AbstractEventLoop] = getattr(self.protocol, "loop", None) if self.protocol else None
+        try:
+            if loop:
+                loop.create_task(coro)  # type: ignore[arg-type]
+            else:
+                asyncio.create_task(coro)  # type: ignore[arg-type]
+        except RuntimeError:
+            asyncio.create_task(coro)  # type: ignore[arg-type]
+
     def _handle_scan_response(self, payload: Mapping[str, Any], addr: Tuple[str, int]) -> None:
         """Handle scan responses from the shared protocol."""
         self.logger.debug("Received scan response", extra={"from": addr, "payload": payload})
@@ -134,9 +167,12 @@ class DiscoveryService:
             self.logger.debug("Ignoring duplicate discovery response", extra={"device_id": parsed.id, "ip": parsed.ip})
             return
 
-        self.logger.info("Discovered device", extra={"device_id": parsed.id, "ip": parsed.ip, "model": parsed.model})
+        self.logger.info(
+            "Discovered device",
+            extra={"device_id": parsed.id, "ip": parsed.ip, "model_number": parsed.model_number},
+        )
         record_discovery_response("multicast")
-        asyncio.create_task(self.store.record_discovery(parsed))
+        self._schedule(self.store.record_discovery(parsed))
 
     def reset_cycle(self) -> None:
         """Clear seen devices for a new discovery cycle."""

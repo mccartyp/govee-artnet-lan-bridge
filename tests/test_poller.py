@@ -37,7 +37,7 @@ async def test_poller_marks_device_online_with_state(tmp_path: Path) -> None:
         ManualDevice(
             id="poll-ok",
             ip="127.0.0.1",
-            model="MOCK",
+            model_number="MOCK",
             capabilities={},
         )
     )
@@ -98,7 +98,7 @@ async def test_poller_marks_device_offline_after_failures(tmp_path: Path) -> Non
         ManualDevice(
             id="poll-fail",
             ip="127.0.0.1",
-            model="MOCK",
+            model_number="MOCK",
             capabilities={},
         )
     )

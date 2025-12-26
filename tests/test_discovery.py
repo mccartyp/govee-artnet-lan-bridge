@@ -15,7 +15,7 @@ def test_parse_payload_handles_common_keys() -> None:
     assert parsed is not None
     assert parsed.id == "dev-1"
     assert parsed.ip == "1.2.3.4"
-    assert parsed.model == "H6123"
+    assert parsed.model_number == "H6123"
     assert parsed.manual is False
 
 
@@ -45,7 +45,7 @@ def test_parse_payload_handles_msg_wrapper() -> None:
     assert parsed is not None
     assert parsed.id == "AB:CD:EF:12:34:56:78:90"
     assert parsed.ip == "192.168.1.100"
-    assert parsed.model == "H6104"
+    assert parsed.model_number == "H6104"
     assert parsed.manual is False
 
 
@@ -81,7 +81,7 @@ def test_protocol_records_discovery_result() -> None:
             device = loop.run_until_complete(store.device("dev-3"))
             assert device is not None
             assert device.ip == "5.5.5.5"
-            assert device.model == "H7000"
+            assert device.model_number == "H7000"
         finally:
             asyncio.set_event_loop(None)
             loop.close()

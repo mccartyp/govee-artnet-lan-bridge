@@ -40,7 +40,7 @@ async def test_devices_endpoint_reflects_discovery_state(tmp_path) -> None:
         DiscoveryResult(
             id="api-dev-1",
             ip="10.0.1.1",
-            model="API-Model",
+            model_number="API-Model",
             capabilities={"color_modes": ["color"], "brightness": True},
         )
     )

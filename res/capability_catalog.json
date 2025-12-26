@@ -1,7 +1,48 @@
 {
   "schema": 1,
   "devices": [
-    {
+      {
+        "model_number": "H6000",
+        "description": "Catalog RGB Bulb",
+        "device_type": "light",
+        "product_name": "Catalog RGB Bulb",
+        "capabilities": {
+          "brightness": true,
+          "color": true,
+          "color_temperature": false,
+          "color_modes": [
+            "color"
+          ]
+        },
+        "length_meters": null,
+        "led_count": null,
+        "led_density_per_meter": null,
+        "has_segments": false,
+        "segment_count": null
+      },
+      {
+        "model_number": "H7001",
+        "description": "Catalog RGBIC Strip",
+        "device_type": "led_strip",
+        "capabilities": {
+          "brightness": true,
+          "color": true,
+          "color_temperature": true,
+          "color_modes": [
+            "color",
+            "ct"
+          ],
+          "color_temp_range": [
+            2000,
+            9000
+          ]
+        },
+        "length_meters": null,
+        "led_count": null,
+        "led_density_per_meter": null,
+        "has_segments": false,
+        "segment_count": null
+      },
       {
         "model_number": "H6002",
         "description": "Govee LED Strip Lights",
@@ -1136,7 +1177,7 @@
         "capabilities": {
           "brightness": true,
           "color": true,
-         color_temperature": true,
+          "color_temperature": true,
           "color_modes": [
             "color",
             "ct"
@@ -3050,7 +3091,7 @@
         "segment_count": null
       },
       {
-        "model_number": 619E",
+        "model_number": "619E",
         "description": "Govee Outdoor Strip Lights",
         "device_type": "outdoor_light",
         "capabilities": {
@@ -3630,7 +3671,7 @@
         "device_type": "led_strip",
         "capabilities": {
           "brightness": true,
-         color": true,
+          "color": true,
           "color_temperature": true,
           "color_modes": [
             "color",
@@ -4218,7 +4259,7 @@
         },
         "length_meters": null,
         "led_count": null,
-        ed_density_per_meter": null,
+        "led_density_per_meter": null,
         "has_segments": false,
         "segment_count": null
       },
@@ -5653,6 +5694,5 @@
         "has_segments": false,
         "segment_count": null
       }
-    }
   ]
 }

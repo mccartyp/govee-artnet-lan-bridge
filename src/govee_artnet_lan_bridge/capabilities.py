@@ -45,7 +45,23 @@ def _capabilities_missing(capabilities: Any) -> bool:
     if capabilities is None:
         return True
     if isinstance(capabilities, Mapping):
-        return not bool(capabilities)
+        if not capabilities:
+            return True
+        meaningful_keys = {
+            "brightness",
+            "color",
+            "color_temperature",
+            "color_modes",
+            "color_temp_range",
+            "ct",
+            "ct_range",
+            "mode",
+            "modes",
+            "effects",
+            "scenes",
+            "scene_modes",
+        }
+        return not any(key in capabilities for key in meaningful_keys)
     return False
 
 
@@ -296,8 +312,9 @@ def _extract_firmware(capabilities: Any) -> Optional[str]:
 class NormalizedCapabilities:
     """Normalized capability description for validation."""
 
-    model: Optional[str]
+    model_number: Optional[str]
     firmware: Optional[str]
+    metadata: MutableMapping[str, Any]
     color_modes: Tuple[str, ...]
     supports_brightness: bool
     color_temp_range: Optional[Tuple[int, int]]
@@ -319,7 +336,7 @@ class NormalizedCapabilities:
 
     @property
     def cache_key(self) -> Tuple[str, str]:
-        return (self.model or "", self.firmware or "")
+        return (self.model_number or "", self.firmware or "")
 
     @property
     def supported_modes(self) -> Tuple[str, ...]:
@@ -330,6 +347,7 @@ class NormalizedCapabilities:
 
     def as_mapping(self) -> MutableMapping[str, Any]:
         data = dict(self.raw)
+        data["model_number"] = self.model_number
         data.pop("supports_brightness", None)
         data.pop("supports_color", None)
         data.pop("supports_color_temperature", None)
@@ -343,6 +361,8 @@ class NormalizedCapabilities:
             data["effects"] = list(self.effects)
         if self.firmware and "firmware" not in data:
             data["firmware"] = self.firmware
+        for key, value in self.metadata.items():
+            data[key] = value
         return data
 
     def describe_support(self) -> str:
@@ -360,9 +380,11 @@ class NormalizedCapabilities:
 
 
 def normalize_capabilities(
-    model: Optional[str], capabilities: Any
+    model_number: Optional[str], capabilities: Any, *, metadata: Optional[Mapping[str, Any]] = None
 ) -> NormalizedCapabilities:
     base: MutableMapping[str, Any] = {}
+    if isinstance(metadata, Mapping):
+        base.update(metadata)
     if isinstance(capabilities, Mapping):
         base.update(capabilities)
 
@@ -380,11 +402,14 @@ def normalize_capabilities(
     supports_color_temperature = "ct" in color_modes or color_temp_range is not None
     base["color"] = supports_color
     base["color_temperature"] = supports_color_temperature
+    normalized_metadata = _normalize_metadata(base)
+    base.update(normalized_metadata)
     firmware = _extract_firmware(capabilities)
     fingerprint = _fingerprint(base)
     return NormalizedCapabilities(
-        model=model,
+        model_number=model_number,
         firmware=firmware,
+        metadata=normalized_metadata,
         color_modes=color_modes,
         supports_brightness=supports_brightness,
         color_temp_range=color_temp_range,
@@ -406,17 +431,27 @@ class CapabilityCache:
             return False
         return self._catalog.lookup(model) is not None
 
-    def normalize(self, model: Optional[str], capabilities: Any) -> NormalizedCapabilities:
+    def normalize(
+        self, model: Optional[str], capabilities: Any, metadata: Optional[Mapping[str, Any]] = None
+    ) -> NormalizedCapabilities:
         missing_caps = _capabilities_missing(capabilities)
         catalog_entry = self._catalog.lookup(model) if self._catalog and model else None
         normalized_model = model
         source_capabilities: Any = None
+        metadata_source: Dict[str, Any] = {}
+        if metadata:
+            metadata_source.update(metadata)
         if missing_caps and catalog_entry is not None:
             source_capabilities = catalog_entry.capabilities
             normalized_model = catalog_entry.model_number
+            metadata_source.update(catalog_entry.metadata)
         elif not missing_caps:
             source_capabilities = capabilities
-        normalized = normalize_capabilities(normalized_model, source_capabilities)
+            if catalog_entry is not None:
+                metadata_source.update(catalog_entry.metadata)
+        normalized = normalize_capabilities(
+            normalized_model, source_capabilities, metadata=metadata_source or None
+        )
         cached = self._cache.get(normalized.cache_key)
         if cached and cached[0] == normalized.fingerprint:
             return cached[1]
@@ -510,3 +545,50 @@ def validate_command_payload(
         )
 
     return sanitized, warnings
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_optional_bool(value: Any) -> Optional[bool]:
+    if value is None:
+        return None
+    return _coerce_bool(value, default=False)
+
+
+def _normalize_metadata(data: Mapping[str, Any]) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {}
+    if "device_type" in data and data.get("device_type") is not None:
+        metadata["device_type"] = str(data["device_type"])
+    if "length_meters" in data or "lengthMeters" in data:
+        metadata["length_meters"] = _coerce_optional_float(
+            data.get("length_meters", data.get("lengthMeters"))
+        )
+    if "led_count" in data or "ledCount" in data:
+        metadata["led_count"] = _coerce_optional_int(data.get("led_count", data.get("ledCount")))
+    if "led_density_per_meter" in data or "ledDensityPerMeter" in data:
+        metadata["led_density_per_meter"] = _coerce_optional_float(
+            data.get("led_density_per_meter", data.get("ledDensityPerMeter"))
+        )
+    if "has_segments" in data or "hasSegments" in data:
+        metadata["has_segments"] = _coerce_optional_bool(
+            data.get("has_segments", data.get("hasSegments"))
+        )
+    if "segment_count" in data or "segmentCount" in data:
+        metadata["segment_count"] = _coerce_optional_int(
+            data.get("segment_count", data.get("segmentCount"))
+        )
+    return {key: value for key, value in metadata.items() if value is not None}

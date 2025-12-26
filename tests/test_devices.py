@@ -100,7 +100,7 @@ async def test_record_discovery_defaults_to_disabled(tmp_path) -> None:
         DiscoveryResult(
             id="dev-discovered",
             ip="10.0.0.2",
-            model="H6000",
+            model_number="H6000",
             capabilities={"color_modes": ["color"], "brightness": True},
         )
     )
@@ -123,14 +123,14 @@ async def test_rediscovery_preserves_user_enabled_state(tmp_path) -> None:
         DiscoveryResult(
             id="dev-rediscover",
             ip="10.0.0.3",
-            model="H6001",
+            model_number="H6001",
             capabilities={"color_modes": ["color"], "brightness": True},
         )
     )
     await store.update_device(
         "dev-rediscover",
         enabled=False,
-        model="H6001",
+        model_number="H6001",
         capabilities={"color_modes": ["color"], "brightness": True},
     )
 
@@ -149,7 +149,7 @@ async def test_rediscovery_preserves_user_enabled_state(tmp_path) -> None:
         DiscoveryResult(
             id="dev-rediscover",
             ip="10.0.0.4",
-            model="H6001",
+            model_number="H6001",
             capabilities={
                 "color_modes": ["color", "ct"],
                 "brightness": True,
@@ -178,14 +178,17 @@ async def test_catalog_hydrates_missing_capabilities(tmp_path) -> None:
         DiscoveryResult(
             id="dev-catalog",
             ip="10.0.0.5",
-            model="H6050",
+            model_number="H6050",
         )
     )
 
     device = await store.device("dev-catalog")
     assert device is not None
+    assert device.model_number == "H6050"
+    assert device.device_type == "led_strip"
     assert "color" in device.capabilities.get("color_modes", [])
     assert device.capabilities.get("brightness") is True
+    assert device.capabilities.get("device_type") == "led_strip"
 
 
 @pytest.mark.asyncio
@@ -268,7 +271,7 @@ async def test_poll_targets_use_catalog_when_missing_capabilities(tmp_path) -> N
         ManualDevice(
             id="dev-poll",
             ip="127.0.0.30",
-            model="H7001",
+            model_number="H7001",
         )
     )
 
@@ -282,6 +285,7 @@ async def test_poll_targets_use_catalog_when_missing_capabilities(tmp_path) -> N
     target = next(target for target in targets if target.id == "dev-poll")
     assert "ct" in target.capabilities.get("color_modes", [])
     assert target.capabilities.get("brightness") is True
+    assert target.device_type == "led_strip"
 
 
 @pytest.mark.asyncio

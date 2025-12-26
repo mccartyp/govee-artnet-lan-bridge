@@ -44,9 +44,15 @@ class ManualDevice:
 
     id: str
     ip: str
-    model: Optional[str] = None
+    model_number: Optional[str] = None
+    device_type: Optional[str] = None
     description: Optional[str] = None
     capabilities: Optional[Any] = None
+    length_meters: Optional[float] = None
+    led_count: Optional[int] = None
+    led_density_per_meter: Optional[float] = None
+    has_segments: Optional[bool] = None
+    segment_count: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -124,9 +130,15 @@ class Config:
             {
                 "id": device.id,
                 "ip": device.ip,
-                "model": device.model,
+                "model_number": device.model_number,
+                "device_type": device.device_type,
                 "description": device.description,
                 "capabilities": device.capabilities,
+                "length_meters": device.length_meters,
+                "led_count": device.led_count,
+                "led_density_per_meter": device.led_density_per_meter,
+                "has_segments": device.has_segments,
+                "segment_count": device.segment_count,
             }
             for device in self.manual_devices
         ]
@@ -688,6 +700,30 @@ def _coerce_bool(value: Any) -> bool:
     return bool(value)
 
 
+def _coerce_optional_bool(value: Any) -> Optional[bool]:
+    if value is None:
+        return None
+    return _coerce_bool(value)
+
+
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _coerce_manual_devices(value: Any) -> Sequence[ManualDevice]:
     if value is None:
         return ()
@@ -722,12 +758,27 @@ def _coerce_manual_devices(value: Any) -> Sequence[ManualDevice]:
 def _manual_from_mapping(value: Mapping[str, Any]) -> ManualDevice:
     if "id" not in value or "ip" not in value:
         raise ValueError("Manual devices require 'id' and 'ip' fields")
+    model_number = value.get("model_number", value.get("model"))
+    device_type = value.get("device_type")
+    length_meters = _coerce_optional_float(value.get("length_meters", value.get("lengthMeters")))
+    led_count = _coerce_optional_int(value.get("led_count", value.get("ledCount")))
+    led_density_per_meter = _coerce_optional_float(
+        value.get("led_density_per_meter", value.get("ledDensityPerMeter"))
+    )
+    has_segments = _coerce_optional_bool(value.get("has_segments", value.get("hasSegments")))
+    segment_count = _coerce_optional_int(value.get("segment_count", value.get("segmentCount")))
     return ManualDevice(
         id=str(value["id"]),
         ip=str(value["ip"]),
-        model=str(value.get("model")) if value.get("model") is not None else None,
+        model_number=str(model_number) if model_number is not None else None,
+        device_type=str(device_type) if device_type is not None else None,
         description=str(value.get("description")) if value.get("description") is not None else None,
         capabilities=value.get("capabilities"),
+        length_meters=length_meters,
+        led_count=led_count,
+        led_density_per_meter=led_density_per_meter,
+        has_segments=has_segments,
+        segment_count=segment_count,
     )
 
 

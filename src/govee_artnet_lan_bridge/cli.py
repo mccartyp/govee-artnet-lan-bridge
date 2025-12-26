@@ -131,14 +131,45 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
         help="Add a manual device (POST /devices)",
         description=(
             "Creates a manual device entry. Example payload: "
-            '`{"id": "AA:BB", "ip": "192.168.1.10", "model": "H6160", '
+            '`{"id": "AA:BB", "ip": "192.168.1.10", "model_number": "H6160", '
             '"capabilities": {"color": true, "brightness": true}}`. Existing discovery entries are untouched.'
         ),
     )
     add.add_argument("--id", required=True, help="Device identifier (e.g., MAC address)")
     add.add_argument("--ip", required=True, help="Device IP address")
-    add.add_argument("--model", help="Device model string shown in responses")
+    add.add_argument(
+        "--model-number",
+        dest="model_number",
+        help="Device model number/sku shown in responses (alias: --model)",
+    )
+    add.add_argument(
+        "--model",
+        dest="model_number",
+        help="Alias for --model-number to maintain compatibility",
+    )
+    add.add_argument("--device-type", help="Device type/category (e.g., led_strip, light_bar)")
     add.add_argument("--description", help="Optional human-readable label")
+    add.add_argument("--length-meters", type=float, help="Approximate device length in meters (catalog metadata)")
+    add.add_argument("--led-count", type=int, help="Total LED count for the device")
+    add.add_argument(
+        "--led-density-per-meter",
+        type=float,
+        help="LED density per meter to align with catalog metadata",
+    )
+    add.add_argument(
+        "--has-segments",
+        dest="has_segments",
+        action="store_true",
+        help="Mark the device as segmented (overrides catalog default)",
+    )
+    add.add_argument(
+        "--no-segments",
+        dest="has_segments",
+        action="store_false",
+        help="Mark the device as non-segmented",
+    )
+    add.set_defaults(has_segments=None)
+    add.add_argument("--segment-count", type=int, help="Number of segments when segmented control is available")
     add.add_argument(
         "--capabilities",
         help=(
@@ -169,8 +200,35 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
     )
     update.add_argument("device_id", help="Device identifier")
     update.add_argument("--ip", help="Device IP address")
-    update.add_argument("--model", help="Device model")
+    update.add_argument(
+        "--model-number",
+        dest="model_number",
+        help="Device model number/sku (alias: --model)",
+    )
+    update.add_argument(
+        "--model",
+        dest="model_number",
+        help="Alias for --model-number to maintain compatibility",
+    )
+    update.add_argument("--device-type", help="Device type/category")
     update.add_argument("--description", help="Device description")
+    update.add_argument("--length-meters", type=float, help="Device length in meters")
+    update.add_argument("--led-count", type=int, help="Total LED count")
+    update.add_argument("--led-density-per-meter", type=float, help="LED density per meter")
+    update.add_argument(
+        "--has-segments",
+        dest="has_segments",
+        action="store_true",
+        help="Mark the device as segmented",
+    )
+    update.add_argument(
+        "--no-segments",
+        dest="has_segments",
+        action="store_false",
+        help="Mark the device as not segmented",
+    )
+    update.set_defaults(has_segments=None)
+    update.add_argument("--segment-count", type=int, help="Segment count when segmented control is supported")
     update.add_argument(
         "--capabilities",
         help=(
@@ -454,10 +512,23 @@ def _cmd_devices_add(config: ClientConfig, client: httpx.Client, args: argparse.
     payload: Mapping[str, Any] = {
         "id": args.id,
         "ip": args.ip,
-        "model": args.model,
         "description": args.description,
         "capabilities": capabilities,
     }
+    if args.model_number:
+        payload["model_number"] = args.model_number
+    if args.device_type:
+        payload["device_type"] = args.device_type
+    if args.length_meters is not None:
+        payload["length_meters"] = args.length_meters
+    if args.led_count is not None:
+        payload["led_count"] = args.led_count
+    if args.led_density_per_meter is not None:
+        payload["led_density_per_meter"] = args.led_density_per_meter
+    if args.has_segments is not None:
+        payload["has_segments"] = args.has_segments
+    if args.segment_count is not None:
+        payload["segment_count"] = args.segment_count
     if enabled is not None:
         payload["enabled"] = enabled
     data = _handle_response(client.post("/devices", json=payload))
@@ -468,11 +539,23 @@ def _cmd_devices_update(config: ClientConfig, client: httpx.Client, args: argpar
     payload: MutableMapping[str, Any] = {}
     if args.ip:
         payload["ip"] = args.ip
-    if args.model:
-        payload["model"] = args.model
+    if args.model_number:
+        payload["model_number"] = args.model_number
+    if args.device_type:
+        payload["device_type"] = args.device_type
     if args.description:
         payload["description"] = args.description
-    if args.capabilities:
+    if args.length_meters is not None:
+        payload["length_meters"] = args.length_meters
+    if args.led_count is not None:
+        payload["led_count"] = args.led_count
+    if args.led_density_per_meter is not None:
+        payload["led_density_per_meter"] = args.led_density_per_meter
+    if args.has_segments is not None:
+        payload["has_segments"] = args.has_segments
+    if args.segment_count is not None:
+        payload["segment_count"] = args.segment_count
+    if args.capabilities is not None:
         payload["capabilities"] = _parse_json_arg(args.capabilities)
     if args.enable:
         payload["enabled"] = True

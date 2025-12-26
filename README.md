@@ -53,6 +53,26 @@ The server will:
 govee-artnet devices list
 ```
 
+Discovery responses that include a `model_number` automatically pull metadata from the bundled capability catalog. Device payloads now surface `model_number`, `device_type`, and length/segment hints so mappings can be validated without guesswork:
+
+```json
+{
+  "id": "AA:BB:CC:DD:EE:FF",
+  "model_number": "H6160",
+  "device_type": "led_strip",
+  "length_meters": 5.0,
+  "segment_count": null,
+  "capabilities": {
+    "model_number": "H6160",
+    "device_type": "led_strip",
+    "brightness": true,
+    "color_temperature": true,
+    "color_modes": ["color", "ct"],
+    "color_temp_range": [2000, 9000]
+  }
+}
+```
+
 ### 4. Create DMX Mappings
 
 Map DMX channels to your devices using templates:
@@ -97,7 +117,7 @@ Point your lighting software at the bridge server's IP address and start control
 govee-artnet devices list
 
 # Add a manual device
-govee-artnet devices add --id "..." --ip "192.168.1.100"
+govee-artnet devices add --id "..." --ip "192.168.1.100" --model-number "H61XX" --device-type "led_strip"
 
 # Enable/disable a device
 govee-artnet devices enable "AA:BB:CC:DD:EE:FF"

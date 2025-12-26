@@ -92,3 +92,5 @@ def test_cache_uses_catalog_when_capabilities_missing() -> None:
 
     assert "color" in normalized.color_modes
     assert normalized.supports_brightness is True
+    assert normalized.metadata.get("device_type") == "led_strip"
+    assert normalized.as_mapping().get("device_type") == "led_strip"
