@@ -214,10 +214,8 @@ class DevicePollerService:
 
     def _handle_poll_response(self, payload: Mapping[str, Any], addr: Tuple[str, int]) -> None:
         """Handle devStatus responses from the shared protocol."""
-        self.logger.debug(
-            "Poller received devStatus response",
-            extra={"from": addr, "payload": payload},
-        )
+        import json as json_module
+        self.logger.debug(f"Poller received devStatus response from {addr}: {json_module.dumps(payload)}")
 
         # Extract device ID from response
         device_id = None
@@ -231,7 +229,7 @@ class DevicePollerService:
                 )
 
         if not device_id:
-            self.logger.debug("Poll response missing device ID", extra={"payload": payload, "from": addr})
+            self.logger.debug(f"Poll response missing device ID. Payload: {json_module.dumps(payload)}")
             return
 
         self.logger.debug(
