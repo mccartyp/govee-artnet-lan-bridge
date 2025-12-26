@@ -53,6 +53,7 @@ class Config:
     rate_limit_burst: int = 20
     discovery_multicast_address: str = "239.255.255.250"
     discovery_multicast_port: int = 4003
+    discovery_reply_port: int = 4002
     discovery_probe_payload: str = '{"cmd":"scan"}'
     discovery_response_timeout: float = 2.0
     discovery_stale_after: float = 300.0
@@ -126,6 +127,7 @@ class Config:
             "discovery_interval": self.discovery_interval,
             "discovery_multicast_address": self.discovery_multicast_address,
             "discovery_multicast_port": self.discovery_multicast_port,
+            "discovery_reply_port": self.discovery_reply_port,
             "discovery_probe_payload": self.discovery_probe_payload,
             "discovery_response_timeout": self.discovery_response_timeout,
             "discovery_stale_after": self.discovery_stale_after,
@@ -314,6 +316,11 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
         "--discovery-multicast-port",
         type=int,
         help="UDP port used for discovery probes and responses.",
+    )
+    parser.add_argument(
+        "--discovery-reply-port",
+        type=int,
+        help="UDP port used to listen for discovery replies.",
     )
     parser.add_argument(
         "--discovery-probe-payload",
@@ -614,7 +621,7 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             data[key] = float(value)
         elif key in {"discovery_response_timeout", "discovery_stale_after"}:
             data[key] = float(value)
-        elif key in {"discovery_multicast_port", "device_default_port", "device_poll_port"}:
+        elif key in {"discovery_multicast_port", "discovery_reply_port", "device_default_port", "device_poll_port"}:
             data[key] = int(value)
         elif key in {"device_send_retries", "device_offline_threshold", "device_poll_offline_threshold", "device_poll_rate_burst", "device_poll_batch_size"}:
             data[key] = int(value)

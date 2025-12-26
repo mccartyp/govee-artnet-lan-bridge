@@ -161,7 +161,7 @@ class DiscoveryService:
         loop = asyncio.get_running_loop()
         sock = _create_multicast_socket(
             self.config.discovery_multicast_address,
-            self.config.discovery_multicast_port,
+            self.config.discovery_reply_port,
         )
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: DiscoveryProtocol(self.config, self.store, loop),
@@ -174,7 +174,8 @@ class DiscoveryService:
             "Discovery service started",
             extra={
                 "multicast": self.config.discovery_multicast_address,
-                "port": self.config.discovery_multicast_port,
+                "probe_port": self.config.discovery_multicast_port,
+                "reply_port": self.config.discovery_reply_port,
             },
         )
 
