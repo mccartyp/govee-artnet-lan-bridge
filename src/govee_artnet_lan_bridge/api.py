@@ -8,7 +8,7 @@ import string
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -679,6 +679,122 @@ def create_app(
             "case_sensitive": case_sensitive,
             "logs": [entry.to_dict() for entry in entries],
         }
+
+    @app.websocket("/logs/stream")
+    async def stream_logs(websocket: WebSocket) -> None:
+        """
+        Stream logs in real-time via WebSocket.
+
+        Client can send filter updates:
+        {"level": "INFO", "logger": "govee.discovery"}
+
+        Server sends log entries:
+        {
+            "timestamp": "2025-12-26T10:30:45.123Z",
+            "level": "INFO",
+            "logger": "govee.discovery",
+            "message": "Device discovered",
+            "extra": {...}
+        }
+        """
+        if log_buffer is None:
+            await websocket.close(code=1011, reason="Log buffer not available")
+            return
+
+        await websocket.accept()
+
+        # Track filters set by client
+        level_filter: Optional[str] = None
+        logger_filter: Optional[str] = None
+
+        # Subscriber callback
+        async def send_log(entry: Any) -> None:
+            # Apply filters
+            if level_filter and entry.level != level_filter:
+                return
+            if logger_filter and not entry.logger.startswith(logger_filter):
+                return
+
+            try:
+                await websocket.send_json(entry.to_dict())
+            except Exception:
+                # Client disconnected, will be handled by main loop
+                pass
+
+        # Subscribe to log buffer
+        unsubscribe = await log_buffer.subscribe(send_log)
+
+        try:
+            while True:
+                # Wait for client messages (filter updates or ping)
+                try:
+                    message = await asyncio.wait_for(websocket.receive_json(), timeout=30.0)
+
+                    # Update filters if provided
+                    if "level" in message:
+                        level_filter = message["level"]
+                    if "logger" in message:
+                        logger_filter = message["logger"]
+
+                except asyncio.TimeoutError:
+                    # Send ping to keep connection alive
+                    await websocket.send_json({"type": "ping"})
+
+        except WebSocketDisconnect:
+            logger.info("Log stream client disconnected")
+        except Exception as exc:
+            logger.warning("Log stream error", extra={"error": str(exc)})
+        finally:
+            unsubscribe()
+
+    @app.websocket("/events/stream")
+    async def stream_events(websocket: WebSocket) -> None:
+        """
+        Stream system events in real-time via WebSocket.
+
+        Server sends events:
+        {
+            "event": "device_discovered",
+            "timestamp": "2025-12-26T10:30:45.123Z",
+            "data": {...}
+        }
+        """
+        if event_bus is None:
+            await websocket.close(code=1011, reason="Event bus not available")
+            return
+
+        await websocket.accept()
+
+        # Subscriber callback
+        async def send_event(event: Any) -> None:
+            try:
+                await websocket.send_json(event.to_dict())
+            except Exception:
+                # Client disconnected, will be handled by main loop
+                pass
+
+        # Subscribe to all events (wildcard)
+        unsubscribe = await event_bus.subscribe("*", send_event)
+
+        try:
+            while True:
+                # Wait for client messages (ping/pong)
+                try:
+                    message = await asyncio.wait_for(websocket.receive_json(), timeout=30.0)
+                    # Echo back pings
+                    if message.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+
+                except asyncio.TimeoutError:
+                    # Send ping to keep connection alive
+                    await websocket.send_json({"type": "ping"})
+
+        except WebSocketDisconnect:
+            logger.info("Event stream client disconnected")
+        except Exception as exc:
+            logger.warning("Event stream error", extra={"error": str(exc)})
+        finally:
+            unsubscribe()
 
     return app
 
