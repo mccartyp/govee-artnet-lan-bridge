@@ -569,10 +569,9 @@ def _load_env_config(prefix: str) -> Dict[str, Any]:
 
 
 def _cli_overrides(args: argparse.Namespace) -> Dict[str, Any]:
-    mapping = {k: v for k, v in vars(args).items() if k != "config" and v is not None}
-    if mapping.get("no_api_docs"):
+    mapping = {k: v for k, v in vars(args).items() if k not in ("config", "no_api_docs") and v is not None}
+    if args.no_api_docs:
         mapping["api_docs"] = False
-        mapping.pop("no_api_docs", None)
     return mapping
 
 
