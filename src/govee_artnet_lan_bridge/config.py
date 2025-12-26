@@ -464,6 +464,7 @@ def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
     parser.add_argument(
         "--device-poll-enabled",
         action="store_true",
+        default=None,
         help="Enable background polling for device reachability.",
     )
     parser.add_argument(
@@ -577,6 +578,8 @@ def _load_env_config(prefix: str) -> Dict[str, Any]:
 
 def _cli_overrides(args: argparse.Namespace) -> Dict[str, Any]:
     mapping = {k: v for k, v in vars(args).items() if k not in ("config", "no_api_docs", "device_poll_enabled") and v is not None}
+    if args.device_poll_enabled:
+        mapping["device_poll_enabled"] = True
     if args.no_api_docs:
         mapping["api_docs"] = False
     if args.device_poll_enabled:
