@@ -49,6 +49,21 @@ def test_parse_payload_handles_msg_wrapper() -> None:
     assert parsed.manual is False
 
 
+def test_parse_payload_extracts_color_temp_hints() -> None:
+    addr = ("10.0.0.5", 4003)
+    payload = {
+        "data": {
+            "device": "dev-ct",
+            "ip": "10.0.0.5",
+            "ct_range": [2000, 7000],
+        }
+    }
+    parsed = _parse_payload(payload, addr)
+    assert parsed is not None
+    assert parsed.capabilities
+    assert parsed.capabilities.get("ct_range") == [2000, 7000]
+
+
 def test_protocol_records_discovery_result() -> None:
     with NamedTemporaryFile() as db_file:
         config = Config(db_path=Path(db_file.name), dry_run=True)

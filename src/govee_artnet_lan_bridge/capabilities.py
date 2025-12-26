@@ -47,6 +47,7 @@ def _normalize_string_set(value: Any) -> Set[str]:
 def _normalize_color_modes(capabilities: Any) -> Set[str]:
     modes: Set[str] = set()
     explicit = False
+    color_temp_hint = False
     if isinstance(capabilities, Mapping):
         raw_modes = capabilities.get("color_modes")
         if raw_modes is None:
@@ -60,6 +61,20 @@ def _normalize_color_modes(capabilities: Any) -> Set[str]:
         if isinstance(single_mode, str):
             explicit = True
             modes.add(single_mode.strip().lower())
+        if any(
+            key in capabilities
+            for key in (
+                "ct",
+                "color_temp",
+                "colorTemperature",
+                "color_temp_range",
+                "ct_range",
+                "colorTempRange",
+                "colorTemperatureRange",
+            )
+        ):
+            explicit = True
+            color_temp_hint = True
 
     normalized: Set[str] = set()
     for mode in modes:
@@ -72,6 +87,8 @@ def _normalize_color_modes(capabilities: Any) -> Set[str]:
         else:
             normalized.add(mode)
 
+    if color_temp_hint:
+        normalized.add("ct")
     if not normalized and modes:
         normalized |= modes
     if not normalized and not explicit:
@@ -101,7 +118,15 @@ def _normalize_color_temp_range(capabilities: Any) -> Optional[Tuple[int, int]]:
 
     if not isinstance(capabilities, Mapping):
         return None
-    for key in ("color_temp_range", "ct_range", "color_temp", "colorTemperature"):
+    for key in (
+        "color_temp_range",
+        "ct_range",
+        "colorTempRange",
+        "colorTemperatureRange",
+        "color_temp",
+        "colorTemperature",
+        "ct",
+    ):
         if key in capabilities:
             coerced = _coerce_two_ints(capabilities[key])
             if coerced:
