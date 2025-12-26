@@ -54,7 +54,7 @@ class Config:
     discovery_multicast_address: str = "239.255.255.250"
     discovery_multicast_port: int = 4003
     discovery_reply_port: int = 4002
-    discovery_probe_payload: str = '{"cmd":"scan"}'
+    discovery_probe_payload: str = '{"msg":{"cmd":"scan","data":{"account_topic":"reserve"}}}'
     discovery_response_timeout: float = 2.0
     discovery_stale_after: float = 300.0
     manual_unicast_probes: bool = True
