@@ -76,7 +76,7 @@ class Config:
     device_poll_rate_per_second: float = 2.0
     device_poll_rate_burst: int = 5
     device_poll_offline_threshold: int = 2
-    device_poll_payload: str = '{"cmd":"devStatus"}'
+    device_poll_payload: str = '{"msg":{"cmd":"devStatus","data":{"account_topic":"reserve"}}}'
     device_poll_port: Optional[int] = None
     device_poll_backoff_base: float = 1.0
     device_poll_backoff_factor: float = 2.0
