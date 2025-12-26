@@ -81,12 +81,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "Defaults to 'json'; use 'yaml' for YAML output, 'table' for formatted tables."
         ),
     )
-    parser.add_argument(
-        "--shell",
-        "-i",
-        action="store_true",
-        help="Start interactive shell mode",
-    )
 
     subparsers = parser.add_subparsers(dest="command", required=False)
 
@@ -806,7 +800,7 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
         config = _load_config(args)
 
         # Check for shell mode
-        if args.shell or args.command == "shell":
+        if args.command == "shell":
             from .shell import run_shell
             run_shell(config)
             return

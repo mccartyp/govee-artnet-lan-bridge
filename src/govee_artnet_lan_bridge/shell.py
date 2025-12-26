@@ -24,6 +24,12 @@ from .cli import ClientConfig, _build_client, _handle_response, _print_output
 # Shell version
 SHELL_VERSION = "1.0.0"
 
+# Shell configuration constants
+DEFAULT_WATCH_INTERVAL = 2.0
+DEFAULT_API_TIMEOUT = 10.0
+WS_RECV_TIMEOUT = 1.0
+DEFAULT_LOG_LINES = 50
+
 
 class GoveeShell(cmd.Cmd):
     """Interactive shell for the Govee ArtNet bridge."""
@@ -103,6 +109,24 @@ class GoveeShell(cmd.Cmd):
             print("Some commands may not work. Use 'connect' to retry.")
             self.client = None
 
+    def _handle_error(self, exc: Exception, context: str = "") -> None:
+        """
+        Centralized error handler with consistent formatting.
+
+        Args:
+            exc: The exception that occurred
+            context: Optional context string (e.g., "devices list")
+        """
+        if isinstance(exc, httpx.HTTPStatusError):
+            self.console.print(
+                f"[bold red]HTTP {exc.response.status_code}:[/] {exc.response.text}"
+            )
+        elif isinstance(exc, httpx.RequestError):
+            self.console.print(f"[bold red]Connection Error:[/] {exc}")
+        else:
+            context_str = f" in {context}" if context else ""
+            self.console.print(f"[bold red]Error{context_str}:[/] {exc}")
+
     def precmd(self, line: str) -> str:
         """Preprocess commands to expand aliases."""
         if not line:
@@ -148,7 +172,7 @@ class GoveeShell(cmd.Cmd):
             data = _handle_response(self.client.get("/status"))
             _print_output(data, self.config.output)
         except Exception as exc:
-            print(f"Error: {exc}")
+            self._handle_error(exc, "status")
 
     def do_health(self, arg: str) -> None:
         """Check bridge health."""
@@ -160,7 +184,7 @@ class GoveeShell(cmd.Cmd):
             data = _handle_response(self.client.get("/health"))
             _print_output(data, self.config.output)
         except Exception as exc:
-            print(f"Error: {exc}")
+            self._handle_error(exc, "health")
 
     def do_devices(self, arg: str) -> None:
         """
@@ -200,7 +224,7 @@ class GoveeShell(cmd.Cmd):
                 print(f"Unknown or incomplete command: devices {arg}")
                 print("Try: devices list, devices enable <id>, devices disable <id>")
         except Exception as exc:
-            print(f"Error: {exc}")
+            self._handle_error(exc, "devices")
 
     def do_mappings(self, arg: str) -> None:
         """
@@ -240,7 +264,7 @@ class GoveeShell(cmd.Cmd):
                 print(f"Unknown or incomplete command: mappings {arg}")
                 print("Try: mappings list, mappings get <id>, mappings delete <id>, mappings channel-map")
         except Exception as exc:
-            print(f"Error: {exc}")
+            self._handle_error(exc, "mappings")
 
     def do_logs(self, arg: str) -> None:
         """
@@ -321,7 +345,7 @@ class GoveeShell(cmd.Cmd):
                 _print_output(data["logs"], self.config.output)
 
         except Exception as exc:
-            print(f"Error: {exc}")
+            self._handle_error(exc, "logs")
 
     def _logs_tail(self, args: list[str]) -> None:
         """
@@ -377,7 +401,7 @@ class GoveeShell(cmd.Cmd):
                 # Stream logs
                 while True:
                     try:
-                        message = websocket.recv(timeout=1.0)
+                        message = websocket.recv(timeout=WS_RECV_TIMEOUT)
                         data = json.loads(message)
 
                         # Skip ping messages
@@ -427,7 +451,7 @@ class GoveeShell(cmd.Cmd):
                 print(f"Unknown monitor command: {command}")
                 print("Try: monitor dashboard, monitor stats")
         except Exception as exc:
-            print(f"Error: {exc}")
+            self._handle_error(exc, "monitor")
 
     def _monitor_dashboard(self) -> None:
         """Display live dashboard with system status using rich formatting."""
@@ -657,7 +681,7 @@ class GoveeShell(cmd.Cmd):
             return
 
         command = args[0]
-        interval = float(args[1]) if len(args) > 1 else 2.0
+        interval = float(args[1]) if len(args) > 1 else DEFAULT_WATCH_INTERVAL
 
         self.console.print(f"[cyan]Watching {command} (Press Ctrl+C to stop, updating every {interval}s)[/]")
         self.console.print()
