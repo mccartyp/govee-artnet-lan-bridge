@@ -525,8 +525,7 @@ class DeviceStore:
                 model = COALESCE(?, model),
                 description = COALESCE(?, description),
                 capabilities = ?,
-                enabled = COALESCE(?, enabled),
-                configured = 1
+                enabled = COALESCE(?, enabled)
             WHERE id = ?
             """,
             (
@@ -603,14 +602,14 @@ class DeviceStore:
                 configured, enabled, discovered, first_seen, last_seen,
                 stale, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, 1, 1, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, 1, 0, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
                 model=COALESCE(excluded.model, devices.model),
                 description=COALESCE(excluded.description, devices.description),
                 capabilities=COALESCE(excluded.capabilities, devices.capabilities),
                 manual=1,
-                configured=1,
+                configured=devices.configured,
                 enabled=1
             """,
             (
@@ -651,7 +650,7 @@ class DeviceStore:
                 first_seen=COALESCE(devices.first_seen, excluded.last_seen),
                 manual=excluded.manual OR devices.manual,
                 discovered=1,
-                configured=devices.configured OR devices.manual,
+                configured=devices.configured,
                 enabled=devices.enabled,
                 stale=0
             """,
@@ -1009,6 +1008,7 @@ class DeviceStore:
                 _serialize_fields(new_fields),
             ),
         )
+        self._set_configured_state(conn, device_id, True, commit=False)
         if commit:
             conn.commit()
         mapping_id = cursor.lastrowid
@@ -1223,6 +1223,9 @@ class DeviceStore:
                 mapping_id,
             ),
         )
+        if existing["device_id"] != new_device_id:
+            self._refresh_configured_from_mappings(conn, existing["device_id"], commit=False)
+        self._set_configured_state(conn, new_device_id, True, commit=False)
         conn.commit()
         updated = conn.execute(
             """
@@ -1262,10 +1265,18 @@ class DeviceStore:
         return await self.db.run(lambda conn: self._delete_mapping(conn, mapping_id))
 
     def _delete_mapping(self, conn: sqlite3.Connection, mapping_id: int) -> bool:
+        mapping_row = conn.execute(
+            "SELECT device_id FROM mappings WHERE id = ?",
+            (mapping_id,),
+        ).fetchone()
+        if not mapping_row:
+            return False
+        device_id = mapping_row["device_id"]
         cursor = conn.execute(
             "DELETE FROM mappings WHERE id = ?",
             (mapping_id,),
         )
+        self._refresh_configured_from_mappings(conn, device_id, commit=False)
         conn.commit()
         if cursor.rowcount:
             self.logger.info("Deleted mapping", extra={"mapping_id": mapping_id})
@@ -1365,6 +1376,29 @@ class DeviceStore:
             except ValueError:
                 continue
         return fields
+
+    def _set_configured_state(
+        self, conn: sqlite3.Connection, device_id: str, configured: bool, *, commit: bool = False
+    ) -> None:
+        conn.execute(
+            """
+            UPDATE devices
+            SET configured = ?
+            WHERE id = ?
+            """,
+            (1 if configured else 0, device_id),
+        )
+        if commit:
+            conn.commit()
+
+    def _refresh_configured_from_mappings(
+        self, conn: sqlite3.Connection, device_id: str, *, commit: bool = False
+    ) -> None:
+        row = conn.execute(
+            "SELECT 1 FROM mappings WHERE device_id = ? LIMIT 1",
+            (device_id,),
+        ).fetchone()
+        self._set_configured_state(conn, device_id, row is not None, commit=commit)
 
     async def update_capabilities(
         self, device_id: str, capabilities: Mapping[str, Any]
