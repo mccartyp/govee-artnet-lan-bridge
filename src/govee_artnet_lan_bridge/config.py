@@ -602,6 +602,8 @@ def _cli_overrides(args: argparse.Namespace) -> Dict[str, Any]:
         mapping["device_poll_enabled"] = True
     if args.no_api_docs:
         mapping["api_docs"] = False
+    if args.device_poll_enabled:
+        mapping["device_poll_enabled"] = True
     return mapping
 
 

@@ -10,6 +10,7 @@ from govee_artnet_lan_bridge.db import apply_migrations
 from govee_artnet_lan_bridge.devices import DeviceStore
 from govee_artnet_lan_bridge.health import HealthMonitor
 from govee_artnet_lan_bridge.poller import DevicePollerService
+from govee_artnet_lan_bridge.protocol import GoveeProtocol
 
 
 class _Responder(asyncio.DatagramProtocol):
@@ -27,7 +28,8 @@ class _Responder(asyncio.DatagramProtocol):
 
 @pytest.mark.asyncio
 async def test_poller_marks_device_online_with_state(tmp_path: Path) -> None:
-    port = 49001
+    reply_port = 49001
+    device_port = 49003
     db_path = tmp_path / "bridge.sqlite3"
     apply_migrations(db_path)
     store = DeviceStore(db_path)
@@ -40,11 +42,8 @@ async def test_poller_marks_device_online_with_state(tmp_path: Path) -> None:
         )
     )
     loop = asyncio.get_running_loop()
-    responder = _Responder({"device": "poll-ok", "state": {"brightness": 42}})
-    transport, _ = await loop.create_datagram_endpoint(
-        lambda: responder, local_addr=("127.0.0.1", port)
-    )
 
+    # Create mock protocol that responds on reply_port
     config = Config(
         db_path=db_path,
         device_poll_enabled=True,
@@ -52,15 +51,34 @@ async def test_poller_marks_device_online_with_state(tmp_path: Path) -> None:
         device_poll_timeout=0.2,
         device_poll_rate_per_second=100.0,
         device_poll_rate_burst=10,
-        device_poll_port=port,
+        device_poll_port=device_port,
+        discovery_reply_port=reply_port,
+        discovery_multicast_address="239.255.255.250",
     )
+
+    # Create protocol and responder
+    protocol = GoveeProtocol(config, loop)
+    responder_payload = {"msg": {"cmd": "devStatus", "data": {"device": "poll-ok", "state": {"brightness": 42}}}}
+    responder = _Responder(responder_payload)
+
+    # Start protocol on reply_port
+    protocol_transport, _ = await loop.create_datagram_endpoint(
+        lambda: protocol, local_addr=("127.0.0.1", reply_port)
+    )
+
+    # Start responder on device_port to simulate device
+    device_transport, _ = await loop.create_datagram_endpoint(
+        lambda: responder, local_addr=("127.0.0.1", device_port)
+    )
+
     health = HealthMonitor(("poller",), failure_threshold=2, cooldown_seconds=0.1)
-    poller = DevicePollerService(config, store, health=health)
+    poller = DevicePollerService(config, store, protocol=protocol, health=health)
 
     await poller.start()
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(0.3)
     await poller.stop()
-    transport.close()
+    protocol_transport.close()
+    device_transport.close()
 
     device = await store.device("poll-ok")
     assert device is not None
@@ -71,7 +89,8 @@ async def test_poller_marks_device_online_with_state(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_poller_marks_device_offline_after_failures(tmp_path: Path) -> None:
-    port = 49002
+    reply_port = 49002
+    device_port = 49004
     db_path = tmp_path / "bridge.sqlite3"
     apply_migrations(db_path)
     store = DeviceStore(db_path)
@@ -83,6 +102,7 @@ async def test_poller_marks_device_offline_after_failures(tmp_path: Path) -> Non
             capabilities={},
         )
     )
+    loop = asyncio.get_running_loop()
 
     config = Config(
         db_path=db_path,
@@ -92,14 +112,24 @@ async def test_poller_marks_device_offline_after_failures(tmp_path: Path) -> Non
         device_poll_offline_threshold=1,
         device_poll_rate_per_second=100.0,
         device_poll_rate_burst=10,
-        device_poll_port=port,
+        device_poll_port=device_port,
+        discovery_reply_port=reply_port,
+        discovery_multicast_address="239.255.255.250",
     )
+
+    # Create protocol (no responder, so poll will timeout)
+    protocol = GoveeProtocol(config, loop)
+    protocol_transport, _ = await loop.create_datagram_endpoint(
+        lambda: protocol, local_addr=("127.0.0.1", reply_port)
+    )
+
     health = HealthMonitor(("poller",), failure_threshold=2, cooldown_seconds=0.1)
-    poller = DevicePollerService(config, store, health=health)
+    poller = DevicePollerService(config, store, protocol=protocol, health=health)
 
     await poller.start()
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(0.3)
     await poller.stop()
+    protocol_transport.close()
 
     device = await store.device("poll-fail")
     assert device is not None
