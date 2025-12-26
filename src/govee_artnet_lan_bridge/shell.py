@@ -21,10 +21,14 @@ from rich.table import Table
 from .cli import ClientConfig, _build_client, _handle_response, _print_output
 
 
+# Shell version
+SHELL_VERSION = "1.0.0"
+
+
 class GoveeShell(cmd.Cmd):
     """Interactive shell for the Govee ArtNet bridge."""
 
-    intro = "Govee ArtNet Bridge Shell. Type 'help' or '?' for commands, 'exit' to quit."
+    intro = None  # Will be set dynamically
     prompt = "govee> "
 
     def __init__(self, config: ClientConfig):
@@ -55,7 +59,7 @@ class GoveeShell(cmd.Cmd):
             "connect", "disconnect", "status", "health",
             "devices", "mappings", "logs", "monitor",
             "bookmark", "alias", "watch", "batch", "session",
-            "output", "clear", "exit", "quit", "help"
+            "output", "version", "tips", "clear", "exit", "quit", "help"
         ]
         completer = WordCompleter(commands, ignore_case=True)
 
@@ -883,6 +887,16 @@ class GoveeShell(cmd.Cmd):
             "output table\noutput json\noutput yaml"
         )
         help_table.add_row(
+            "version",
+            "Show shell version",
+            "version"
+        )
+        help_table.add_row(
+            "tips",
+            "Show helpful tips",
+            "tips"
+        )
+        help_table.add_row(
             "clear",
             "Clear the screen",
             "clear"
@@ -896,6 +910,44 @@ class GoveeShell(cmd.Cmd):
         self.console.print(help_table)
         self.console.print()
         self.console.print("[dim]Type 'help <command>' for detailed help on a specific command.[/]")
+        self.console.print()
+
+    def do_version(self, arg: str) -> None:
+        """Show shell version information."""
+        self.console.print()
+        self.console.print(f"[bold cyan]Govee ArtNet Bridge Shell[/]")
+        self.console.print(f"[dim]Version:[/] {SHELL_VERSION}")
+        self.console.print()
+        self.console.print("[dim]Features:[/]")
+        self.console.print("  • Interactive shell with autocomplete and history")
+        self.console.print("  • Real-time WebSocket log streaming")
+        self.console.print("  • Rich formatted tables and dashboards")
+        self.console.print("  • Bookmarks, aliases, and sessions")
+        self.console.print("  • Watch mode for continuous monitoring")
+        self.console.print("  • Batch command execution")
+        self.console.print()
+
+    def do_tips(self, arg: str) -> None:
+        """Show helpful tips for using the shell."""
+        self.console.print()
+        self.console.rule("[bold cyan]Shell Tips & Tricks")
+        self.console.print()
+
+        tips_table = Table(show_header=False, show_edge=False, pad_edge=False)
+        tips_table.add_column("Tip", style="cyan")
+
+        tips_table.add_row("💡 Use [bold]Tab[/] to autocomplete commands")
+        tips_table.add_row("💡 Press [bold]↑/↓[/] to navigate command history")
+        tips_table.add_row("💡 Press [bold]Ctrl+R[/] to search command history")
+        tips_table.add_row("💡 Create aliases: [bold]alias add dl \"devices list\"[/]")
+        tips_table.add_row("💡 Save bookmarks: [bold]bookmark add light1 ABC123[/]")
+        tips_table.add_row("💡 Watch in real-time: [bold]watch dashboard 3[/]")
+        tips_table.add_row("💡 Run batch files: [bold]batch setup.txt[/]")
+        tips_table.add_row("💡 Save sessions: [bold]session save prod[/]")
+        tips_table.add_row("💡 Use [bold]output table[/] for pretty formatting")
+        tips_table.add_row("💡 Tail logs live: [bold]logs tail --level ERROR[/]")
+
+        self.console.print(tips_table)
         self.console.print()
 
     def do_clear(self, arg: str) -> None:
@@ -925,10 +977,22 @@ class GoveeShell(cmd.Cmd):
         Args:
             intro: Introduction message (optional)
         """
-        # Print intro
-        if intro is None:
-            intro = self.intro
-        if intro:
+        # Print custom intro with tips
+        if intro is None and self.intro is None:
+            self.console.print()
+            self.console.rule("[bold cyan]Govee ArtNet Bridge - Interactive Shell")
+            self.console.print()
+            self.console.print(f"[dim]Version {SHELL_VERSION}[/]")
+            self.console.print()
+            self.console.print("[cyan]Quick Tips:[/]")
+            self.console.print("  • Type [bold]help[/] to see all commands")
+            self.console.print("  • Use [bold]Tab[/] for autocomplete")
+            self.console.print("  • Press [bold]↑/↓[/] to navigate command history")
+            self.console.print("  • Try [bold]alias[/] to create shortcuts")
+            self.console.print("  • Use [bold]bookmark[/] to save device IDs")
+            self.console.print("  • Press [bold]Ctrl+D[/] or type [bold]exit[/] to quit")
+            self.console.print()
+        elif intro:
             self.console.print(intro, style="bold cyan")
             self.console.print()
 
