@@ -1,8 +1,8 @@
 ## Phase 2: WebSocket Streaming and Real-time Monitoring
 
-**⚠️ Depends on:** Phase 1 PR - This PR builds on Phase 1's log buffer and event bus infrastructure.
+**⚠️ Builds on:** Phase 1 (already merged to main via PR #33) - This PR builds on Phase 1's log buffer and event bus infrastructure.
 
-**Base branch should be:** `claude/plan-cli-shell-expansion-NsJ3w`
+**Base branch:** `main`
 
 ### Overview
 This PR implements Phase 2 of the [CLI Shell Expansion Plan](./CLI_SHELL_EXPANSION_PLAN.md), adding real-time WebSocket streaming for logs and events, plus interactive monitoring commands.
@@ -195,7 +195,7 @@ Goodbye!
 - Help text updated for new `logs tail` and `monitor` commands
 
 ### Related
-- **Builds on:** Phase 1 PR - Log buffer and event bus
+- **Builds on:** Phase 1 (merged via PR #33) - Log buffer and event bus
 - **Implements:** [CLI_SHELL_EXPANSION_PLAN.md](./CLI_SHELL_EXPANSION_PLAN.md) Phase 2
 - **Next:** Phase 3 will add enhanced UI with `prompt_toolkit` and `rich`
 
