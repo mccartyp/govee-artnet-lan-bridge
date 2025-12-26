@@ -48,7 +48,14 @@ def _normalize_color_modes(capabilities: Any) -> Set[str]:
     modes: Set[str] = set()
     explicit = False
     color_temp_hint = False
+    color_flag = None
+    color_temp_flag = None
     if isinstance(capabilities, Mapping):
+        if "color" in capabilities or "supports_color" in capabilities:
+            explicit = True
+            color_flag = _coerce_bool(capabilities.get("color", capabilities.get("supports_color")))
+            if color_flag:
+                modes.add("color")
         raw_modes = capabilities.get("color_modes")
         if raw_modes is None:
             raw_modes = capabilities.get("colorModes")
@@ -61,6 +68,14 @@ def _normalize_color_modes(capabilities: Any) -> Set[str]:
         if isinstance(single_mode, str):
             explicit = True
             modes.add(single_mode.strip().lower())
+        if "color_temperature" in capabilities or "supports_color_temperature" in capabilities:
+            explicit = True
+            color_temp_flag = _coerce_bool(
+                capabilities.get("color_temperature", capabilities.get("supports_color_temperature"))
+            )
+            if color_temp_flag:
+                color_temp_hint = True
+                modes.add("ct")
         if any(
             key in capabilities
             for key in (
@@ -93,6 +108,10 @@ def _normalize_color_modes(capabilities: Any) -> Set[str]:
         normalized |= modes
     if not normalized and not explicit:
         normalized.add("color")
+    if color_flag is False and "color" in normalized:
+        normalized.remove("color")
+    if color_temp_flag is False and "ct" in normalized:
+        normalized.remove("ct")
     return normalized
 
 
@@ -196,8 +215,13 @@ class NormalizedCapabilities:
 
     def as_mapping(self) -> MutableMapping[str, Any]:
         data = dict(self.raw)
+        data.pop("supports_brightness", None)
+        data.pop("supports_color", None)
+        data.pop("supports_color_temperature", None)
         data["color_modes"] = list(self.color_modes)
-        data["supports_brightness"] = self.supports_brightness
+        data["brightness"] = self.supports_brightness
+        data["color"] = self.supports_color
+        data["color_temperature"] = self.supports_color_temperature
         if self.color_temp_range:
             data["color_temp_range"] = list(self.color_temp_range)
         if self.effects:
@@ -229,10 +253,18 @@ def normalize_capabilities(
 
     color_modes = tuple(sorted(_normalize_color_modes(capabilities)))
     supports_brightness = _coerce_bool(
-        base.get("supports_brightness", base.get("brightness")), default=True
+        base.get("brightness", base.get("supports_brightness")), default=True
     )
+    base["brightness"] = supports_brightness
+    base.pop("supports_brightness", None)
+    base.pop("supports_color", None)
+    base.pop("supports_color_temperature", None)
     color_temp_range = _normalize_color_temp_range(capabilities)
     effects = tuple(sorted(_normalize_effects(capabilities)))
+    supports_color = "color" in color_modes
+    supports_color_temperature = "ct" in color_modes or color_temp_range is not None
+    base["color"] = supports_color
+    base["color_temperature"] = supports_color_temperature
     firmware = _extract_firmware(capabilities)
     fingerprint = _fingerprint(base)
     return NormalizedCapabilities(

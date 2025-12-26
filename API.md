@@ -38,9 +38,9 @@ Returns all discovered Govee devices with their capabilities.
     "model": "H6160",
     "ip": "192.168.1.100",
     "capabilities": {
-      "supports_brightness": true,
-      "supports_color": true,
-      "supports_color_temperature": true,
+      "brightness": true,
+      "color": true,
+      "color_temperature": true,
       "color_modes": ["color", "ct"],
       "color_temp_range": [2000, 9000],
       "effects": ["sunrise", "sunset"]
@@ -65,8 +65,8 @@ GET /devices/{device_id}
   "name": "Living Room Strip",
   "model": "H6160",
   "capabilities": {
-    "supports_brightness": true,
-    "supports_color": true
+    "brightness": true,
+    "color": true
   }
 }
 ```

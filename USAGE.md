@@ -261,9 +261,9 @@ Not all templates work with all devices. The bridge validates device capabilitie
 #### Device Capabilities
 
 Govee devices report their capabilities:
-- **`supports_brightness`**: Device has adjustable brightness/dimming
-- **`supports_color`**: Device supports RGB color control
-- **`supports_color_temperature`**: Device supports color temperature (warm/cool white)
+- **`brightness`**: Device has adjustable brightness/dimming
+- **`color`**: Device supports RGB color control
+- **`color_temperature`**: Device supports color temperature (warm/cool white)
 
 #### Template Compatibility Matrix
 
@@ -290,8 +290,8 @@ Example output:
   "name": "Living Room Strip",
   "model": "H6160",
   "capabilities": {
-    "supports_brightness": true,
-    "supports_color": true,
+    "brightness": true,
+    "color": true,
     "color_modes": ["color", "ct"]
   }
 }

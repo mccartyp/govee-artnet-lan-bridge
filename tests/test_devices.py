@@ -14,7 +14,7 @@ async def test_create_mapping_rejects_unsupported_mode(tmp_path) -> None:
         ManualDevice(
             id="dev-unsupported",
             ip="127.0.0.1",
-            capabilities={"color_modes": [], "supports_brightness": True},
+            capabilities={"color_modes": [], "brightness": True},
         )
     )
 
@@ -31,7 +31,7 @@ async def test_duplicate_field_assignments_blocked(tmp_path) -> None:
         ManualDevice(
             id="dev-fields",
             ip="127.0.0.1",
-            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "brightness": True},
         )
     )
     await store.create_mapping(
@@ -62,7 +62,7 @@ async def test_channel_map_reports_fields(tmp_path) -> None:
             id="dev-map",
             ip="127.0.0.1",
             description="Fixture",
-            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "brightness": True},
         )
     )
     await store.create_mapping(
@@ -100,7 +100,7 @@ async def test_record_discovery_defaults_to_disabled(tmp_path) -> None:
             id="dev-discovered",
             ip="10.0.0.2",
             model="H6000",
-            capabilities={"color_modes": ["color"], "supports_brightness": True},
+            capabilities={"color_modes": ["color"], "brightness": True},
         )
     )
 
@@ -123,14 +123,14 @@ async def test_rediscovery_preserves_user_enabled_state(tmp_path) -> None:
             id="dev-rediscover",
             ip="10.0.0.3",
             model="H6001",
-            capabilities={"color_modes": ["color"], "supports_brightness": True},
+            capabilities={"color_modes": ["color"], "brightness": True},
         )
     )
     await store.update_device(
         "dev-rediscover",
         enabled=False,
         model="H6001",
-        capabilities={"color_modes": ["color"], "supports_brightness": True},
+        capabilities={"color_modes": ["color"], "brightness": True},
     )
 
     old_last_seen = "2000-01-01 00:00:00"
@@ -151,7 +151,7 @@ async def test_rediscovery_preserves_user_enabled_state(tmp_path) -> None:
             model="H6001",
             capabilities={
                 "color_modes": ["color", "ct"],
-                "supports_brightness": True,
+                "brightness": True,
                 "color_temp_range": (1800, 6500),
             },
         )
@@ -175,7 +175,7 @@ async def test_manual_device_remains_unconfigured_until_mapped(tmp_path) -> None
         ManualDevice(
             id="dev-configured",
             ip="127.0.0.10",
-            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "brightness": True},
         )
     )
 
@@ -209,14 +209,14 @@ async def test_remapping_updates_configured_flags(tmp_path) -> None:
         ManualDevice(
             id="dev-source",
             ip="127.0.0.20",
-            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "brightness": True},
         )
     )
     await store.create_manual_device(
         ManualDevice(
             id="dev-target",
             ip="127.0.0.21",
-            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "brightness": True},
         )
     )
     mapping = await store.create_mapping(
@@ -246,7 +246,7 @@ async def test_template_expansion_creates_expected_mappings(tmp_path) -> None:
         ManualDevice(
             id="dev-template",
             ip="127.0.0.1",
-            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "brightness": True},
         )
     )
 
@@ -277,7 +277,7 @@ async def test_template_validation_rejects_incompatible_device(tmp_path) -> None
         ManualDevice(
             id="dev-template-unsupported",
             ip="127.0.0.1",
-            capabilities={"color_modes": [], "supports_brightness": False},
+            capabilities={"color_modes": [], "brightness": False},
         )
     )
 

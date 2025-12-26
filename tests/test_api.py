@@ -41,7 +41,7 @@ async def test_devices_endpoint_reflects_discovery_state(tmp_path) -> None:
             id="api-dev-1",
             ip="10.0.1.1",
             model="API-Model",
-            capabilities={"color_modes": ["color"], "supports_brightness": True},
+            capabilities={"color_modes": ["color"], "brightness": True},
         )
     )
 
@@ -71,7 +71,7 @@ async def test_channel_map_endpoint(tmp_path) -> None:
             id="api-map",
             ip="10.0.1.2",
             description="API Fixture",
-            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "brightness": True},
         )
     )
     await store.create_mapping(
@@ -116,7 +116,7 @@ async def test_mappings_endpoint_includes_fields(tmp_path) -> None:
             id="api-mappings",
             ip="10.0.3.1",
             description="API Fixture",
-            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "supports_brightness": True},
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "brightness": True},
         )
     )
     await store.create_mapping(
@@ -158,7 +158,7 @@ async def test_template_mapping_creation_via_api(tmp_path) -> None:
         ManualDevice(
             id="api-template",
             ip="10.0.2.1",
-            capabilities={"mode": "rgbw", "order": ["r", "g", "b", "w"], "supports_brightness": True},
+            capabilities={"mode": "rgbw", "order": ["r", "g", "b", "w"], "brightness": True},
         )
     )
 
@@ -193,7 +193,7 @@ async def test_template_validation_returns_actionable_error(tmp_path) -> None:
         ManualDevice(
             id="api-template-unsupported",
             ip="10.0.2.2",
-            capabilities={"color_modes": [], "supports_brightness": False},
+            capabilities={"color_modes": [], "brightness": False},
         )
     )
 
@@ -225,7 +225,7 @@ async def test_command_endpoint_enqueues_sanitized_payload(tmp_path) -> None:
             ip="10.0.5.1",
             capabilities={
                 "color_modes": ["color", "ct"],
-                "supports_brightness": True,
+                "brightness": True,
                 "color_temp_range": [2000, 6500],
             },
         )
@@ -269,7 +269,7 @@ async def test_command_endpoint_turn_only(tmp_path) -> None:
         ManualDevice(
             id="cmd-turn",
             ip="10.0.5.2",
-            capabilities={"supports_brightness": True},
+            capabilities={"brightness": True},
         )
     )
 

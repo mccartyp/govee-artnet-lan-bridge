@@ -7,7 +7,7 @@ def test_normalize_capabilities_handles_modes_and_effects() -> None:
         "H7000",
         {
             "color_modes": ["COLOR", "color_temp", "effect"],
-            "supports_brightness": False,
+            "brightness": False,
             "color_temp_range": [1800, 6500],
             "effects": ["Sunset", "Party"],
             "firmware": "1.2.3",
@@ -19,6 +19,11 @@ def test_normalize_capabilities_handles_modes_and_effects() -> None:
     assert normalized.color_temp_range == (1800, 6500)
     assert "party" in normalized.effects
     assert normalized.cache_key == ("H7000", "1.2.3")
+    as_mapping = normalized.as_mapping()
+    assert as_mapping["brightness"] is False
+    assert as_mapping["color"] is True
+    assert as_mapping["color_temperature"] is True
+    assert "supports_brightness" not in as_mapping
 
 
 def test_validate_command_payload_drops_unsupported_fields() -> None:
@@ -27,7 +32,7 @@ def test_validate_command_payload_drops_unsupported_fields() -> None:
         "H6100",
         {
             "color_modes": [],
-            "supports_brightness": True,
+            "brightness": True,
             "effects": [],
         },
     )
