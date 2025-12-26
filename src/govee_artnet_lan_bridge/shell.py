@@ -330,6 +330,14 @@ class GoveeShell(cmd.Cmd):
         Args:
             args: Command arguments (filters)
         """
+        # Check for websockets library early
+        try:
+            import websockets.sync.client as ws_client
+        except ImportError:
+            print("Error: websockets library not installed")
+            print("Install with: pip install websockets")
+            return
+
         # Parse filters
         level_filter = None
         logger_filter = None
@@ -356,8 +364,6 @@ class GoveeShell(cmd.Cmd):
         print()
 
         try:
-            import websockets.sync.client as ws_client
-
             with ws_client.connect(ws_url) as websocket:
                 # Send filters if set
                 if level_filter or logger_filter:
@@ -392,9 +398,6 @@ class GoveeShell(cmd.Cmd):
 
         except KeyboardInterrupt:
             print("\nStopped tailing logs")
-        except ImportError:
-            print("Error: websockets library not installed")
-            print("Install with: pip install websockets")
         except Exception as exc:
             print(f"Error streaming logs: {exc}")
 
@@ -664,7 +667,7 @@ class GoveeShell(cmd.Cmd):
 
             while True:
                 # Clear screen
-                os.system("cls" if os.name == "nt" else "clear")
+                self.console.clear()
 
                 # Execute command
                 if command == "devices":
@@ -952,7 +955,7 @@ class GoveeShell(cmd.Cmd):
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
-        os.system("cls" if os.name == "nt" else "clear")
+        self.console.clear()
 
     def do_exit(self, arg: str) -> bool:
         """Exit the shell."""

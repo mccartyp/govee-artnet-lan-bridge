@@ -456,8 +456,8 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
 
 def _load_config(args: argparse.Namespace) -> ClientConfig:
     output = args.output or "json"
-    if output not in {"json", "yaml"}:
-        raise CliError("Output format must be 'json' or 'yaml'")
+    if output not in {"json", "yaml", "table"}:
+        raise CliError("Output format must be 'json', 'yaml', or 'table'")
 
     return ClientConfig(
         server_url=args.server_url,
