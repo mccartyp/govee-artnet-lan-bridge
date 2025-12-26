@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import cmd
 import json
+import os
 import shlex
 import sys
+from pathlib import Path
 from typing import Any, Optional
 
 import httpx
 import yaml
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import FileHistory
+from rich.console import Console
+from rich.table import Table
 
 from .cli import ClientConfig, _build_client, _handle_response, _print_output
 
@@ -30,6 +37,28 @@ class GoveeShell(cmd.Cmd):
         super().__init__()
         self.config = config
         self.client: Optional[httpx.Client] = None
+        self.console = Console()
+
+        # Set up command history
+        history_dir = Path.home() / ".govee_artnet"
+        history_dir.mkdir(exist_ok=True)
+        history_file = history_dir / "shell_history"
+
+        # Set up autocomplete with all command names
+        commands = [
+            "connect", "disconnect", "status", "health",
+            "devices", "mappings", "logs", "monitor",
+            "output", "clear", "exit", "quit", "help"
+        ]
+        completer = WordCompleter(commands, ignore_case=True)
+
+        # Create prompt session with history and autocomplete
+        self.session: PromptSession = PromptSession(
+            history=FileHistory(str(history_file)),
+            completer=completer,
+            complete_while_typing=True,
+        )
+
         self._connect()
 
     def _connect(self) -> None:
@@ -353,50 +382,63 @@ class GoveeShell(cmd.Cmd):
             print(f"Error: {exc}")
 
     def _monitor_dashboard(self) -> None:
-        """Display live dashboard with system status."""
-        print("Fetching dashboard data...")
+        """Display live dashboard with system status using rich formatting."""
         try:
             # Get health and status
-            health_data = _handle_response(self.client.get("/health"))
-            status_data = _handle_response(self.client.get("/status"))
-
-            # Display dashboard
-            print("\n" + "=" * 60)
-            print("  Govee ArtNet Bridge - Dashboard")
-            print("=" * 60)
+            with self.console.status("[bold cyan]Fetching dashboard data...", spinner="dots"):
+                health_data = _handle_response(self.client.get("/health"))
+                status_data = _handle_response(self.client.get("/status"))
 
             # Overall status
             overall_status = health_data.get("status", "unknown")
+            status_style = "bold green" if overall_status == "ok" else "bold red"
             status_indicator = "✓" if overall_status == "ok" else "✗"
-            print(f"\nStatus: {status_indicator} {overall_status.upper()}")
 
-            # Devices
-            print("\nDevices:")
+            # Create header
+            self.console.print()
+            self.console.rule("[bold cyan]Govee ArtNet Bridge - Dashboard")
+            self.console.print()
+            self.console.print(f"Status: [{status_style}]{status_indicator} {overall_status.upper()}[/]")
+            self.console.print()
+
+            # Devices table
+            devices_table = Table(title="Devices", show_header=True, header_style="bold magenta")
+            devices_table.add_column("Type", style="cyan")
+            devices_table.add_column("Count", justify="right", style="yellow")
+
             discovered_count = status_data.get("discovered_count", 0)
             manual_count = status_data.get("manual_count", 0)
-            print(f"  Discovered: {discovered_count}")
-            print(f"  Manual:     {manual_count}")
-            print(f"  Total:      {discovered_count + manual_count}")
+            devices_table.add_row("Discovered", str(discovered_count))
+            devices_table.add_row("Manual", str(manual_count))
+            devices_table.add_row("[bold]Total[/]", f"[bold]{discovered_count + manual_count}[/]")
 
-            # Queue
-            print("\nMessage Queue:")
+            self.console.print(devices_table)
+            self.console.print()
+
+            # Queue info
             queue_depth = status_data.get("queue_depth", 0)
-            print(f"  Current depth: {queue_depth}")
+            queue_style = "green" if queue_depth < 100 else "yellow" if queue_depth < 500 else "red"
+            self.console.print(f"Message Queue Depth: [{queue_style}]{queue_depth}[/]")
+            self.console.print()
 
-            # Subsystems
+            # Subsystems table
             subsystems = health_data.get("subsystems", {})
             if subsystems:
-                print("\nSubsystems:")
+                subsystems_table = Table(title="Subsystems", show_header=True, header_style="bold magenta")
+                subsystems_table.add_column("Name", style="cyan")
+                subsystems_table.add_column("Status", style="green")
+
                 for name, data in subsystems.items():
                     sub_status = data.get("status", "unknown")
                     indicator = "✓" if sub_status == "ok" else "✗"
-                    print(f"  {indicator} {name:15} {sub_status}")
+                    status_style = "green" if sub_status == "ok" else "red"
+                    subsystems_table.add_row(name, f"[{status_style}]{indicator} {sub_status}[/]")
 
-            print("\n" + "=" * 60)
-            print()
+                self.console.print(subsystems_table)
+                self.console.print()
 
         except Exception as exc:
-            print(f"Error fetching dashboard: {exc}")
+            self.console.print(f"[bold red]Error fetching dashboard:[/] {exc}")
 
     def _monitor_stats(self) -> None:
         """Display system statistics."""
@@ -427,9 +469,83 @@ class GoveeShell(cmd.Cmd):
         )
         print(f"Output format set to: {new_format}")
 
+    def do_help(self, arg: str) -> None:
+        """Show help for commands with examples."""
+        if arg:
+            # Show help for specific command
+            super().do_help(arg)
+            return
+
+        # Show enhanced help with examples using rich
+        self.console.print()
+        self.console.rule("[bold cyan]Govee ArtNet Bridge Shell - Command Reference")
+        self.console.print()
+
+        # Create help table
+        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True)
+        help_table.add_column("Command", style="cyan", width=15)
+        help_table.add_column("Description", style="white", width=30)
+        help_table.add_column("Example", style="yellow", width=35)
+
+        # Add command rows
+        help_table.add_row(
+            "connect",
+            "Connect to the bridge server",
+            "connect http://localhost:8000"
+        )
+        help_table.add_row(
+            "status",
+            "Show bridge status",
+            "status"
+        )
+        help_table.add_row(
+            "health",
+            "Check bridge health",
+            "health"
+        )
+        help_table.add_row(
+            "devices",
+            "Manage devices",
+            "devices list\ndevices enable <id>\ndevices disable <id>"
+        )
+        help_table.add_row(
+            "mappings",
+            "Manage ArtNet mappings",
+            "mappings list\nmappings get <id>\nmappings delete <id>"
+        )
+        help_table.add_row(
+            "logs",
+            "View and tail logs",
+            "logs\nlogs --level ERROR\nlogs tail\nlogs search \"error\""
+        )
+        help_table.add_row(
+            "monitor",
+            "Real-time monitoring",
+            "monitor dashboard\nmonitor stats"
+        )
+        help_table.add_row(
+            "output",
+            "Set output format",
+            "output table\noutput json\noutput yaml"
+        )
+        help_table.add_row(
+            "clear",
+            "Clear the screen",
+            "clear"
+        )
+        help_table.add_row(
+            "exit/quit",
+            "Exit the shell",
+            "exit"
+        )
+
+        self.console.print(help_table)
+        self.console.print()
+        self.console.print("[dim]Type 'help <command>' for detailed help on a specific command.[/]")
+        self.console.print()
+
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
-        import os
         os.system("cls" if os.name == "nt" else "clear")
 
     def do_exit(self, arg: str) -> bool:
@@ -447,6 +563,41 @@ class GoveeShell(cmd.Cmd):
         """Handle Ctrl+D."""
         print()  # Print newline
         return self.do_exit(arg)
+
+    def cmdloop(self, intro: Optional[str] = None) -> None:
+        """
+        Override cmdloop to use prompt_toolkit for better UX.
+
+        Args:
+            intro: Introduction message (optional)
+        """
+        # Print intro
+        if intro is None:
+            intro = self.intro
+        if intro:
+            self.console.print(intro, style="bold cyan")
+            self.console.print()
+
+        # Main loop
+        stop = False
+        while not stop:
+            try:
+                # Get input with prompt_toolkit (autocomplete + history)
+                line = self.session.prompt(self.prompt)
+
+                # Process command
+                line = self.precmd(line)
+                stop = self.onecmd(line)
+                stop = self.postcmd(stop, line)
+
+            except KeyboardInterrupt:
+                self.console.print("\nUse 'exit' or Ctrl+D to quit.", style="yellow")
+            except EOFError:
+                # Handle Ctrl+D
+                stop = self.do_EOF("")
+
+        # Cleanup
+        self.postloop()
 
     def emptyline(self) -> None:
         """Do nothing on empty line."""
