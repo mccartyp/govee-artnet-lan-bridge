@@ -288,14 +288,23 @@ Example output:
 {
   "id": "AA:BB:CC:DD:EE:FF",
   "name": "Living Room Strip",
-  "model": "H6160",
+  "model_number": "H6160",
+  "device_type": "led_strip",
+  "length_meters": 5.0,
+  "has_segments": false,
   "capabilities": {
+    "model_number": "H6160",
+    "device_type": "led_strip",
     "brightness": true,
+    "color_temperature": true,
     "color": true,
-    "color_modes": ["color", "ct"]
+    "color_modes": ["color", "ct"],
+    "color_temp_range": [2000, 9000]
   }
 }
 ```
+
+Discovery responses that include a `model_number` are matched against the bundled capability catalog. When a device does not report full capabilities, the bridge fills in `device_type`, `length_meters`, and segment metadata from the catalog so channel templates can be validated without manual editing. Manual devices can provide the same fields to override or augment catalog values.
 
 ### Troubleshooting Mapping Errors
 
@@ -409,7 +418,9 @@ govee-artnet devices list
 govee-artnet devices add \
   --id "AA:BB:CC:DD:EE:FF" \
   --ip "192.168.1.100" \
-  --model "H6160" \
+  --model-number "H6160" \
+  --device-type "led_strip" \
+  --length-meters 5 \
   --description "Living Room Strip"
 
 # Update a device
@@ -435,6 +446,14 @@ The `devices command` helper accepts the following actions:
 - `--brightness <0-255>`: raw brightness level
 - `--color <hex>`: RGB hex string (`ff3366`, `#00ccff`, or three-digit shorthand like `0cf`)
 - `--kelvin <0-255>`: 0-255 slider scaled to the device's supported color-temperature range (defaults to 2000-9000K when the range is unknown)
+
+Manual configuration files can also define the same metadata used by discovery/catalog lookups. Example `config.toml` snippet:
+
+```toml
+manual_devices = [
+  { id = "AA:BB:CC:DD:EE:FF", ip = "192.168.1.100", model_number = "H6160", device_type = "led_strip", length_meters = 5.0, has_segments = false }
+]
+```
 
 ### Mapping Management
 

@@ -11,7 +11,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 import uvicorn
 
 from .capabilities import NormalizedCapabilities, validate_command_payload
@@ -52,30 +52,56 @@ def _build_auth_dependency(config: Config) -> Callable[[Request], None]:
 class DeviceCreate(BaseModel):
     """Payload for creating a manual device."""
 
+    model_config = ConfigDict(populate_by_name=True)
     id: str
     ip: str
-    model: Optional[str] = None
+    model_number: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("model_number", "model")
+    )
+    device_type: Optional[str] = None
     description: Optional[str] = None
     capabilities: Optional[Any] = None
+    length_meters: Optional[float] = None
+    led_count: Optional[int] = None
+    led_density_per_meter: Optional[float] = None
+    has_segments: Optional[bool] = None
+    segment_count: Optional[int] = None
     enabled: bool = True
 
 
 class DeviceUpdate(BaseModel):
     """Partial update payload for a device."""
 
+    model_config = ConfigDict(populate_by_name=True)
     ip: Optional[str] = None
-    model: Optional[str] = None
+    model_number: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("model_number", "model")
+    )
+    device_type: Optional[str] = None
     description: Optional[str] = None
     capabilities: Optional[Any] = None
+    length_meters: Optional[float] = None
+    led_count: Optional[int] = None
+    led_density_per_meter: Optional[float] = None
+    has_segments: Optional[bool] = None
+    segment_count: Optional[int] = None
     enabled: Optional[bool] = None
 
 
 class DeviceOut(BaseModel):
     """Device response model."""
 
+    model_config = ConfigDict(populate_by_name=True)
     id: str
     ip: Optional[str]
-    model: Optional[str]
+    model_number: Optional[str]
+    model: Optional[str] = None
+    device_type: Optional[str] = None
+    length_meters: Optional[float] = None
+    led_count: Optional[int] = None
+    led_density_per_meter: Optional[float] = None
+    has_segments: Optional[bool] = None
+    segment_count: Optional[int] = None
     description: Optional[str]
     capabilities: Optional[Any]
     manual: bool
@@ -93,6 +119,14 @@ class DeviceOut(BaseModel):
     poll_state_updated_at: Optional[str] = None
     created_at: str
     updated_at: str
+
+    @model_validator(mode="after")
+    def _backfill_model(self) -> "DeviceOut":
+        if self.model is None:
+            self.model = self.model_number
+        if self.model_number is None and self.model is not None:
+            self.model_number = self.model
+        return self
 
 
 class MappingCreate(BaseModel):
@@ -355,9 +389,15 @@ def create_app(
         manual = ManualDevice(
             id=payload.id,
             ip=payload.ip,
-            model=payload.model,
+            model_number=payload.model_number,
+            device_type=payload.device_type,
             description=payload.description,
             capabilities=payload.capabilities,
+            length_meters=payload.length_meters,
+            led_count=payload.led_count,
+            led_density_per_meter=payload.led_density_per_meter,
+            has_segments=payload.has_segments,
+            segment_count=payload.segment_count,
         )
         device = await store.create_manual_device(manual)
         if payload.enabled is not None and not payload.enabled:
@@ -376,7 +416,13 @@ def create_app(
         updated = await store.update_device(
             device_id,
             ip=payload.ip,
-            model=payload.model,
+            model_number=payload.model_number,
+            device_type=payload.device_type,
+            length_meters=payload.length_meters,
+            led_count=payload.led_count,
+            led_density_per_meter=payload.led_density_per_meter,
+            has_segments=payload.has_segments,
+            segment_count=payload.segment_count,
             description=payload.description,
             capabilities=payload.capabilities,
             enabled=payload.enabled,

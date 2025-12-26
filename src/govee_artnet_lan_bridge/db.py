@@ -311,6 +311,23 @@ def _migration_mapping_fields(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migration_device_catalog_metadata(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        ALTER TABLE devices ADD COLUMN model_number TEXT;
+        ALTER TABLE devices ADD COLUMN device_type TEXT;
+        ALTER TABLE devices ADD COLUMN length_meters REAL;
+        ALTER TABLE devices ADD COLUMN led_count INTEGER;
+        ALTER TABLE devices ADD COLUMN led_density_per_meter REAL;
+        ALTER TABLE devices ADD COLUMN has_segments INTEGER;
+        ALTER TABLE devices ADD COLUMN segment_count INTEGER;
+
+        UPDATE devices
+        SET model_number = COALESCE(model_number, model);
+        """
+    )
+
+
 MIGRATIONS: List[Tuple[int, Migration]] = [
     (1, _migration_initial_schema),
     (2, _migration_device_metadata),
@@ -331,6 +348,7 @@ MIGRATIONS: List[Tuple[int, Migration]] = [
             """
         ),
     ),
+    (9, _migration_device_catalog_metadata),
 ]
 
 

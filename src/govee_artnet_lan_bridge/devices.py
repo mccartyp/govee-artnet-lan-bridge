@@ -120,6 +120,122 @@ def _required_channels(capabilities: Any, length: int) -> int:
     return len(order) if mode != "custom" else length
 
 
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_optional_bool(value: Any) -> Optional[bool]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    return bool(value)
+
+
+_METADATA_FIELDS = (
+    "device_type",
+    "length_meters",
+    "led_count",
+    "led_density_per_meter",
+    "has_segments",
+    "segment_count",
+)
+
+
+def _extract_metadata(source: Any) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {}
+    if source is None:
+        return metadata
+    if hasattr(source, "metadata") and isinstance(getattr(source, "metadata"), Mapping):
+        metadata.update(_extract_metadata(getattr(source, "metadata")))
+
+    def _assign(key: str, value: Any) -> None:
+        if value is None:
+            return
+        if key in {"length_meters", "led_density_per_meter"}:
+            coerced = _coerce_optional_float(value)
+        elif key in {"led_count", "segment_count"}:
+            coerced = _coerce_optional_int(value)
+        elif key == "has_segments":
+            coerced = _coerce_optional_bool(value)
+        else:
+            coerced = str(value)
+        if coerced is not None:
+            metadata[key] = coerced
+
+    if isinstance(source, Mapping):
+        for key in _METADATA_FIELDS:
+            if key in source or key in {"lengthMeters", "ledCount", "ledDensityPerMeter", "hasSegments", "segmentCount"}:
+                lookup = {
+                    "length_meters": source.get("length_meters", source.get("lengthMeters")),
+                    "led_count": source.get("led_count", source.get("ledCount")),
+                    "led_density_per_meter": source.get(
+                        "led_density_per_meter", source.get("ledDensityPerMeter")
+                    ),
+                    "has_segments": source.get("has_segments", source.get("hasSegments")),
+                    "segment_count": source.get("segment_count", source.get("segmentCount")),
+                    "device_type": source.get("device_type"),
+                }
+                _assign(key, lookup.get(key))
+    else:
+        for key in _METADATA_FIELDS:
+            if hasattr(source, key):
+                _assign(key, getattr(source, key))
+    return metadata
+
+
+def _merge_metadata(*sources: Any) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {}
+    for source in sources:
+        merged.update(_extract_metadata(source))
+    return merged
+
+
+def _coerce_metadata_for_db(metadata: Mapping[str, Any]) -> Dict[str, Any]:
+    db_values: Dict[str, Any] = {}
+    for key in _METADATA_FIELDS:
+        if key not in metadata:
+            continue
+        value = metadata.get(key)
+        if value is None:
+            continue
+        if key == "device_type":
+            db_values[key] = str(value)
+        elif key in {"length_meters", "led_density_per_meter"}:
+            coerced = _coerce_optional_float(value)
+            if coerced is not None:
+                db_values[key] = coerced
+        elif key in {"led_count", "segment_count"}:
+            coerced = _coerce_optional_int(value)
+            if coerced is not None:
+                db_values[key] = coerced
+        elif key == "has_segments":
+            coerced_bool = _coerce_optional_bool(value)
+            if coerced_bool is not None:
+                db_values[key] = 1 if coerced_bool else 0
+    return db_values
+
+
 SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness"}
 
 
@@ -232,7 +348,13 @@ class DiscoveryResult:
 
     id: str
     ip: str
-    model: Optional[str] = None
+    model_number: Optional[str] = None
+    device_type: Optional[str] = None
+    length_meters: Optional[float] = None
+    led_count: Optional[int] = None
+    led_density_per_meter: Optional[float] = None
+    has_segments: Optional[bool] = None
+    segment_count: Optional[int] = None
     description: Optional[str] = None
     capabilities: Any = None
     manual: bool = False
@@ -295,7 +417,13 @@ class DeviceInfo:
     id: str
     ip: Optional[str]
     capabilities: Any
-    model: Optional[str]
+    model_number: Optional[str]
+    device_type: Optional[str]
+    length_meters: Optional[float]
+    led_count: Optional[int]
+    led_density_per_meter: Optional[float]
+    has_segments: Optional[bool]
+    segment_count: Optional[int]
     normalized_capabilities: Optional[NormalizedCapabilities]
     offline: bool
     failure_count: int
@@ -313,7 +441,13 @@ class DeviceRow:
 
     id: str
     ip: Optional[str]
-    model: Optional[str]
+    model_number: Optional[str]
+    device_type: Optional[str]
+    length_meters: Optional[float]
+    led_count: Optional[int]
+    led_density_per_meter: Optional[float]
+    has_segments: Optional[bool]
+    segment_count: Optional[int]
     description: Optional[str]
     capabilities: Any
     manual: bool
@@ -339,7 +473,13 @@ class PollTarget:
 
     id: str
     ip: str
-    model: Optional[str]
+    model_number: Optional[str]
+    device_type: Optional[str]
+    length_meters: Optional[float]
+    led_count: Optional[int]
+    led_density_per_meter: Optional[float]
+    has_segments: Optional[bool]
+    segment_count: Optional[int]
     capabilities: Any
     offline: bool
     poll_failure_count: int
@@ -386,6 +526,13 @@ class DeviceStore:
                 id,
                 ip,
                 model,
+                model_number,
+                device_type,
+                length_meters,
+                led_count,
+                led_density_per_meter,
+                has_segments,
+                segment_count,
                 description,
                 capabilities,
                 manual,
@@ -419,6 +566,13 @@ class DeviceStore:
                 id,
                 ip,
                 model,
+                model_number,
+                device_type,
+                length_meters,
+                led_count,
+                led_density_per_meter,
+                has_segments,
+                segment_count,
                 description,
                 capabilities,
                 manual,
@@ -457,6 +611,13 @@ class DeviceStore:
                 id,
                 ip,
                 model,
+                model_number,
+                device_type,
+                length_meters,
+                led_count,
+                led_density_per_meter,
+                has_segments,
+                segment_count,
                 description,
                 capabilities,
                 manual,
@@ -489,14 +650,32 @@ class DeviceStore:
         device_id: str,
         *,
         ip: Optional[str] = None,
-        model: Optional[str] = None,
+        model_number: Optional[str] = None,
+        device_type: Optional[str] = None,
+        length_meters: Optional[float] = None,
+        led_count: Optional[int] = None,
+        led_density_per_meter: Optional[float] = None,
+        has_segments: Optional[bool] = None,
+        segment_count: Optional[int] = None,
         description: Optional[str] = None,
         capabilities: Optional[Any] = None,
         enabled: Optional[bool] = None,
     ) -> Optional[DeviceRow]:
         return await self.db.run(
             lambda conn: self._update_device(
-                conn, device_id, ip, model, description, capabilities, enabled
+                conn,
+                device_id,
+                ip,
+                model_number,
+                device_type,
+                length_meters,
+                led_count,
+                led_density_per_meter,
+                has_segments,
+                segment_count,
+                description,
+                capabilities,
+                enabled,
             )
         )
 
@@ -505,7 +684,13 @@ class DeviceStore:
         conn: sqlite3.Connection,
         device_id: str,
         ip: Optional[str],
-        model: Optional[str],
+        model_number: Optional[str],
+        device_type: Optional[str],
+        length_meters: Optional[float],
+        led_count: Optional[int],
+        led_density_per_meter: Optional[float],
+        has_segments: Optional[bool],
+        segment_count: Optional[int],
         description: Optional[str],
         capabilities: Optional[Any],
         enabled: Optional[bool],
@@ -516,20 +701,45 @@ class DeviceStore:
         ).fetchone()
         if not row:
             return None
+        metadata_input = {
+            "device_type": device_type,
+            "length_meters": length_meters,
+            "led_count": led_count,
+            "led_density_per_meter": led_density_per_meter,
+            "has_segments": has_segments,
+            "segment_count": segment_count,
+        }
+        model_hint = model_number or row["model_number"] or row["model"]
         normalized = None
-        if capabilities is not None:
-            normalized = self._capability_cache.normalize(model or row["model"], capabilities)
+        capabilities_source = capabilities
+        if capabilities_source is None:
+            capabilities_source = _deserialize_capabilities(row["capabilities"])
+        has_metadata_input = any(value is not None for value in metadata_input.values())
+        if capabilities_source is not None or has_metadata_input or self._capability_cache.has_catalog_entry(model_hint):
+            normalized = self._capability_cache.normalize(
+                model_hint, capabilities_source, metadata=metadata_input if has_metadata_input else None
+            )
         serialized_caps = (
             _serialize_capabilities(normalized.as_mapping())
             if normalized is not None
             else row["capabilities"]
         )
+        merged_metadata = _merge_metadata(normalized.metadata if normalized else {}, metadata_input)
+        db_metadata = _coerce_metadata_for_db(merged_metadata)
+        model_value = model_number or (normalized.model_number if normalized else None)
         conn.execute(
             """
             UPDATE devices
             SET
                 ip = COALESCE(?, ip),
                 model = COALESCE(?, model),
+                model_number = COALESCE(?, model_number, model),
+                device_type = COALESCE(?, device_type),
+                length_meters = COALESCE(?, length_meters),
+                led_count = COALESCE(?, led_count),
+                led_density_per_meter = COALESCE(?, led_density_per_meter),
+                has_segments = COALESCE(?, has_segments),
+                segment_count = COALESCE(?, segment_count),
                 description = COALESCE(?, description),
                 capabilities = ?,
                 enabled = COALESCE(?, enabled)
@@ -537,7 +747,14 @@ class DeviceStore:
             """,
             (
                 ip,
-                model,
+                model_value,
+                model_value,
+                db_metadata.get("device_type"),
+                db_metadata.get("length_meters"),
+                db_metadata.get("led_count"),
+                db_metadata.get("led_density_per_meter"),
+                db_metadata.get("has_segments"),
+                db_metadata.get("segment_count"),
                 description,
                 serialized_caps,
                 int(enabled) if enabled is not None else None,
@@ -551,6 +768,13 @@ class DeviceStore:
                 id,
                 ip,
                 model,
+                model_number,
+                device_type,
+                length_meters,
+                led_count,
+                led_density_per_meter,
+                has_segments,
+                segment_count,
                 description,
                 capabilities,
                 manual,
@@ -596,23 +820,40 @@ class DeviceStore:
 
     def _upsert_manual(self, conn: sqlite3.Connection, device: ManualDevice) -> None:
         now = _now_iso()
-        normalized = (
-            self._capability_cache.normalize(device.model, device.capabilities)
-            if device.capabilities is not None or self._capability_cache.has_catalog_entry(device.model)
-            else None
-        )
+        metadata_input = _extract_metadata(device)
+        normalized = None
+        if (
+            device.capabilities is not None
+            or metadata_input
+            or self._capability_cache.has_catalog_entry(device.model_number)
+        ):
+            normalized = self._capability_cache.normalize(
+                device.model_number, device.capabilities, metadata=metadata_input
+            )
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
+        model_number = device.model_number or (normalized.model_number if normalized else None)
+        metadata = _coerce_metadata_for_db(_merge_metadata(normalized.metadata if normalized else {}, device))
         conn.execute(
             """
             INSERT INTO devices (
-                id, ip, model, description, capabilities, manual,
+                id, ip, model, model_number, device_type, length_meters, led_count,
+                led_density_per_meter, has_segments, segment_count, description, capabilities, manual,
                 configured, enabled, discovered, first_seen, last_seen,
                 stale, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, 1, 0, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
                 model=COALESCE(excluded.model, devices.model),
+                model_number=COALESCE(excluded.model_number, devices.model_number, devices.model),
+                device_type=COALESCE(excluded.device_type, devices.device_type),
+                length_meters=COALESCE(excluded.length_meters, devices.length_meters),
+                led_count=COALESCE(excluded.led_count, devices.led_count),
+                led_density_per_meter=COALESCE(
+                    excluded.led_density_per_meter, devices.led_density_per_meter
+                ),
+                has_segments=COALESCE(excluded.has_segments, devices.has_segments),
+                segment_count=COALESCE(excluded.segment_count, devices.segment_count),
                 description=COALESCE(excluded.description, devices.description),
                 capabilities=COALESCE(excluded.capabilities, devices.capabilities),
                 manual=1,
@@ -622,7 +863,14 @@ class DeviceStore:
             (
                 device.id,
                 device.ip,
-                device.model,
+                model_number,
+                model_number,
+                metadata.get("device_type"),
+                metadata.get("length_meters"),
+                metadata.get("led_count"),
+                metadata.get("led_density_per_meter"),
+                metadata.get("has_segments"),
+                metadata.get("segment_count"),
                 device.description,
                 capabilities,
                 now,
@@ -634,23 +882,40 @@ class DeviceStore:
 
     def _record_discovery(self, conn: sqlite3.Connection, result: DiscoveryResult) -> None:
         now = _now_iso()
-        normalized = (
-            self._capability_cache.normalize(result.model, result.capabilities)
-            if result.capabilities is not None or self._capability_cache.has_catalog_entry(result.model)
-            else None
-        )
+        metadata_input = _extract_metadata(result)
+        normalized = None
+        if (
+            result.capabilities is not None
+            or metadata_input
+            or self._capability_cache.has_catalog_entry(result.model_number)
+        ):
+            normalized = self._capability_cache.normalize(
+                result.model_number, result.capabilities, metadata=metadata_input
+            )
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
+        model_number = result.model_number or (normalized.model_number if normalized else None)
+        metadata = _coerce_metadata_for_db(_merge_metadata(normalized.metadata if normalized else {}, result))
         conn.execute(
             """
             INSERT INTO devices (
-                id, ip, model, description, capabilities, manual, discovered,
+                id, ip, model, model_number, device_type, length_meters, led_count,
+                led_density_per_meter, has_segments, segment_count, description, capabilities, manual, discovered,
                 configured, enabled, first_seen, last_seen, stale,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
                 model=COALESCE(excluded.model, devices.model),
+                model_number=COALESCE(excluded.model_number, devices.model_number, devices.model),
+                device_type=COALESCE(excluded.device_type, devices.device_type),
+                length_meters=COALESCE(excluded.length_meters, devices.length_meters),
+                led_count=COALESCE(excluded.led_count, devices.led_count),
+                led_density_per_meter=COALESCE(
+                    excluded.led_density_per_meter, devices.led_density_per_meter
+                ),
+                has_segments=COALESCE(excluded.has_segments, devices.has_segments),
+                segment_count=COALESCE(excluded.segment_count, devices.segment_count),
                 description=COALESCE(excluded.description, devices.description),
                 capabilities=COALESCE(excluded.capabilities, devices.capabilities),
                 last_seen=excluded.last_seen,
@@ -664,7 +929,14 @@ class DeviceStore:
             (
                 result.id,
                 result.ip,
-                result.model,
+                model_number,
+                model_number,
+                metadata.get("device_type"),
+                metadata.get("length_meters"),
+                metadata.get("led_count"),
+                metadata.get("led_density_per_meter"),
+                metadata.get("has_segments"),
+                metadata.get("segment_count"),
                 result.description,
                 capabilities,
                 1 if result.manual else 0,
@@ -678,7 +950,7 @@ class DeviceStore:
             extra={
                 "id": result.id,
                 "ip": result.ip,
-                "model": result.model,
+                "model_number": model_number,
                 "manual": result.manual,
             },
         )
@@ -729,6 +1001,13 @@ class DeviceStore:
                 id,
                 ip,
                 model,
+                model_number,
+                device_type,
+                length_meters,
+                led_count,
+                led_density_per_meter,
+                has_segments,
+                segment_count,
                 capabilities,
                 offline,
                 poll_failure_count
@@ -740,11 +1019,21 @@ class DeviceStore:
         targets: List[PollTarget] = []
         for row in rows:
             normalized = self._normalized_capabilities_obj(row)
+            metadata = _merge_metadata(row, normalized.metadata)
+            model_number = row["model_number"] if "model_number" in row.keys() else None
+            if not model_number:
+                model_number = row["model"]
             targets.append(
                 PollTarget(
                     id=row["id"],
                     ip=row["ip"],
-                    model=row["model"],
+                    model_number=model_number,
+                    device_type=metadata.get("device_type"),
+                    length_meters=metadata.get("length_meters"),
+                    led_count=metadata.get("led_count"),
+                    led_density_per_meter=metadata.get("led_density_per_meter"),
+                    has_segments=metadata.get("has_segments"),
+                    segment_count=metadata.get("segment_count"),
                     capabilities=normalized.as_mapping(),
                     offline=bool(row["offline"]),
                     poll_failure_count=int(row["poll_failure_count"] or 0),
@@ -767,6 +1056,7 @@ class DeviceStore:
                 m.field,
                 m.fields,
                 d.model,
+                d.model_number,
                 d.capabilities
             FROM mappings m
             JOIN devices d ON d.id = m.device_id
@@ -777,7 +1067,8 @@ class DeviceStore:
         results: List[MappingRecord] = []
         for row in rows:
             normalized = self._capability_cache.normalize(
-                row["model"], _deserialize_capabilities(row["capabilities"])
+                row["model_number"] or row["model"],
+                _deserialize_capabilities(row["capabilities"]),
             )
             fields = _deserialize_fields(row["fields"])
             if not fields:
@@ -872,6 +1163,7 @@ class DeviceStore:
                 d.description,
                 d.ip,
                 d.model,
+                d.model_number,
                 d.capabilities
             FROM mappings m
             JOIN devices d ON d.id = m.device_id
@@ -969,7 +1261,7 @@ class DeviceStore:
         if normalized_mapping_type == "discrete" and length != 1:
             raise ValueError("Discrete mappings must have a length of 1")
         device_row = conn.execute(
-            "SELECT model, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not device_row:
@@ -1069,7 +1361,7 @@ class DeviceStore:
 
         segments = _template_segments(template)
         device_row = conn.execute(
-            "SELECT model, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not device_row:
@@ -1180,7 +1472,7 @@ class DeviceStore:
         if new_channel <= 0 or new_length <= 0:
             raise ValueError("Channel and length must be positive")
         device_row = conn.execute(
-            "SELECT model, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
             (new_device_id,),
         ).fetchone()
         if not device_row:
@@ -1430,19 +1722,42 @@ class DeviceStore:
         self, conn: sqlite3.Connection, device_id: str, capabilities: Mapping[str, Any]
     ) -> None:
         device_row = conn.execute(
-            "SELECT model FROM devices WHERE id = ?",
+            "SELECT model, model_number FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
-        model = device_row["model"] if device_row else None
+        model = None
+        if device_row:
+            model = device_row["model_number"] or device_row["model"]
         normalized = self._capability_cache.normalize(model, capabilities)
         serialized = _serialize_capabilities(normalized.as_mapping())
+        metadata = _coerce_metadata_for_db(normalized.metadata)
         conn.execute(
             """
             UPDATE devices
-            SET capabilities = ?
+            SET
+                capabilities = ?,
+                model = COALESCE(?, model),
+                model_number = COALESCE(?, model_number, model),
+                device_type = COALESCE(?, device_type),
+                length_meters = COALESCE(?, length_meters),
+                led_count = COALESCE(?, led_count),
+                led_density_per_meter = COALESCE(?, led_density_per_meter),
+                has_segments = COALESCE(?, has_segments),
+                segment_count = COALESCE(?, segment_count)
             WHERE id = ?
             """,
-            (serialized, device_id),
+            (
+                serialized,
+                normalized.model_number,
+                normalized.model_number,
+                metadata.get("device_type"),
+                metadata.get("length_meters"),
+                metadata.get("led_count"),
+                metadata.get("led_density_per_meter"),
+                metadata.get("has_segments"),
+                metadata.get("segment_count"),
+                device_id,
+            ),
         )
         conn.commit()
         self.logger.debug(
@@ -1557,7 +1872,7 @@ class DeviceStore:
         self, conn: sqlite3.Connection, device_id: str
     ) -> Optional[NormalizedCapabilities]:
         row = conn.execute(
-            "SELECT model, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not row:
@@ -1571,6 +1886,13 @@ class DeviceStore:
                 id,
                 ip,
                 model,
+                model_number,
+                device_type,
+                length_meters,
+                led_count,
+                led_density_per_meter,
+                has_segments,
+                segment_count,
                 capabilities,
                 offline,
                 failure_count,
@@ -1590,16 +1912,26 @@ class DeviceStore:
         if not row or not row["enabled"] or row["stale"]:
             return None
         normalized = self._normalized_capabilities_obj(row)
+        metadata = _merge_metadata(row, normalized.metadata)
+        model_number = row["model_number"] if "model_number" in row.keys() else None
+        if not model_number:
+            model_number = row["model"]
         return DeviceInfo(
             id=row["id"],
             ip=row["ip"],
             capabilities=normalized.as_mapping(),
+            model_number=model_number,
+            device_type=metadata.get("device_type"),
+            length_meters=metadata.get("length_meters"),
+            led_count=metadata.get("led_count"),
+            led_density_per_meter=metadata.get("led_density_per_meter"),
+            has_segments=metadata.get("has_segments"),
+            segment_count=metadata.get("segment_count"),
             offline=bool(row["offline"]),
             failure_count=int(row["failure_count"] or 0),
             last_payload_hash=row["last_payload_hash"],
             last_payload_at=row["last_payload_at"],
             last_failure_at=row["last_failure_at"],
-            model=row["model"],
             normalized_capabilities=normalized,
             poll_last_success_at=row["poll_last_success_at"],
             poll_last_failure_at=row["poll_last_failure_at"],
@@ -1888,7 +2220,11 @@ class DeviceStore:
         set_offline_devices(count)
 
     def _normalized_capabilities_obj(self, row: sqlite3.Row) -> NormalizedCapabilities:
-        model = row["model"] if "model" in row.keys() else None
+        model = None
+        if "model_number" in row.keys() and row["model_number"]:
+            model = row["model_number"]
+        elif "model" in row.keys():
+            model = row["model"]
         raw_caps = _deserialize_capabilities(row["capabilities"])
         return self._capability_cache.normalize(model, raw_caps)
 
@@ -1897,10 +2233,22 @@ class DeviceStore:
 
     def _row_to_device(self, row: sqlite3.Row) -> DeviceRow:
         normalized = self._normalized_capabilities_obj(row)
+        model_number = None
+        if "model_number" in row.keys() and row["model_number"]:
+            model_number = row["model_number"]
+        elif "model" in row.keys():
+            model_number = row["model"]
+        metadata = _merge_metadata(row, normalized.metadata)
         return DeviceRow(
             id=row["id"],
             ip=row["ip"],
-            model=row["model"],
+            model_number=model_number,
+            device_type=metadata.get("device_type"),
+            length_meters=metadata.get("length_meters"),
+            led_count=metadata.get("led_count"),
+            led_density_per_meter=metadata.get("led_density_per_meter"),
+            has_segments=metadata.get("has_segments"),
+            segment_count=metadata.get("segment_count"),
             description=row["description"],
             capabilities=normalized.as_mapping(),
             manual=bool(row["manual"]),

@@ -36,7 +36,10 @@ def _extract_state(payload: Any) -> Optional[Mapping[str, Any]]:
 
     if not isinstance(payload, Mapping):
         return None
-    data = payload.get("data") if isinstance(payload.get("data"), Mapping) else payload
+    envelope = payload
+    if "msg" in payload and isinstance(payload["msg"], Mapping):
+        envelope = payload["msg"]
+    data = envelope.get("data") if isinstance(envelope.get("data"), Mapping) else envelope
     state = data.get("state") if isinstance(data.get("state"), Mapping) else data
     if not isinstance(state, Mapping):
         return None
