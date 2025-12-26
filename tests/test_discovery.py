@@ -29,6 +29,26 @@ def test_parse_payload_falls_back_to_socket_ip() -> None:
     assert parsed.description == "strip"
 
 
+def test_parse_payload_handles_msg_wrapper() -> None:
+    addr = ("192.168.1.100", 4002)
+    payload = {
+        "msg": {
+            "cmd": "scan",
+            "data": {
+                "device": "AB:CD:EF:12:34:56:78:90",
+                "sku": "H6104",
+                "ip": "192.168.1.100",
+            }
+        }
+    }
+    parsed = _parse_payload(payload, addr)
+    assert parsed is not None
+    assert parsed.id == "AB:CD:EF:12:34:56:78:90"
+    assert parsed.ip == "192.168.1.100"
+    assert parsed.model == "H6104"
+    assert parsed.manual is False
+
+
 def test_protocol_records_discovery_result() -> None:
     with NamedTemporaryFile() as db_file:
         config = Config(db_path=Path(db_file.name), dry_run=True)

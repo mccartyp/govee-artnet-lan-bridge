@@ -82,15 +82,23 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
             self.logger.debug("Ignoring non-JSON discovery response", extra={"from": addr})
             return
 
+        self.logger.debug("Received discovery response", extra={"from": addr, "payload": payload})
+
         parsed = _parse_payload(payload, addr)
         if parsed is None:
             record_discovery_error("invalid_payload")
+            self.logger.warning(
+                "Failed to parse discovery response",
+                extra={"from": addr, "payload": payload}
+            )
             return
         previous_ip = self._seen.get(parsed.id)
         self._seen[parsed.id] = parsed.ip
         if previous_ip and previous_ip == parsed.ip:
+            self.logger.debug("Ignoring duplicate discovery response", extra={"device_id": parsed.id, "ip": parsed.ip})
             return
 
+        self.logger.info("Discovered device", extra={"device_id": parsed.id, "ip": parsed.ip, "model": parsed.model})
         record_discovery_response("multicast")
         self.loop.create_task(self.store.record_discovery(parsed))
 
@@ -114,10 +122,22 @@ def _parse_payload(
     if not isinstance(payload, Mapping):
         return None
 
+    # Check for "msg" wrapper (standard Govee response format)
     data: Mapping[str, Any]
-    if "data" in payload and isinstance(payload["data"], Mapping):
+    if "msg" in payload and isinstance(payload["msg"], Mapping):
+        msg = payload["msg"]
+        # Verify it's a scan response
+        if msg.get("cmd") != "scan":
+            return None
+        # Extract data from msg.data
+        if "data" not in msg or not isinstance(msg["data"], Mapping):
+            return None
+        data = msg["data"]  # type: ignore[assignment]
+    elif "data" in payload and isinstance(payload["data"], Mapping):
+        # Fallback: check for top-level "data" field
         data = payload["data"]  # type: ignore[assignment]
     else:
+        # Last resort: treat entire payload as data
         data = payload
 
     device_id = (
