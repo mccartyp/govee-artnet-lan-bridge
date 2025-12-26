@@ -153,6 +153,26 @@ def _parse_payload(
     model = data.get("model") or data.get("sku") or data.get("type")
     description = data.get("description") or data.get("name")
     capabilities = data.get("capabilities") or data.get("capability") or data.get("features")
+    color_temp_hints: Dict[str, Any] = {}
+    for key in (
+        "ct",
+        "color_temp",
+        "colorTemperature",
+        "color_temp_range",
+        "ct_range",
+        "colorTempRange",
+        "colorTemperatureRange",
+    ):
+        if key in data:
+            color_temp_hints[key] = data[key]
+    if color_temp_hints:
+        if isinstance(capabilities, Mapping):
+            merged = dict(capabilities)
+            for key, value in color_temp_hints.items():
+                merged.setdefault(key, value)
+            capabilities = merged
+        else:
+            capabilities = dict(color_temp_hints)
     return DiscoveryResult(
         id=str(device_id),
         ip=str(ip),

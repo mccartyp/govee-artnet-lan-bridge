@@ -50,3 +50,15 @@ def test_validate_command_payload_clamps_color_temperature() -> None:
 
     assert sanitized["color_temp"] == 4000
     assert warnings
+
+
+def test_normalize_capabilities_detects_color_temp_hints() -> None:
+    cache = CapabilityCache()
+    normalized = cache.normalize(
+        "H7001",
+        {"ct": (2200, 6000)},
+    )
+
+    assert normalized.supports_color_temperature is True
+    assert normalized.color_temp_range == (2200, 6000)
+    assert "ct" in normalized.color_modes
