@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import cmd
 import json
 import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import httpx
 import yaml
@@ -18,7 +17,16 @@ from prompt_toolkit.history import FileHistory
 from rich.console import Console
 from rich.table import Table
 
-from .cli import ClientConfig, _build_client, _handle_response, _print_output
+from .cli import (
+    ClientConfig,
+    _api_delete,
+    _api_get,
+    _api_get_by_id,
+    _build_client,
+    _device_set_enabled,
+    _handle_response,
+    _print_output,
+)
 
 
 # Shell version
@@ -31,10 +39,9 @@ WS_RECV_TIMEOUT = 1.0
 DEFAULT_LOG_LINES = 50
 
 
-class GoveeShell(cmd.Cmd):
-    """Interactive shell for the Govee ArtNet bridge."""
+class GoveeShell:
+    """Interactive shell for the Govee ArtNet bridge using prompt_toolkit."""
 
-    intro = None  # Will be set dynamically
     prompt = "govee> "
 
     def __init__(self, config: ClientConfig):
@@ -44,7 +51,6 @@ class GoveeShell(cmd.Cmd):
         Args:
             config: Client configuration
         """
-        super().__init__()
         self.config = config
         self.client: Optional[httpx.Client] = None
         self.console = Console()
@@ -60,14 +66,34 @@ class GoveeShell(cmd.Cmd):
         self.bookmarks = self._load_json(self.bookmarks_file, {})
         self.aliases = self._load_json(self.aliases_file, {})
 
+        # Command dispatch table
+        self.commands: dict[str, Callable[[str], Optional[bool]]] = {
+            "connect": self.do_connect,
+            "disconnect": self.do_disconnect,
+            "status": self.do_status,
+            "health": self.do_health,
+            "devices": self.do_devices,
+            "mappings": self.do_mappings,
+            "logs": self.do_logs,
+            "monitor": self.do_monitor,
+            "output": self.do_output,
+            "bookmark": self.do_bookmark,
+            "alias": self.do_alias,
+            "watch": self.do_watch,
+            "batch": self.do_batch,
+            "session": self.do_session,
+            "help": self.do_help,
+            "?": self.do_help,
+            "version": self.do_version,
+            "tips": self.do_tips,
+            "clear": self.do_clear,
+            "exit": self.do_exit,
+            "quit": self.do_quit,
+            "EOF": self.do_EOF,
+        }
+
         # Set up autocomplete with all command names
-        commands = [
-            "connect", "disconnect", "status", "health",
-            "devices", "mappings", "logs", "monitor",
-            "bookmark", "alias", "watch", "batch", "session",
-            "output", "version", "tips", "clear", "exit", "quit", "help"
-        ]
-        completer = WordCompleter(commands, ignore_case=True)
+        completer = WordCompleter(list(self.commands.keys()), ignore_case=True)
 
         # Create prompt session with history and autocomplete
         self.session: PromptSession = PromptSession(
@@ -169,8 +195,7 @@ class GoveeShell(cmd.Cmd):
             return
 
         try:
-            data = _handle_response(self.client.get("/status"))
-            _print_output(data, self.config.output)
+            _api_get(self.client, "/status", self.config)
         except Exception as exc:
             self._handle_error(exc, "status")
 
@@ -181,8 +206,7 @@ class GoveeShell(cmd.Cmd):
             return
 
         try:
-            data = _handle_response(self.client.get("/health"))
-            _print_output(data, self.config.output)
+            _api_get(self.client, "/health", self.config)
         except Exception as exc:
             self._handle_error(exc, "health")
 
@@ -206,20 +230,13 @@ class GoveeShell(cmd.Cmd):
 
         try:
             if command == "list":
-                data = _handle_response(self.client.get("/devices"))
-                _print_output(data, self.config.output)
+                _api_get(self.client, "/devices", self.config)
             elif command == "enable" and len(args) >= 2:
                 device_id = args[1]
-                data = _handle_response(
-                    self.client.patch(f"/devices/{device_id}", json={"enabled": True})
-                )
-                _print_output(data, self.config.output)
+                _device_set_enabled(self.client, device_id, True, self.config)
             elif command == "disable" and len(args) >= 2:
                 device_id = args[1]
-                data = _handle_response(
-                    self.client.patch(f"/devices/{device_id}", json={"enabled": False})
-                )
-                _print_output(data, self.config.output)
+                _device_set_enabled(self.client, device_id, False, self.config)
             else:
                 print(f"Unknown or incomplete command: devices {arg}")
                 print("Try: devices list, devices enable <id>, devices disable <id>")
@@ -247,19 +264,16 @@ class GoveeShell(cmd.Cmd):
 
         try:
             if command == "list":
-                data = _handle_response(self.client.get("/mappings"))
-                _print_output(data, self.config.output)
+                _api_get(self.client, "/mappings", self.config)
             elif command == "get" and len(args) >= 2:
                 mapping_id = args[1]
-                data = _handle_response(self.client.get(f"/mappings/{mapping_id}"))
-                _print_output(data, self.config.output)
+                _api_get_by_id(self.client, "/mappings", mapping_id, self.config)
             elif command == "delete" and len(args) >= 2:
                 mapping_id = args[1]
-                _handle_response(self.client.delete(f"/mappings/{mapping_id}"))
+                _api_delete(self.client, "/mappings", mapping_id, self.config)
                 print(f"Mapping {mapping_id} deleted")
             elif command == "channel-map":
-                data = _handle_response(self.client.get("/channel-map"))
-                _print_output(data, self.config.output)
+                _api_get(self.client, "/channel-map", self.config)
             else:
                 print(f"Unknown or incomplete command: mappings {arg}")
                 print("Try: mappings list, mappings get <id>, mappings delete <id>, mappings channel-map")
@@ -997,15 +1011,66 @@ class GoveeShell(cmd.Cmd):
         print()  # Print newline
         return self.do_exit(arg)
 
+    def onecmd(self, line: str) -> bool:
+        """
+        Execute a single command.
+
+        Args:
+            line: Command line to execute
+
+        Returns:
+            True if the shell should exit, False otherwise
+        """
+        # Handle empty line
+        if not line or line.isspace():
+            return False
+
+        # Parse command and arguments
+        parts = line.split(maxsplit=1)
+        command = parts[0]
+        arg = parts[1] if len(parts) > 1 else ""
+
+        # Dispatch to command handler
+        handler = self.commands.get(command)
+        if handler:
+            try:
+                result = handler(arg)
+                return result if result is not None else False
+            except Exception as exc:
+                self.console.print(f"[bold red]Error executing command:[/] {exc}")
+                return False
+        else:
+            # Unknown command
+            print(f"Unknown command: {command}")
+            print("Type 'help' or '?' for available commands.")
+            return False
+
+    def postcmd(self, stop: bool, line: str) -> bool:
+        """
+        Hook method executed after a command dispatch.
+
+        Args:
+            stop: Stop flag from command
+            line: Command line that was executed
+
+        Returns:
+            Updated stop flag
+        """
+        return stop
+
+    def postloop(self) -> None:
+        """Hook method executed once when cmdloop() is about to return."""
+        pass
+
     def cmdloop(self, intro: Optional[str] = None) -> None:
         """
-        Override cmdloop to use prompt_toolkit for better UX.
+        Custom command loop using prompt_toolkit for better UX.
 
         Args:
             intro: Introduction message (optional)
         """
         # Print custom intro with tips
-        if intro is None and self.intro is None:
+        if intro is None:
             self.console.print()
             self.console.rule("[bold cyan]Govee ArtNet Bridge - Interactive Shell")
             self.console.print()
@@ -1043,15 +1108,6 @@ class GoveeShell(cmd.Cmd):
 
         # Cleanup
         self.postloop()
-
-    def emptyline(self) -> None:
-        """Do nothing on empty line."""
-        pass
-
-    def default(self, line: str) -> None:
-        """Handle unknown commands."""
-        print(f"Unknown command: {line}")
-        print("Type 'help' or '?' for available commands.")
 
 
 def run_shell(config: ClientConfig) -> None:

@@ -552,19 +552,98 @@ def _handle_response(response: httpx.Response) -> Any:
     return None
 
 
-def _cmd_health(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    data = _handle_response(client.get("/health"))
+# Shared API helper functions to reduce duplication between CLI and shell
+
+
+def _api_get(client: httpx.Client, endpoint: str, config: ClientConfig) -> Any:
+    """
+    Generic handler for GET requests with response handling and output.
+
+    Args:
+        client: HTTP client instance
+        endpoint: API endpoint path (e.g., "/devices", "/health")
+        config: Client configuration with output format
+
+    Returns:
+        Response data (parsed JSON)
+    """
+    data = _handle_response(client.get(endpoint))
     _print_output(data, config.output)
+    return data
+
+
+def _api_get_by_id(
+    client: httpx.Client, endpoint: str, resource_id: str, config: ClientConfig
+) -> Any:
+    """
+    Generic handler for GET requests with a resource ID.
+
+    Args:
+        client: HTTP client instance
+        endpoint: Base endpoint (e.g., "/mappings")
+        resource_id: Resource identifier
+        config: Client configuration with output format
+
+    Returns:
+        Response data (parsed JSON)
+    """
+    data = _handle_response(client.get(f"{endpoint}/{resource_id}"))
+    _print_output(data, config.output)
+    return data
+
+
+def _device_set_enabled(
+    client: httpx.Client, device_id: str, enabled: bool, config: ClientConfig
+) -> Any:
+    """
+    Set device enabled/disabled state.
+
+    Args:
+        client: HTTP client instance
+        device_id: Device identifier
+        enabled: True to enable, False to disable
+        config: Client configuration with output format
+
+    Returns:
+        Updated device data
+    """
+    data = _handle_response(client.patch(f"/devices/{device_id}", json={"enabled": enabled}))
+    _print_output(data, config.output)
+    return data
+
+
+def _api_delete(
+    client: httpx.Client,
+    endpoint: str,
+    resource_id: str,
+    config: ClientConfig,
+    custom_output: Optional[Any] = None,
+) -> None:
+    """
+    Generic DELETE handler with optional custom output.
+
+    Args:
+        client: HTTP client instance
+        endpoint: Base endpoint (e.g., "/mappings")
+        resource_id: Resource identifier
+        config: Client configuration with output format
+        custom_output: Optional custom data to output instead of default
+    """
+    _handle_response(client.delete(f"{endpoint}/{resource_id}"))
+    if custom_output is not None:
+        _print_output(custom_output, config.output)
+
+
+def _cmd_health(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
+    _api_get(client, "/health", config)
 
 
 def _cmd_status(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    data = _handle_response(client.get("/status"))
-    _print_output(data, config.output)
+    _api_get(client, "/status", config)
 
 
 def _cmd_devices_list(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    data = _handle_response(client.get("/devices"))
-    _print_output(data, config.output)
+    _api_get(client, "/devices", config)
 
 
 def _cmd_devices_add(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
@@ -635,17 +714,11 @@ def _cmd_devices_update(config: ClientConfig, client: httpx.Client, args: argpar
 
 
 def _cmd_devices_enable(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    data = _handle_response(
-        client.patch(f"/devices/{args.device_id}", json={"enabled": True})
-    )
-    _print_output(data, config.output)
+    _device_set_enabled(client, args.device_id, True, config)
 
 
 def _cmd_devices_disable(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    data = _handle_response(
-        client.patch(f"/devices/{args.device_id}", json={"enabled": False})
-    )
-    _print_output(data, config.output)
+    _device_set_enabled(client, args.device_id, False, config)
 
 
 def _cmd_devices_test(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
@@ -692,13 +765,11 @@ def _cmd_devices_command(config: ClientConfig, client: httpx.Client, args: argpa
 
 
 def _cmd_mappings_list(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    data = _handle_response(client.get("/mappings"))
-    _print_output(data, config.output)
+    _api_get(client, "/mappings", config)
 
 
 def _cmd_mappings_get(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    data = _handle_response(client.get(f"/mappings/{args.mapping_id}"))
-    _print_output(data, config.output)
+    _api_get_by_id(client, "/mappings", args.mapping_id, config)
 
 
 def _cmd_mappings_create(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
@@ -758,15 +829,13 @@ def _cmd_mappings_update(config: ClientConfig, client: httpx.Client, args: argpa
 
 
 def _cmd_mappings_delete(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
-    _handle_response(client.delete(f"/mappings/{args.mapping_id}"))
-    _print_output({"status": "deleted", "id": args.mapping_id}, config.output)
+    _api_delete(client, "/mappings", args.mapping_id, config, {"status": "deleted", "id": args.mapping_id})
 
 
 def _cmd_mappings_channel_map(
     config: ClientConfig, client: httpx.Client, args: argparse.Namespace
 ) -> None:
-    data = _handle_response(client.get("/channel-map"))
-    _print_output(data, config.output)
+    _api_get(client, "/channel-map", config)
 
 
 def _parse_json_arg(value: str) -> Any:
