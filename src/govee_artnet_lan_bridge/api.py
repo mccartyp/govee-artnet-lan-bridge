@@ -287,6 +287,8 @@ def create_app(
     store: DeviceStore,
     health: Optional[HealthMonitor] = None,
     reload_callback: Optional[Callable[[], Awaitable[None]]] = None,
+    log_buffer: Optional[Any] = None,
+    event_bus: Optional[Any] = None,
 ) -> FastAPI:
     """Create and configure a FastAPI application."""
 
@@ -578,6 +580,106 @@ def create_app(
             await result
         return {"status": "reload_requested"}
 
+    @app.get("/logs", dependencies=[Depends(auth_dependency)])
+    async def get_logs(
+        lines: int = 100,
+        level: Optional[str] = None,
+        logger: Optional[str] = None,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """
+        Get recent log entries from buffer.
+
+        Args:
+            lines: Number of log lines to return (default: 100, max: 10000)
+            level: Filter by log level (DEBUG, INFO, WARNING, ERROR)
+            logger: Filter by logger name (e.g., 'govee.discovery')
+            offset: Skip first N lines (for pagination)
+
+        Returns:
+            Dictionary with total count, offset, lines, and log entries
+        """
+        if log_buffer is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Log buffer not available (log_buffer_enabled=false in config)",
+            )
+
+        # Validate parameters
+        if lines < 1 or lines > 10000:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="lines must be between 1 and 10000",
+            )
+        if offset < 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="offset must be non-negative",
+            )
+
+        # Query log buffer
+        entries, total = await log_buffer.query(
+            lines=lines,
+            level=level,
+            logger=logger,
+            offset=offset,
+        )
+
+        return {
+            "total": total,
+            "offset": offset,
+            "lines": len(entries),
+            "logs": [entry.to_dict() for entry in entries],
+        }
+
+    @app.get("/logs/search", dependencies=[Depends(auth_dependency)])
+    async def search_logs(
+        pattern: str,
+        lines: int = 100,
+        regex: bool = False,
+        case_sensitive: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Search logs by pattern.
+
+        Args:
+            pattern: Search pattern (string or regex if regex=true)
+            lines: Max results to return (default: 100, max: 10000)
+            regex: Use regex matching
+            case_sensitive: Case-sensitive search
+
+        Returns:
+            Dictionary with count and matching log entries
+        """
+        if log_buffer is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Log buffer not available (log_buffer_enabled=false in config)",
+            )
+
+        # Validate parameters
+        if lines < 1 or lines > 10000:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="lines must be between 1 and 10000",
+            )
+
+        # Search log buffer
+        entries = await log_buffer.search(
+            pattern=pattern,
+            regex=regex,
+            case_sensitive=case_sensitive,
+            max_results=lines,
+        )
+
+        return {
+            "count": len(entries),
+            "pattern": pattern,
+            "regex": regex,
+            "case_sensitive": case_sensitive,
+            "logs": [entry.to_dict() for entry in entries],
+        }
+
     return app
 
 
@@ -590,11 +692,15 @@ class ApiService:
         store: DeviceStore,
         health: Optional[HealthMonitor] = None,
         reload_callback: Optional[Callable[[], Awaitable[None]]] = None,
+        log_buffer: Optional[Any] = None,
+        event_bus: Optional[Any] = None,
     ) -> None:
         self.config = config
         self.store = store
         self.health = health
         self._reload_callback = reload_callback
+        self.log_buffer = log_buffer
+        self.event_bus = event_bus
         self.logger = get_logger("govee.api")
         self._server: Optional[uvicorn.Server] = None
         self._server_task: Optional[Any] = None
@@ -602,7 +708,14 @@ class ApiService:
     async def start(self) -> None:
         if self._server:
             return
-        app = create_app(self.config, self.store, self.health, reload_callback=self._reload_callback)
+        app = create_app(
+            self.config,
+            self.store,
+            self.health,
+            reload_callback=self._reload_callback,
+            log_buffer=self.log_buffer,
+            event_bus=self.event_bus,
+        )
         uvicorn_config = uvicorn.Config(
             app,
             host="0.0.0.0",

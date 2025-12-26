@@ -115,6 +115,9 @@ class Config:
     migrate_only: bool = False
     dry_run: bool = False
     config_version: int = CONFIG_VERSION
+    log_buffer_enabled: bool = True
+    log_buffer_size: int = 10000
+    event_bus_enabled: bool = True
 
     def __post_init__(self) -> None:
         _validate_config(self)
@@ -195,6 +198,9 @@ class Config:
             "trace_context_sample_rate": self.trace_context_sample_rate,
             "migrate_only": self.migrate_only,
             "dry_run": self.dry_run,
+            "log_buffer_enabled": self.log_buffer_enabled,
+            "log_buffer_size": self.log_buffer_size,
+            "event_bus_enabled": self.event_bus_enabled,
         }
         base.update(masked_keys)
         return base
