@@ -306,10 +306,10 @@ class GoveeShell:
             Configuration dictionary with defaults
         """
         # Auto-detect terminal height for default pagination
-        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
+        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line) + blank line before pagination prompt (1 line)
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 5)
+        default_page_size = max(10, terminal_height - 6)
 
         defaults = {
             "shell": {
@@ -385,8 +385,8 @@ class GoveeShell:
         if self.auto_pagination:
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
-            new_page_size = max(10, terminal_height - 5)
+            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line) + blank line before pagination prompt (1 line)
+            new_page_size = max(10, terminal_height - 6)
 
             # Update config with new page size
             self.config = ClientConfig(
@@ -630,6 +630,11 @@ class GoveeShell:
         Print text with optional pagination based on config.
         Uses Rich Console for output to respect prompt_toolkit's screen management.
 
+        Pagination controls (like 'less'):
+        - Space: advance one page
+        - Enter: advance one line
+        - q: quit
+
         Args:
             text: Text to print (may contain ANSI formatting)
         """
@@ -656,13 +661,22 @@ class GoveeShell:
             line_count += 1
 
             if line_count >= self.config.page_size and i < len(lines) - 1:
-                # Pause for user input
+                # Pause for user input with less-style controls
                 try:
-                    response = input("\n[Press Enter to continue, 'q' to quit] ")
+                    response = input("\n[Space=page, Enter=line, q=quit] ")
                     if response.lower().startswith('q'):
                         self.console.print("\n[Output truncated]")
                         return
-                    line_count = 0
+                    elif response == '':
+                        # Enter pressed - advance one line
+                        # Set line_count so next iteration shows 1 line then pauses
+                        line_count = self.config.page_size - 1
+                    elif response == ' ':
+                        # Space pressed - advance one page
+                        line_count = 0
+                    else:
+                        # Any other input - treat as space (next page)
+                        line_count = 0
                 except (KeyboardInterrupt, EOFError):
                     self.console.print("\n[Output interrupted]")
                     return
