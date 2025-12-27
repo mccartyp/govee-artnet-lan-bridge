@@ -385,33 +385,38 @@ class GoveeShell:
 
         @kb.add('pageup')
         def _(event):
-            """Handle Page Up in output - disable follow-tail."""
-            # Only handle if output buffer has focus
-            if event.app.layout.has_focus(self.output_buffer):
-                self.follow_tail = False
-                # Perform the page up scroll
-                event.current_buffer.cursor_up(count=event.app.output.get_size().rows - 1)
+            """Handle Page Up - scroll output and disable follow-tail."""
+            # Disable follow-tail when manually scrolling
+            self.follow_tail = False
+            # Scroll output buffer up by one page
+            rows = event.app.output.get_size().rows - 4  # Account for input and toolbar
+            new_pos = max(0, self.output_buffer.cursor_position - rows * 80)  # Approximate line length
+            self.output_buffer.cursor_position = new_pos
+            event.app.invalidate()
 
-        @kb.add('up')
+        @kb.add('pagedown')
         def _(event):
-            """Handle Up arrow in output - disable follow-tail if not at bottom."""
-            # Only handle if output buffer has focus
-            if event.app.layout.has_focus(self.output_buffer):
-                # If cursor is not at the end, disable follow-tail
-                if event.current_buffer.cursor_position < len(event.current_buffer.text):
-                    self.follow_tail = False
-                event.current_buffer.cursor_up()
+            """Handle Page Down - scroll output down."""
+            # Scroll output buffer down by one page
+            rows = event.app.output.get_size().rows - 4  # Account for input and toolbar
+            new_pos = min(len(self.output_buffer.text), self.output_buffer.cursor_position + rows * 80)
+            self.output_buffer.cursor_position = new_pos
+            # If we're at the bottom, re-enable follow-tail
+            if self.output_buffer.cursor_position >= len(self.output_buffer.text) - 10:
+                self.follow_tail = True
+            event.app.invalidate()
 
         # Create layout with output pane, separator, prompt + input field, and toolbar
         from prompt_toolkit.layout import WindowAlign
         self.root_container = HSplit([
             # Output pane - scrollable window with ANSI-formatted text
             # Uses BufferControl with ANSILexer for cursor-based auto-scroll
+            # Not focusable to keep input active; PageUp/PageDown scroll without changing focus
             Window(
                 content=BufferControl(
                     buffer=self.output_buffer,
                     lexer=ANSILexer(),
-                    focusable=True,  # Allow manual scrolling
+                    focusable=False,  # Keep focus on input for typing
                 ),
                 wrap_lines=False,
             ),
@@ -2151,6 +2156,8 @@ class GoveeShell:
             self._append_output("  • Type [bold]help[/] to see all commands\n")
             self._append_output("  • Use [bold]Tab[/] for autocomplete\n")
             self._append_output("  • Press [bold]↑/↓[/] to navigate command history\n")
+            self._append_output("  • Press [bold]PgUp/PgDn[/] to scroll output (auto-follow enabled by default)\n")
+            self._append_output("  • Press [bold]Ctrl+T[/] to toggle follow-tail mode\n")
             self._append_output("  • Try [bold]alias[/] to create shortcuts\n")
             self._append_output("  • Use [bold]bookmark[/] to save device IDs\n")
             self._append_output("  • Press [bold]Ctrl+D[/] or type [bold]exit[/] to quit\n")
