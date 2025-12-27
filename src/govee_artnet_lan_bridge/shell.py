@@ -380,7 +380,7 @@ class GoveeShell:
             with open(file_path, "w") as f:
                 json.dump(data, f, indent=2)
         except Exception as exc:
-            self.console.print(f"[red]Error saving to {file_path}: {exc}[/]")
+            self._append_output(f"[red]Error saving to {file_path}: {exc}[/]" + "\n")
 
     def _load_shell_config(self) -> dict[str, Any]:
         """
@@ -708,14 +708,48 @@ class GoveeShell:
             context: Optional context string (e.g., "devices list")
         """
         if isinstance(exc, httpx.HTTPStatusError):
-            self.console.print(
-                f"[bold red]HTTP {exc.response.status_code}:[/] {exc.response.text}"
+            self._append_output(
+                f"[bold red]HTTP {exc.response.status_code}:[/] {exc.response.text}\n"
             )
         elif isinstance(exc, httpx.RequestError):
-            self.console.print(f"[bold red]Connection Error:[/] {exc}")
+            self._append_output(f"[bold red]Connection Error:[/] {exc}" + "\n")
         else:
             context_str = f" in {context}" if context else ""
-            self.console.print(f"[bold red]Error{context_str}:[/] {exc}")
+            self._append_output(f"[bold red]Error{context_str}:[/] {exc}" + "\n")
+
+    def _capture_api_output(self, api_func: Callable, *args, **kwargs) -> Any:
+        """
+        Capture output from API functions that print directly to stdout.
+
+        Args:
+            api_func: API function to call (e.g., _api_get)
+            *args: Positional arguments for the API function
+            **kwargs: Keyword arguments for the API function
+
+        Returns:
+            Return value from the API function
+        """
+        import sys
+        from io import StringIO
+
+        # Save original stdout
+        old_stdout = sys.stdout
+        captured_output = StringIO()
+
+        try:
+            # Redirect stdout to capture
+            sys.stdout = captured_output
+            result = api_func(*args, **kwargs)
+
+            # Get captured output and route through _append_output
+            output = captured_output.getvalue()
+            if output:
+                self._append_output(output)
+
+            return result
+        finally:
+            # Restore stdout
+            sys.stdout = old_stdout
 
     def _cached_get(self, endpoint: str, use_cache: bool = True) -> httpx.Response:
         """
@@ -850,7 +884,7 @@ class GoveeShell:
             # Expand alias
             alias_value = self.aliases[parts[0]]
             expanded = alias_value + " " + " ".join(parts[1:]) if len(parts) > 1 else alias_value
-            self.console.print(f"[dim](expanding: {expanded})[/]")
+            self._append_output(f"[dim](expanding: {expanded})[/]" + "\n")
             return expanded
 
         return line
@@ -874,16 +908,16 @@ class GoveeShell:
         if self.client:
             self.client.close()
             self.client = None
-            self.console.print("[yellow]Disconnected[/]")
+            self._append_output("[yellow]Disconnected[/]" + "\n")
 
     def do_status(self, arg: str) -> None:
         """Show connection status and bridge status."""
         if not self.client:
-            self.console.print(f"[red]Not connected.[/] [dim]Server URL: {self.config.server_url}[/]")
+            self._append_output(f"[red]Not connected.[/] [dim]Server URL: {self.config.server_url}[/]" + "\n")
             return
 
         try:
-            _api_get(self.client, "/status", self.config)
+            self._capture_api_output(_api_get, self.client, "/status", self.config)
         except Exception as exc:
             self._handle_error(exc, "status")
 
@@ -894,7 +928,7 @@ class GoveeShell:
             return
 
         try:
-            _api_get(self.client, "/health", self.config)
+            self._capture_api_output(_api_get, self.client, "/health", self.config)
         except Exception as exc:
             self._handle_error(exc, "health")
 
@@ -906,32 +940,32 @@ class GoveeShell:
                devices disable <device_id>
         """
         if not self.client:
-            self.console.print("[red]Not connected. Use 'connect' first.[/]")
+            self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
             return
 
         args = shlex.split(arg)
         if not args:
-            self.console.print("[yellow]Usage: devices <command> [args...][/]")
+            self._append_output("[yellow]Usage: devices <command> [args...][/]" + "\n")
             return
 
         command = args[0]
 
         try:
             if command == "list":
-                _api_get(self.client, "/devices", self.config)
+                self._capture_api_output(_api_get, self.client, "/devices", self.config)
             elif command == "enable" and len(args) >= 2:
                 device_id = args[1]
-                _device_set_enabled(self.client, device_id, True, self.config)
+                self._capture_api_output(_device_set_enabled, self.client, device_id, True, self.config)
                 # Invalidate devices cache after mutation
                 self._invalidate_cache("/devices")
             elif command == "disable" and len(args) >= 2:
                 device_id = args[1]
-                _device_set_enabled(self.client, device_id, False, self.config)
+                self._capture_api_output(_device_set_enabled, self.client, device_id, False, self.config)
                 # Invalidate devices cache after mutation
                 self._invalidate_cache("/devices")
             else:
-                self.console.print(f"[red]Unknown or incomplete command: devices {arg}[/]")
-                self.console.print("[yellow]Try: devices list, devices enable <id>, devices disable <id>[/]")
+                self._append_output(f"[red]Unknown or incomplete command: devices {arg}[/]" + "\n")
+                self._append_output("[yellow]Try: devices list, devices enable <id>, devices disable <id>[/]" + "\n")
         except Exception as exc:
             self._handle_error(exc, "devices")
 
@@ -944,34 +978,34 @@ class GoveeShell:
                mappings channel-map
         """
         if not self.client:
-            self.console.print("[red]Not connected. Use 'connect' first.[/]")
+            self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
             return
 
         args = shlex.split(arg)
         if not args:
-            self.console.print("[yellow]Usage: mappings <command> [args...][/]")
+            self._append_output("[yellow]Usage: mappings <command> [args...][/]" + "\n")
             return
 
         command = args[0]
 
         try:
             if command == "list":
-                _api_get(self.client, "/mappings", self.config)
+                self._capture_api_output(_api_get, self.client, "/mappings", self.config)
             elif command == "get" and len(args) >= 2:
                 mapping_id = args[1]
-                _api_get_by_id(self.client, "/mappings", mapping_id, self.config)
+                self._capture_api_output(_api_get_by_id, self.client, "/mappings", mapping_id, self.config)
             elif command == "delete" and len(args) >= 2:
                 mapping_id = args[1]
-                _api_delete(self.client, "/mappings", mapping_id, self.config)
+                self._capture_api_output(_api_delete, self.client, "/mappings", mapping_id, self.config)
                 # Invalidate mappings cache after mutation
                 self._invalidate_cache("/mappings")
                 self._invalidate_cache("/channel-map")
-                self.console.print(f"[green]Mapping {mapping_id} deleted[/]")
+                self._append_output(f"[green]Mapping {mapping_id} deleted[/]" + "\n")
             elif command == "channel-map":
-                _api_get(self.client, "/channel-map", self.config)
+                self._capture_api_output(_api_get, self.client, "/channel-map", self.config)
             else:
-                self.console.print(f"[red]Unknown or incomplete command: mappings {arg}[/]")
-                self.console.print("[yellow]Try: mappings list, mappings get <id>, mappings delete <id>, mappings channel-map[/]")
+                self._append_output(f"[red]Unknown or incomplete command: mappings {arg}[/]" + "\n")
+                self._append_output("[yellow]Try: mappings list, mappings get <id>, mappings delete <id>, mappings channel-map[/]" + "\n")
         except Exception as exc:
             self._handle_error(exc, "mappings")
 
@@ -992,7 +1026,7 @@ class GoveeShell:
             logs search "error.*timeout" --regex
         """
         if not self.client:
-            self.console.print("[red]Not connected. Use 'connect' first.[/]")
+            self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
             return
 
         args = shlex.split(arg)
@@ -1006,7 +1040,7 @@ class GoveeShell:
             # Check if this is a search command
             if args and args[0] == "search":
                 if len(args) < 2:
-                    self.console.print("[yellow]Usage: logs search PATTERN [--regex] [--case-sensitive] [--lines N][/]")
+                    self._append_output("[yellow]Usage: logs search PATTERN [--regex] [--case-sensitive] [--lines N][/]" + "\n")
                     return
 
                 pattern = args[1]
@@ -1025,7 +1059,7 @@ class GoveeShell:
                     i += 1
 
                 data = _handle_response(self.client.get("/logs/search", params=params))
-                self.console.print(f"[cyan]Found {data['count']} matching log entries:[/]")
+                self._append_output(f"[cyan]Found {data['count']} matching log entries:[/]" + "\n")
                 _print_output(data["logs"], self.config.output)
 
             else:
@@ -1050,7 +1084,7 @@ class GoveeShell:
                     i += 1
 
                 data = _handle_response(self.client.get("/logs", params=params))
-                self.console.print(f"[cyan]Showing {data['lines']} of {data['total']} log entries:[/]")
+                self._append_output(f"[cyan]Showing {data['lines']} of {data['total']} log entries:[/]" + "\n")
                 _print_output(data["logs"], self.config.output)
 
         except Exception as exc:
@@ -1067,8 +1101,8 @@ class GoveeShell:
         try:
             import websockets.sync.client as ws_client
         except ImportError:
-            self.console.print("[red]Error: websockets library not installed[/]")
-            self.console.print("[yellow]Install with: pip install websockets[/]")
+            self._append_output("[red]Error: websockets library not installed[/]" + "\n")
+            self._append_output("[yellow]Install with: pip install websockets[/]" + "\n")
             return
 
         # Parse filters
@@ -1089,12 +1123,12 @@ class GoveeShell:
         ws_url = self.config.server_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url += "/logs/stream"
 
-        self.console.print("[cyan]Streaming logs (Press Ctrl+C to stop)...[/]")
+        self._append_output("[cyan]Streaming logs (Press Ctrl+C to stop)...[/]" + "\n")
         if level_filter:
-            self.console.print(f"[dim]  Level filter: {level_filter}[/]")
+            self._append_output(f"[dim]  Level filter: {level_filter}[/]" + "\n")
         if logger_filter:
-            self.console.print(f"[dim]  Logger filter: {logger_filter}[/]")
-        self.console.print()
+            self._append_output(f"[dim]  Logger filter: {logger_filter}[/]" + "\n")
+        self._append_output("\n")
 
         try:
             with ws_client.connect(ws_url) as websocket:
@@ -1141,12 +1175,12 @@ class GoveeShell:
                monitor stats
         """
         if not self.client:
-            self.console.print("[red]Not connected. Use 'connect' first.[/]")
+            self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
             return
 
         args = shlex.split(arg)
         if not args:
-            self.console.print("[yellow]Usage: monitor dashboard|stats[/]")
+            self._append_output("[yellow]Usage: monitor dashboard|stats[/]" + "\n")
             return
 
         command = args[0]
@@ -1157,8 +1191,8 @@ class GoveeShell:
             elif command == "stats":
                 self._monitor_stats()
             else:
-                self.console.print(f"[red]Unknown monitor command: {command}[/]")
-                self.console.print("[yellow]Try: monitor dashboard, monitor stats[/]")
+                self._append_output(f"[red]Unknown monitor command: {command}[/]" + "\n")
+                self._append_output("[yellow]Try: monitor dashboard, monitor stats[/]" + "\n")
         except Exception as exc:
             self._handle_error(exc, "monitor")
 
@@ -1176,11 +1210,11 @@ class GoveeShell:
             status_indicator = "✓" if overall_status == "ok" else "✗"
 
             # Create header
-            self.console.print()
+            self._append_output( + "\n")
             self.console.rule("[bold cyan]Govee ArtNet Bridge - Dashboard")
-            self.console.print()
-            self.console.print(f"Status: [{status_style}]{status_indicator} {overall_status.upper()}[/]")
-            self.console.print()
+            self._append_output( + "\n")
+            self._append_output(f"Status: [{status_style}]{status_indicator} {overall_status.upper()}[/]" + "\n")
+            self._append_output( + "\n")
 
             # Devices table
             devices_table = Table(title="Devices", show_header=True, header_style="bold magenta")
@@ -1193,14 +1227,14 @@ class GoveeShell:
             devices_table.add_row("Manual", str(manual_count))
             devices_table.add_row("[bold]Total[/]", f"[bold]{discovered_count + manual_count}[/]")
 
-            self.console.print(devices_table)
-            self.console.print()
+            self._append_output(devices_table + "\n")
+            self._append_output( + "\n")
 
             # Queue info
             queue_depth = status_data.get("queue_depth", 0)
             queue_style = "green" if queue_depth < 100 else "yellow" if queue_depth < 500 else "red"
-            self.console.print(f"Message Queue Depth: [{queue_style}]{queue_depth}[/]")
-            self.console.print()
+            self._append_output(f"Message Queue Depth: [{queue_style}]{queue_depth}[/]" + "\n")
+            self._append_output( + "\n")
 
             # Subsystems table
             subsystems = health_data.get("subsystems", {})
@@ -1215,20 +1249,20 @@ class GoveeShell:
                     status_style = "green" if sub_status == "ok" else "red"
                     subsystems_table.add_row(name, f"[{status_style}]{indicator} {sub_status}[/]")
 
-                self.console.print(subsystems_table)
-                self.console.print()
+                self._append_output(subsystems_table + "\n")
+                self._append_output( + "\n")
 
         except Exception as exc:
-            self.console.print(f"[bold red]Error fetching dashboard:[/] {exc}")
+            self._append_output(f"[bold red]Error fetching dashboard:[/] {exc}" + "\n")
 
     def _monitor_stats(self) -> None:
         """Display system statistics."""
-        self.console.print("[cyan]Fetching statistics...[/]")
+        self._append_output("[cyan]Fetching statistics...[/]" + "\n")
         try:
             status_data = _handle_response(self.client.get("/status"))
             _print_output(status_data, self.config.output)
         except Exception as exc:
-            self.console.print(f"[red]Error fetching stats: {exc}[/]")
+            self._append_output(f"[red]Error fetching stats: {exc}[/]" + "\n")
 
     def do_output(self, arg: str) -> None:
         """
@@ -1237,8 +1271,8 @@ class GoveeShell:
         """
         args = shlex.split(arg)
         if not args or args[0] not in ("json", "yaml", "table"):
-            self.console.print("[yellow]Usage: output json|yaml|table[/]")
-            self.console.print(f"[dim]Current format: {self.config.output}[/]")
+            self._append_output("[yellow]Usage: output json|yaml|table[/]" + "\n")
+            self._append_output(f"[dim]Current format: {self.config.output}[/]" + "\n")
             return
 
         new_format = args[0]
@@ -1250,7 +1284,7 @@ class GoveeShell:
             timeout=self.config.timeout,
             page_size=self.config.page_size,
         )
-        self.console.print(f"[green]Output format set to: {new_format}[/]")
+        self._append_output(f"[green]Output format set to: {new_format}[/]" + "\n")
 
     def do_console(self, arg: str) -> None:
         """
@@ -1356,7 +1390,7 @@ class GoveeShell:
         """
         args = shlex.split(arg)
         if not args:
-            self.console.print("Usage: bookmark add|list|delete|use <name> [value]")
+            self._append_output("Usage: bookmark add|list|delete|use <name> [value]" + "\n")
             return
 
         command = args[0]
@@ -1366,11 +1400,11 @@ class GoveeShell:
             value = args[2]
             self.bookmarks[name] = value
             self._save_json(self.bookmarks_file, self.bookmarks)
-            self.console.print(f"[green]Bookmark '{name}' added: {value}[/]")
+            self._append_output(f"[green]Bookmark '{name}' added: {value}[/]" + "\n")
 
         elif command == "list":
             if not self.bookmarks:
-                self.console.print("[dim]No bookmarks saved[/]")
+                self._append_output("[dim]No bookmarks saved[/]" + "\n")
                 return
 
             table = Table(title="Bookmarks", show_header=True, header_style="bold magenta")
@@ -1380,16 +1414,16 @@ class GoveeShell:
             for name, value in self.bookmarks.items():
                 table.add_row(name, value)
 
-            self.console.print(table)
+            self._append_output(table + "\n")
 
         elif command == "delete" and len(args) >= 2:
             name = args[1]
             if name in self.bookmarks:
                 del self.bookmarks[name]
                 self._save_json(self.bookmarks_file, self.bookmarks)
-                self.console.print(f"[green]Bookmark '{name}' deleted[/]")
+                self._append_output(f"[green]Bookmark '{name}' deleted[/]" + "\n")
             else:
-                self.console.print(f"[red]Bookmark '{name}' not found[/]")
+                self._append_output(f"[red]Bookmark '{name}' not found[/]" + "\n")
 
         elif command == "use" and len(args) >= 2:
             name = args[1]
@@ -1399,13 +1433,13 @@ class GoveeShell:
                 if value.startswith("http://") or value.startswith("https://"):
                     self.do_connect(value)
                 else:
-                    self.console.print(f"[cyan]Bookmark value: {value}[/]")
-                    self.console.print("[dim]Use this value in your commands[/]")
+                    self._append_output(f"[cyan]Bookmark value: {value}[/]" + "\n")
+                    self._append_output("[dim]Use this value in your commands[/]" + "\n")
             else:
-                self.console.print(f"[red]Bookmark '{name}' not found[/]")
+                self._append_output(f"[red]Bookmark '{name}' not found[/]" + "\n")
 
         else:
-            self.console.print("Usage: bookmark add|list|delete|use <name> [value]")
+            self._append_output("Usage: bookmark add|list|delete|use <name> [value]" + "\n")
 
     def do_alias(self, arg: str) -> None:
         """
@@ -1421,7 +1455,7 @@ class GoveeShell:
         """
         args = shlex.split(arg)
         if not args:
-            self.console.print("Usage: alias add|list|delete <name> [command]")
+            self._append_output("Usage: alias add|list|delete <name> [command]" + "\n")
             return
 
         command = args[0]
@@ -1431,11 +1465,11 @@ class GoveeShell:
             value = " ".join(args[2:])
             self.aliases[name] = value
             self._save_json(self.aliases_file, self.aliases)
-            self.console.print(f"[green]Alias '{name}' -> '{value}' added[/]")
+            self._append_output(f"[green]Alias '{name}' -> '{value}' added[/]" + "\n")
 
         elif command == "list":
             if not self.aliases:
-                self.console.print("[dim]No aliases defined[/]")
+                self._append_output("[dim]No aliases defined[/]" + "\n")
                 return
 
             table = Table(title="Aliases", show_header=True, header_style="bold magenta")
@@ -1445,19 +1479,19 @@ class GoveeShell:
             for name, value in self.aliases.items():
                 table.add_row(name, value)
 
-            self.console.print(table)
+            self._append_output(table + "\n")
 
         elif command == "delete" and len(args) >= 2:
             name = args[1]
             if name in self.aliases:
                 del self.aliases[name]
                 self._save_json(self.aliases_file, self.aliases)
-                self.console.print(f"[green]Alias '{name}' deleted[/]")
+                self._append_output(f"[green]Alias '{name}' deleted[/]" + "\n")
             else:
-                self.console.print(f"[red]Alias '{name}' not found[/]")
+                self._append_output(f"[red]Alias '{name}' not found[/]" + "\n")
 
         else:
-            self.console.print("Usage: alias add|list|delete <name> [command]")
+            self._append_output("Usage: alias add|list|delete <name> [command]" + "\n")
 
     def do_cache(self, arg: str) -> None:
         """
@@ -1470,7 +1504,7 @@ class GoveeShell:
         """
         args = shlex.split(arg) if arg else []
         if not args:
-            self.console.print("Usage: cache stats|clear")
+            self._append_output("Usage: cache stats|clear" + "\n")
             return
 
         command = args[0]
@@ -1490,14 +1524,14 @@ class GoveeShell:
             table.add_row("Cache Size", str(stats["size"]))
             table.add_row("TTL (seconds)", str(self.cache.default_ttl))
 
-            self.console.print(table)
+            self._append_output(table + "\n")
 
         elif command == "clear":
             self.cache.clear()
-            self.console.print("[green]Cache cleared successfully[/]")
+            self._append_output("[green]Cache cleared successfully[/]" + "\n")
 
         else:
-            self.console.print("Usage: cache stats|clear")
+            self._append_output("Usage: cache stats|clear" + "\n")
 
     def do_watch(self, arg: str) -> None:
         """
@@ -1511,19 +1545,19 @@ class GoveeShell:
             watch dashboard 3    # Update every 3 seconds
         """
         if not self.client:
-            self.console.print("[red]Not connected. Use 'connect' first.[/]")
+            self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
             return
 
         args = shlex.split(arg)
         if not args:
-            self.console.print("Usage: watch devices|status|dashboard [interval]")
+            self._append_output("Usage: watch devices|status|dashboard [interval]" + "\n")
             return
 
         command = args[0]
         interval = float(args[1]) if len(args) > 1 else DEFAULT_WATCH_INTERVAL
 
-        self.console.print(f"[cyan]Watching {command} (Press Ctrl+C to stop, updating every {interval}s)[/]")
-        self.console.print()
+        self._append_output(f"[cyan]Watching {command} (Press Ctrl+C to stop, updating every {interval}s)[/]" + "\n")
+        self._append_output( + "\n")
 
         try:
             import time
@@ -1545,14 +1579,14 @@ class GoveeShell:
                 elif command == "dashboard":
                     self._monitor_dashboard()
                 else:
-                    self.console.print(f"[red]Unknown watch target: {command}[/]")
+                    self._append_output(f"[red]Unknown watch target: {command}[/]" + "\n")
                     break
 
                 # Wait
                 time.sleep(interval)
 
         except KeyboardInterrupt:
-            self.console.print("\n[yellow]Watch stopped[/]")
+            self._append_output("\n[yellow]Watch stopped[/]" + "\n")
 
     def do_batch(self, arg: str) -> None:
         """
@@ -1564,22 +1598,22 @@ class GoveeShell:
         """
         args = shlex.split(arg)
         if not args:
-            self.console.print("Usage: batch <filename>")
+            self._append_output("Usage: batch <filename>" + "\n")
             return
 
         filename = args[0]
         file_path = Path(filename)
 
         if not file_path.exists():
-            self.console.print(f"[red]File not found: {filename}[/]")
+            self._append_output(f"[red]File not found: {filename}[/]" + "\n")
             return
 
         try:
             with open(file_path, "r") as f:
                 lines = f.readlines()
 
-            self.console.print(f"[cyan]Executing {len(lines)} commands from {filename}[/]")
-            self.console.print()
+            self._append_output(f"[cyan]Executing {len(lines)} commands from {filename}[/]" + "\n")
+            self._append_output( + "\n")
 
             for i, line in enumerate(lines, 1):
                 line = line.strip()
@@ -1588,14 +1622,14 @@ class GoveeShell:
                 if not line or line.startswith("#"):
                     continue
 
-                self.console.print(f"[dim]({i}) {line}[/]")
+                self._append_output(f"[dim]({i}) {line}[/]" + "\n")
                 self.onecmd(line)
-                self.console.print()
+                self._append_output( + "\n")
 
-            self.console.print("[green]Batch execution complete[/]")
+            self._append_output("[green]Batch execution complete[/]" + "\n")
 
         except Exception as exc:
-            self.console.print(f"[red]Error executing batch: {exc}[/]")
+            self._append_output(f"[red]Error executing batch: {exc}[/]" + "\n")
 
     def do_session(self, arg: str) -> None:
         """
@@ -1612,7 +1646,7 @@ class GoveeShell:
         """
         args = shlex.split(arg)
         if not args:
-            self.console.print("Usage: session save|load|list|delete <name>")
+            self._append_output("Usage: session save|load|list|delete <name>" + "\n")
             return
 
         command = args[0]
@@ -1628,7 +1662,7 @@ class GoveeShell:
             }
             sessions[name] = session_data
             self._save_json(sessions_file, sessions)
-            self.console.print(f"[green]Session '{name}' saved[/]")
+            self._append_output(f"[green]Session '{name}' saved[/]" + "\n")
 
         elif command == "load" and len(args) >= 2:
             name = args[1]
@@ -1643,17 +1677,17 @@ class GoveeShell:
                     page_size=session_data.get("page_size", self.config.page_size),
                 )
                 self._connect()
-                self.console.print(f"[green]Session '{name}' loaded[/]")
-                self.console.print(f"  Server: {self.config.server_url}")
-                self.console.print(f"  Output: {self.config.output}")
+                self._append_output(f"[green]Session '{name}' loaded[/]" + "\n")
+                self._append_output(f"  Server: {self.config.server_url}" + "\n")
+                self._append_output(f"  Output: {self.config.output}" + "\n")
                 if self.config.page_size:
-                    self.console.print(f"  Pagination: {self.config.page_size} lines")
+                    self._append_output(f"  Pagination: {self.config.page_size} lines" + "\n")
             else:
-                self.console.print(f"[red]Session '{name}' not found[/]")
+                self._append_output(f"[red]Session '{name}' not found[/]" + "\n")
 
         elif command == "list":
             if not sessions:
-                self.console.print("[dim]No sessions saved[/]")
+                self._append_output("[dim]No sessions saved[/]" + "\n")
                 return
 
             table = Table(title="Sessions", show_header=True, header_style="bold magenta")
@@ -1664,19 +1698,19 @@ class GoveeShell:
             for name, data in sessions.items():
                 table.add_row(name, data["server_url"], data["output"])
 
-            self.console.print(table)
+            self._append_output(table + "\n")
 
         elif command == "delete" and len(args) >= 2:
             name = args[1]
             if name in sessions:
                 del sessions[name]
                 self._save_json(sessions_file, sessions)
-                self.console.print(f"[green]Session '{name}' deleted[/]")
+                self._append_output(f"[green]Session '{name}' deleted[/]" + "\n")
             else:
-                self.console.print(f"[red]Session '{name}' not found[/]")
+                self._append_output(f"[red]Session '{name}' not found[/]" + "\n")
 
         else:
-            self.console.print("Usage: session save|load|list|delete <name>")
+            self._append_output("Usage: session save|load|list|delete <name>" + "\n")
 
     def do_help(self, arg: str) -> None:
         """Show help for commands with examples."""
@@ -1695,8 +1729,8 @@ class GoveeShell:
                 # Apply pagination if configured
                 self._paginate_text(help_text)
             else:
-                self.console.print(f"[red]Unknown command: {arg}[/]")
-                self.console.print("[dim]Type 'help' to see all available commands.[/]")
+                self._append_output(f"[red]Unknown command: {arg}[/]" + "\n")
+                self._append_output("[dim]Type 'help' to see all available commands.[/]" + "\n")
             return
 
         # Show enhanced help with examples using rich
