@@ -47,10 +47,10 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "CLI for the Govee Artnet LAN bridge API. Uses GOVEE_ARTNET_* env vars "
-            "for defaults and prints JSON (default) or YAML. Examples: "
-            "`govee-artnet devices list`, `govee-artnet mappings create "
-            "--device-id <id> --universe 0 --start-channel 1 --template rgb`."
+            "CLI for the Govee Artnet LAN bridge API. Launches interactive shell by default. "
+            "Uses GOVEE_ARTNET_* env vars for defaults and prints JSON (default) or YAML. "
+            "Examples: `govee-artnet` (start shell), `govee-artnet devices list`, "
+            "`govee-artnet mappings create --device-id <id> --universe 0 --start-channel 1 --template rgb`."
         )
     )
     parser.add_argument(
@@ -1283,16 +1283,11 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
     try:
         config = _load_config(args)
 
-        # Check for shell mode
-        if args.command == "shell":
+        # Check for shell mode or default to shell when no command provided
+        if args.command == "shell" or not args.command:
             from .shell import run_shell
             run_shell(config)
             return
-
-        # Check if command was provided
-        if not args.command:
-            parser.print_help()
-            sys.exit(1)
 
         client = _build_client(config)
         with client:

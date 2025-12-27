@@ -48,8 +48,13 @@ The server will:
 
 ### 3. Discover Devices
 
+The CLI launches an interactive shell by default:
+
 ```bash
-# List all discovered devices
+# Start the interactive shell (default behavior)
+govee-artnet
+
+# Or run commands directly without the shell
 govee-artnet devices list
 ```
 
@@ -99,10 +104,13 @@ Point your lighting software at the bridge server's IP address and start control
 
 ## Interactive CLI Shell
 
-The `govee-artnet` CLI now includes a powerful interactive shell mode with real-time monitoring and log viewing:
+The `govee-artnet` CLI launches an interactive shell by default with real-time monitoring and log viewing:
 
 ```bash
-# Start interactive shell
+# Start interactive shell (default - just run govee-artnet)
+govee-artnet
+
+# Or explicitly use the shell command
 govee-artnet shell
 
 # Shell features:
@@ -121,7 +129,7 @@ govee> devices list                 # All existing CLI commands work!
 - 📜 **Scripting support** - Execute batch commands from files
 - 🎨 **Rich formatting** - Beautiful tables and colored output
 
-See the **[CLI Shell Guide](CLI_SHELL_README.md)** for complete documentation and examples.
+See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete documentation and examples.
 
 ## Available Templates
 
@@ -231,7 +239,7 @@ See [USAGE.md](USAGE.md) for detailed configuration options.
 
 - **[INSTALL.md](INSTALL.md)** - Installation instructions, systemd setup, and deployment options
 - **[USAGE.md](USAGE.md)** - Detailed usage guide, mapping strategies, and troubleshooting
-- **[CLI Shell Guide](CLI_SHELL_README.md)** - Interactive shell features, log viewing, and real-time monitoring
+- **[CLI Shell Guide](README_CLI_SHELL.md)** - Interactive shell features, log viewing, and real-time monitoring
 - **[Configuration Guide](USAGE.md#configuration)** - Server configuration options
 - **[Template Reference](USAGE.md#available-templates)** - Complete template documentation
 
