@@ -492,9 +492,9 @@ def _load_config(args: argparse.Namespace) -> ClientConfig:
             raise CliError(f"Invalid page size: {page_size}")
 
     if page_size is None:
-        # Default to terminal height minus 2 (for prompt and spacing)
+        # Default to terminal height minus 5 (for pagination prompt, blank line, user input, and buffer)
         terminal_height = shutil.get_terminal_size().lines
-        page_size = max(10, terminal_height - 2)  # Minimum 10 lines
+        page_size = max(10, terminal_height - 5)  # Minimum 10 lines
     elif page_size == 0:
         page_size = None  # Disable pagination
 
