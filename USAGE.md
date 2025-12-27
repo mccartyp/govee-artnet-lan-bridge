@@ -221,6 +221,21 @@ govee-artnet mappings create \
   --template rgbwa
 ```
 
+**Full Control with Color Temperature (6-channel)**
+```bash
+# Brightness, RGBW, and Color Temperature
+govee-artnet mappings create \
+  --device-id "AA:BB:CC:DD:EE:FF" \
+  --universe 3 \
+  --start-channel 1 \
+  --template full
+```
+
+This creates mappings for:
+- Channel 1: Brightness (master dimmer)
+- Channels 2-5: R, G, B, W (color)
+- Channel 6: Color Temperature (kelvin)
+
 ### Individual Channel Mapping
 
 For fine-grained control or non-standard fixture layouts, you can create individual channel mappings.
@@ -228,7 +243,7 @@ For fine-grained control or non-standard fixture layouts, you can create individ
 #### Mapping Types
 
 - **`range`**: Maps consecutive DMX channels to color fields (R, G, B, W)
-- **`discrete`**: Maps a single DMX channel to one device field (brightness, r, g, b, or w)
+- **`discrete`**: Maps a single DMX channel to one device field (brightness, r, g, b, w, or ct)
 
 #### Quick Guide: How to Map Individual Channels
 
@@ -360,10 +375,10 @@ Discovery responses that include a `model_number` are matched against the bundle
 
 #### "Unknown template"
 ```
-Unknown template 'rgbb'. Supported templates: brightness_rgb, master_only, rgb, rgbaw, rgbwa, rgbw.
+Unknown template 'rgbb'. Supported templates: brightness_rgb, full, master_only, rgb, rgbaw, rgbwa, rgbw.
 ```
 
-**Solution**: Check your template name for typos. Use one of the six supported templates listed above.
+**Solution**: Check your template name for typos. Use one of the seven supported templates listed above.
 
 ---
 
@@ -419,17 +434,18 @@ Device does not support color control. Supported modes: ct
 
 #### "Unsupported field"
 ```
-Unsupported field 'red'. Supported fields: brightness, b, g, r, w.
+Unsupported field 'red'. Supported fields: brightness, b, ct, g, r, w.
 ```
 
 **Cause**: Field name typo or using unsupported field name.
 
-**Solution**: Use one of the five supported field names:
+**Solution**: Use one of the six supported field names:
 - `brightness`: Master brightness/dimmer
 - `r`: Red channel
 - `g`: Green channel
 - `b`: Blue channel
 - `w`: White channel
+- `ct`: Color temperature (kelvin)
 
 ---
 

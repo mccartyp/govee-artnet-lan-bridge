@@ -236,7 +236,7 @@ def _coerce_metadata_for_db(metadata: Mapping[str, Any]) -> Dict[str, Any]:
     return db_values
 
 
-SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness"}
+SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness", "ct"}
 
 
 @dataclass(frozen=True)
@@ -268,6 +268,12 @@ _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("range", ("r", "g", "b", "w")),
     ),
+    # Full control template with brightness, color, and color temperature
+    "full": (
+        TemplateSegment("discrete", ("brightness",)),
+        TemplateSegment("range", ("r", "g", "b", "w")),
+        TemplateSegment("discrete", ("ct",)),
+    ),
 }
 
 
@@ -285,11 +291,14 @@ def _validate_template_support(
 ) -> None:
     needs_brightness = any("brightness" in segment.fields for segment in segments)
     needs_color = any(field in {"r", "g", "b", "w"} for segment in segments for field in segment.fields)
+    needs_color_temp = any("ct" in segment.fields for segment in segments)
     errors = []
     if needs_brightness and not capabilities.supports_brightness:
         errors.append("brightness")
     if needs_color and not capabilities.supports_color:
         errors.append("color")
+    if needs_color_temp and not capabilities.supports_color_temperature:
+        errors.append("color temperature")
     if errors:
         supported = capabilities.describe_support()
         raise ValueError(
@@ -323,6 +332,11 @@ def _validate_field_support(field: str, capabilities: NormalizedCapabilities) ->
         supported = ", ".join(capabilities.supported_modes) or "none"
         raise ValueError(
             f"Device does not support color control. Supported modes: {supported}."
+        )
+    if field == "ct" and not capabilities.supports_color_temperature:
+        supported = ", ".join(capabilities.supported_modes) or "none"
+        raise ValueError(
+            f"Device does not support color temperature control. Supported modes: {supported}."
         )
 
 
@@ -2054,7 +2068,10 @@ class DeviceStore:
             SELECT
                 COUNT(*) AS total,
                 SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled,
-                SUM(CASE WHEN offline = 1 THEN 1 ELSE 0 END) AS offline
+                SUM(CASE WHEN offline = 1 THEN 1 ELSE 0 END) AS offline,
+                SUM(CASE WHEN discovered = 1 THEN 1 ELSE 0 END) AS discovered,
+                SUM(CASE WHEN manual = 1 THEN 1 ELSE 0 END) AS manual,
+                SUM(CASE WHEN enabled = 1 AND configured = 1 AND offline = 0 THEN 1 ELSE 0 END) AS active
             FROM devices
             """
         ).fetchone()
@@ -2066,6 +2083,9 @@ class DeviceStore:
             "devices_total": int(device_counts["total"] or 0),
             "devices_enabled": int(device_counts["enabled"] or 0),
             "devices_offline": int(device_counts["offline"] or 0),
+            "discovered_count": int(device_counts["discovered"] or 0),
+            "manual_count": int(device_counts["manual"] or 0),
+            "active_count": int(device_counts["active"] or 0),
             "mappings_total": int(mapping_counts["total"] or 0),
         }
 
