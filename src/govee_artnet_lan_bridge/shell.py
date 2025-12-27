@@ -31,7 +31,8 @@ import yaml
 from prompt_toolkit import Application
 from prompt_toolkit.application import run_in_terminal
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.completion import WordCompleter, NestedCompleter
+from prompt_toolkit.completion import WordCompleter, NestedCompleter, Completion, Completer
+from prompt_toolkit.document import Document as PTDocument
 from prompt_toolkit.formatted_text import ANSI, FormattedText, to_formatted_text
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
@@ -69,6 +70,16 @@ DEFAULT_LOG_LINES = 50
 
 # Cache configuration
 DEFAULT_CACHE_TTL = 5.0  # Default cache TTL in seconds
+
+# Field name to description mapping for pretty printing
+FIELD_DESCRIPTIONS = {
+    "r": "Red",
+    "g": "Green",
+    "b": "Blue",
+    "w": "White",
+    "brightness": "Brightness",
+    "ct": "Color Temp",
+}
 
 # Toolbar styling for prompt_toolkit
 TOOLBAR_STYLE = Style.from_dict({
@@ -117,6 +128,63 @@ TOOLBAR_STYLE = Style.from_dict({
     "device-offline": "fg:ansired bg:ansibrightblack",
 
 })
+
+
+class TrailingSpaceCompleter(Completer):
+    """Wrapper completer that adds trailing space to completions with subcommands."""
+
+    def __init__(self, nested_dict: dict):
+        """
+        Initialize the completer with a nested dictionary.
+
+        Args:
+            nested_dict: Dictionary defining the command structure
+        """
+        self.nested_completer = NestedCompleter.from_nested_dict(nested_dict)
+        self.nested_dict = nested_dict
+
+    def get_completions(self, document: PTDocument, complete_event):
+        """
+        Get completions with trailing spaces for commands with subcommands.
+
+        Args:
+            document: Current document
+            complete_event: Completion event
+
+        Yields:
+            Completion objects with optional trailing spaces
+        """
+        for completion in self.nested_completer.get_completions(document, complete_event):
+            # Check if this completion has subcommands by traversing the nested dict
+            words = document.text.split()
+            current_level = self.nested_dict
+
+            # Navigate to the current level in the nested dict
+            for word in words[:-1]:
+                if word in current_level:
+                    current_level = current_level[word]
+                    if current_level is None:
+                        break
+                else:
+                    break
+
+            # Check if the completed word has subcommands
+            completed_word = completion.text
+            has_subcommands = False
+            if isinstance(current_level, dict) and completed_word in current_level:
+                has_subcommands = current_level[completed_word] is not None and isinstance(current_level[completed_word], dict)
+
+            # Add trailing space if has subcommands
+            if has_subcommands:
+                yield Completion(
+                    text=completion.text + ' ',
+                    start_position=completion.start_position,
+                    display=completion.display,
+                    display_meta=completion.display_meta,
+                )
+            else:
+                yield completion
+
 
 class ResponseCache:
     """Simple response cache with TTL support."""
@@ -344,7 +412,7 @@ class GoveeShell:
         self.follow_tail = True
 
         # Set up multi-level autocomplete with command structure
-        completer = NestedCompleter.from_nested_dict({
+        completer_dict = {
             'connect': None,
             'disconnect': None,
             'status': None,
@@ -359,7 +427,24 @@ class GoveeShell:
                 'enable': None,
                 'disable': None
             },
-            'mappings': {'list': None, 'get': None, 'create': None, 'delete': None, 'channel-map': None},
+            'mappings': {
+                'list': None,
+                'get': None,
+                'create': {
+                    '--device-id': None,
+                    '--universe': None,
+                    '--template': {'rgb': None, 'rgbw': None, 'brightness_rgb': None, 'master_only': None, 'rgbwa': None, 'rgbaw': None, 'full': None},
+                    '--start-channel': None,
+                    '--channel': None,
+                    '--length': None,
+                    '--type': {'single': None, 'color': None, 'range': None, 'discrete': None},
+                    '--field': {'r': None, 'g': None, 'b': None, 'w': None, 'brightness': None, 'ct': None, 'rgb': None, 'rgbw': None},
+                    '--allow-overlap': None,
+                    '--help': None,
+                },
+                'delete': None,
+                'channel-map': None
+            },
             'channels': {'list': None},
             'logs': {'stats': None},
             'monitor': {'status': None, 'dashboard': None},
@@ -376,7 +461,8 @@ class GoveeShell:
             'clear': None,
             'exit': None,
             'quit': None,
-        })
+        }
+        completer = TrailingSpaceCompleter(completer_dict)
 
         # Create input buffer with history and autocomplete
         self.input_buffer = Buffer(
@@ -652,10 +738,8 @@ class GoveeShell:
             if stop:
                 self.app.exit(result=True)
 
-        # Explicitly clear the input buffer to ensure it doesn't persist after execution
-        buffer.reset()
-
-        return True  # Let prompt_toolkit clear buffer and save to history
+        # Let prompt_toolkit handle clearing the buffer and saving to history
+        return True
 
     def _connect(self) -> None:
         """Establish connection to the bridge server."""
@@ -1233,7 +1317,7 @@ class GoveeShell:
 
             # Create simplified table (reordered columns, removed Enabled/Configured, added Last Seen)
             table = Table(title="Devices", show_header=True, header_style="bold cyan", box=box.ROUNDED)
-            table.add_column("ID", style="cyan", width=20, no_wrap=True)
+            table.add_column("ID", style="cyan", width=23, no_wrap=True)
             table.add_column("IP Address", style="green", width=15)
             table.add_column("Model", style="yellow", width=15)
             table.add_column("State", style="white", width=20)
@@ -1241,7 +1325,7 @@ class GoveeShell:
 
             # Add device rows
             for device in devices:
-                device_id = device.get("id", "N/A")[:20]  # Truncate long IDs
+                device_id = device.get("id", "N/A")[:23]  # Truncate long IDs
                 model = device.get("model_number", "Unknown")
                 ip_address = device.get("ip", "N/A")
 
@@ -1480,7 +1564,7 @@ class GoveeShell:
             # Create table with unicode borders
             table = Table(title="ArtNet Mappings", show_header=True, header_style="bold cyan", box=box.ROUNDED)
             table.add_column("ID", style="cyan", width=8)
-            table.add_column("Device ID", style="yellow", width=20)
+            table.add_column("Device ID", style="yellow", width=23)
             table.add_column("Universe", style="green", width=8, justify="right")
             table.add_column("Channel", style="magenta", width=8, justify="right")
             table.add_column("Length", style="blue", width=6, justify="right")
@@ -1488,13 +1572,17 @@ class GoveeShell:
 
             # Add mapping rows
             for mapping in mappings:
-                # Format fields list for display
+                # Format fields list for display with pretty names
                 fields = mapping.get("fields", [])
-                fields_str = ", ".join(fields) if fields else "N/A"
+                if fields:
+                    pretty_fields = [FIELD_DESCRIPTIONS.get(f, f.capitalize()) for f in fields]
+                    fields_str = ", ".join(pretty_fields)
+                else:
+                    fields_str = "N/A"
 
                 table.add_row(
                     str(mapping.get("id", "N/A")),
-                    str(mapping.get("device_id", "N/A"))[:20],
+                    str(mapping.get("device_id", "N/A"))[:23],
                     str(mapping.get("universe", "N/A")),
                     str(mapping.get("channel", "N/A")),
                     str(mapping.get("length", "N/A")),
@@ -1533,10 +1621,13 @@ class GoveeShell:
                 self._append_output("\n[bold]Template-based (recommended):[/]\n")
                 self._append_output("  mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>\n")
                 self._append_output("\n[bold]Available templates:[/]\n")
-                self._append_output("  • rgb        - 3 channels (red, green, blue)\n")
-                self._append_output("  • rgbw       - 4 channels (red, green, blue, white)\n")
-                self._append_output("  • brightness - 1 channel (brightness)\n")
-                self._append_output("  • temperature - 1 channel (color temperature)\n")
+                self._append_output("  • rgb             - 3 channels: Red, Green, Blue\n")
+                self._append_output("  • rgbw            - 4 channels: Red, Green, Blue, White\n")
+                self._append_output("  • brightness_rgb  - 4 channels: Brightness, Red, Green, Blue\n")
+                self._append_output("  • master_only     - 1 channel: Brightness\n")
+                self._append_output("  • rgbwa           - 5 channels: Red, Green, Blue, White, Brightness\n")
+                self._append_output("  • rgbaw           - 5 channels: Brightness, Red, Green, Blue, White\n")
+                self._append_output("  • full            - 6 channels: Brightness, Red, Green, Blue, White, Color Temp\n")
                 self._append_output("\n[bold]Manual configuration for single fields:[/]\n")
                 self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --type <type> --field <field>\n")
                 self._append_output("\n[bold]Manual configuration for multi-channel fields:[/]\n")
@@ -1548,6 +1639,7 @@ class GoveeShell:
                 self._append_output("    --type single --field blue         - Map to blue channel only\n")
                 self._append_output("    --type single --field white        - Map to white channel only\n")
                 self._append_output("    --type single --field brightness   - Map to brightness control\n")
+                self._append_output("    --type single --field ct           - Map to color temperature (kelvin)\n")
                 self._append_output("  Multi-channel mappings:\n")
                 self._append_output("    --type color --field rgb           - Map to RGB (length=3)\n")
                 self._append_output("    --type color --field rgbw          - Map to RGBW (length=4)\n")
@@ -1623,10 +1715,8 @@ class GoveeShell:
 
         if template:
             # Template-based mapping
-            if template not in {"rgb", "rgbw", "brightness", "temperature"}:
-                self._append_output(f"[red]Invalid template: {template}[/]\n")
-                self._append_output("[yellow]Valid templates: rgb, rgbw, brightness, temperature[/]\n")
-                return
+            # Note: Template validation is done by the backend
+            # Valid templates: rgb, rgbw, brightness_rgb, master_only, rgbwa, rgbaw, full
 
             if start_channel is None and channel is None:
                 self._append_output("[red]Error: --start-channel (or --channel) is required when using a template[/]\n")
@@ -1689,7 +1779,7 @@ class GoveeShell:
                mappings create --device-id <id> [--universe <num>] --channel <num> [--length <num>] --type <type> --field <field>
                mappings delete <id>
                mappings channel-map
-        Templates: rgb, rgbw, brightness, temperature
+        Templates: rgb, rgbw, brightness_rgb, master_only, rgbwa, rgbaw, full
         Note: --universe defaults to 0 if omitted
         """
         if not self.client:
@@ -1850,7 +1940,7 @@ class GoveeShell:
                 box=box.ROUNDED
             )
             table.add_column("Channel", style="cyan", width=8, justify="right")
-            table.add_column("Device ID", style="yellow", width=20)
+            table.add_column("Device ID", style="yellow", width=23)
             table.add_column("IP Address", style="green", width=15)
             table.add_column("Function", style="magenta", width=15)
             table.add_column("Fields", style="dim", width=15)
@@ -1875,7 +1965,7 @@ class GoveeShell:
 
                 table.add_row(
                     str(channel_num),
-                    device_id[:20],
+                    device_id[:23],
                     device_ip,
                     function_style,
                     fields_str
@@ -1976,13 +2066,13 @@ class GoveeShell:
         Args:
             args: Command arguments (filters)
         """
-        # Check for websockets library early
-        try:
-            import websockets.sync.client as ws_client
-        except ImportError:
-            self._append_output("[red]Error: websockets library not installed[/]" + "\n")
-            self._append_output("[yellow]Install with: pip install websockets[/]" + "\n")
-            return
+        # Disable tail in interactive shell to prevent blocking
+        self._append_output("[yellow]Note: 'logs tail' is not supported in interactive shell mode to prevent UI blocking.[/]\n")
+        self._append_output("[yellow]Alternatives:[/]\n")
+        self._append_output("  • Use 'logs' or 'logs search' for one-time log viewing\n")
+        self._append_output("  • Use 'monitor dashboard' for live system monitoring\n")
+        self._append_output("  • Run CLI in non-interactive mode for continuous tail: govee-artnet logs tail\n")
+        return
 
         # Parse filters
         level_filter = None
@@ -2103,6 +2193,8 @@ class GoveeShell:
 
             discovered_count = status_data.get("discovered_count", 0)
             manual_count = status_data.get("manual_count", 0)
+            active_count = status_data.get("active_count", 0)
+            devices_table.add_row("Active", str(active_count))
             devices_table.add_row("Discovered", str(discovered_count))
             devices_table.add_row("Manual", str(manual_count))
             devices_table.add_row("[bold]Total[/]", f"[bold]{discovered_count + manual_count}[/]")
