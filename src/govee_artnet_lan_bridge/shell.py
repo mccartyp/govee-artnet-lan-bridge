@@ -232,6 +232,11 @@ class GoveeShell:
         Returns:
             Configuration dictionary with defaults
         """
+        # Auto-detect terminal height for default pagination
+        import shutil
+        terminal_height = shutil.get_terminal_size().lines
+        default_page_size = max(10, terminal_height - 2)
+
         defaults = {
             "shell": {
                 "default_output": "table",
@@ -250,7 +255,7 @@ class GoveeShell:
                 "timestamps": False,
             },
             "console": {
-                "page_size": None,  # None means auto-detect terminal height
+                "page_size": default_page_size,  # Auto-detected based on terminal height, set to None to disable
             },
         }
 
