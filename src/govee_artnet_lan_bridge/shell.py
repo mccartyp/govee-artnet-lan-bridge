@@ -323,12 +323,14 @@ class GoveeShell:
         from prompt_toolkit.layout import WindowAlign
         self.root_container = HSplit([
             # Output pane - scrollable window with ANSI-formatted text
+            # Auto-scroll to bottom by returning a large scroll offset
             Window(
                 content=FormattedTextControl(
                     text=lambda: ANSI(self.output_text),
                     focusable=False,
                 ),
                 wrap_lines=False,
+                get_vertical_scroll=lambda: 999999,  # Always scroll to bottom
             ),
             Window(height=1, char='─'),
             Window(
