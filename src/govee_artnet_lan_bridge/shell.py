@@ -32,11 +32,13 @@ from prompt_toolkit import Application
 from prompt_toolkit.application import run_in_terminal
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import WordCompleter
-from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.formatted_text import ANSI, FormattedText
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl
+from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.lexers import SimpleLexer
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import TextArea
 from rich.console import Console
@@ -280,14 +282,8 @@ class GoveeShell:
             "EOF": self.do_EOF,
         }
 
-        # Create output TextArea (scrollable, read-only)
-        self.output_area = TextArea(
-            text="",
-            read_only=True,
-            scrollbar=True,
-            focus_on_click=False,
-            wrap_lines=False,
-        )
+        # Create output storage (for displaying command output with ANSI colors)
+        self.output_text = ""
 
         # Set up autocomplete with all command names
         completer = WordCompleter(list(self.commands.keys()), ignore_case=True)
@@ -320,13 +316,21 @@ class GoveeShell:
         @kb.add('c-l')
         def _(event):
             """Handle Ctrl+L - clear screen."""
-            self.output_area.text = ""
+            self.output_text = ""
             event.app.invalidate()
 
         # Create layout with output pane, separator, prompt + input field, and toolbar
         from prompt_toolkit.layout import WindowAlign
         self.root_container = HSplit([
-            self.output_area,
+            # Output pane - scrollable window with ANSI-formatted text
+            Window(
+                content=FormattedTextControl(
+                    text=lambda: ANSI(self.output_text),
+                    focusable=False,
+                ),
+                wrap_lines=False,
+                scrollbar=True,
+            ),
             Window(height=1, char='─'),
             Window(
                 content=BufferControl(
@@ -458,13 +462,9 @@ class GoveeShell:
         )
         temp_console.print(text, end="")
 
-        # Append to output area
+        # Append ANSI formatted text to output
         formatted_text = buffer.getvalue()
-        current_text = self.output_area.text
-        self.output_area.text = current_text + formatted_text
-
-        # Scroll to bottom
-        self.output_area.buffer.cursor_position = len(self.output_area.text)
+        self.output_text += formatted_text
 
         # Trigger redraw
         self.app.invalidate()
@@ -1873,7 +1873,7 @@ class GoveeShell:
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
-        self.output_area.text = ""
+        self.output_text = ""
         self.app.invalidate()
 
     def do_exit(self, arg: str) -> bool:
