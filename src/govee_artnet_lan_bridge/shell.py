@@ -19,7 +19,8 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 from rich import box
-from rich.console import Console
+from rich.align import Align
+from rich.console import Console, Group
 from rich.table import Table
 
 from .cli import (
@@ -333,10 +334,10 @@ class GoveeShell:
             Configuration dictionary with defaults
         """
         # Auto-detect terminal height for default pagination
-        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (2 lines) + safety margin for line wrapping (2 lines)
+        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (2 lines) + extra buffer for wrapping/spacing (4 lines)
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 8)
+        default_page_size = max(10, terminal_height - 10)
 
         defaults = {
             "shell": {
@@ -412,8 +413,8 @@ class GoveeShell:
         if self.auto_pagination:
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (2 lines) + safety margin for line wrapping (2 lines)
-            new_page_size = max(10, terminal_height - 8)
+            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (2 lines) + extra buffer for wrapping/spacing (4 lines)
+            new_page_size = max(10, terminal_height - 10)
 
             # Update config with new page size
             self.config = ClientConfig(
@@ -1643,14 +1644,19 @@ class GoveeShell:
         buffer = StringIO()
         temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
 
-        temp_console.print()
-        temp_console.print("═" * border_width)
-        temp_console.print("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan", justify="center")
-        temp_console.print("═" * border_width)
-        temp_console.print()
+        # Create header as a single block to avoid extra spacing
+        header_title = Align.center("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan")
+        header = Group(
+            "",  # Blank line at top
+            "═" * border_width,
+            header_title,
+            "═" * border_width,
+            "",  # Blank line after header
+        )
+        temp_console.print(header)
 
         # Create help table with double-line box drawing characters
-        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True, box=box.DOUBLE)
+        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True, box=box.DOUBLE, collapse_padding=True)
         help_table.add_column("Command", style="cyan", width=15)
         help_table.add_column("Description", style="white", width=30)
         help_table.add_column("Example", style="yellow", width=35)
