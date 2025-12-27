@@ -236,7 +236,7 @@ class GoveeShell:
         # Auto-detect terminal height for default pagination
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 5)
+        default_page_size = max(10, terminal_height - 2)
 
         defaults = {
             "shell": {
@@ -920,7 +920,7 @@ class GoveeShell:
         elif setting == "auto":
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            page_size = max(10, terminal_height - 5)
+            page_size = max(10, terminal_height - 2)
         else:
             try:
                 page_size = int(setting)
@@ -993,6 +993,10 @@ class GoveeShell:
                 self.console.print("[dim]No bookmarks saved[/]")
                 return
 
+            # Capture table output to buffer for consistent spacing
+            buffer = StringIO()
+            temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
+
             table = Table(title="Bookmarks", show_header=True, header_style="bold magenta")
             table.add_column("Name", style="cyan")
             table.add_column("Value", style="yellow")
@@ -1000,7 +1004,8 @@ class GoveeShell:
             for name, value in self.bookmarks.items():
                 table.add_row(name, value)
 
-            self.console.print(table)
+            temp_console.print(table)
+            self._paginate_text(buffer.getvalue())
 
         elif command == "delete" and len(args) >= 2:
             name = args[1]
@@ -1058,6 +1063,10 @@ class GoveeShell:
                 self.console.print("[dim]No aliases defined[/]")
                 return
 
+            # Capture table output to buffer for consistent spacing
+            buffer = StringIO()
+            temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
+
             table = Table(title="Aliases", show_header=True, header_style="bold magenta")
             table.add_column("Alias", style="cyan")
             table.add_column("Command", style="yellow")
@@ -1065,7 +1074,8 @@ class GoveeShell:
             for name, value in self.aliases.items():
                 table.add_row(name, value)
 
-            self.console.print(table)
+            temp_console.print(table)
+            self._paginate_text(buffer.getvalue())
 
         elif command == "delete" and len(args) >= 2:
             name = args[1]
@@ -1100,6 +1110,10 @@ class GoveeShell:
             total_requests = stats["hits"] + stats["misses"]
             hit_rate = (stats["hits"] / total_requests * 100) if total_requests > 0 else 0
 
+            # Capture table output to buffer for consistent spacing
+            buffer = StringIO()
+            temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
+
             table = Table(title="Cache Statistics", show_header=True, header_style="bold magenta")
             table.add_column("Metric", style="cyan")
             table.add_column("Value", style="yellow")
@@ -1110,7 +1124,8 @@ class GoveeShell:
             table.add_row("Cache Size", str(stats["size"]))
             table.add_row("TTL (seconds)", str(self.cache.default_ttl))
 
-            self.console.print(table)
+            temp_console.print(table)
+            self._paginate_text(buffer.getvalue())
 
         elif command == "clear":
             self.cache.clear()
@@ -1276,6 +1291,10 @@ class GoveeShell:
                 self.console.print("[dim]No sessions saved[/]")
                 return
 
+            # Capture table output to buffer for consistent spacing
+            buffer = StringIO()
+            temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
+
             table = Table(title="Sessions", show_header=True, header_style="bold magenta")
             table.add_column("Name", style="cyan")
             table.add_column("Server URL", style="yellow")
@@ -1284,7 +1303,8 @@ class GoveeShell:
             for name, data in sessions.items():
                 table.add_row(name, data["server_url"], data["output"])
 
-            self.console.print(table)
+            temp_console.print(table)
+            self._paginate_text(buffer.getvalue())
 
         elif command == "delete" and len(args) >= 2:
             name = args[1]
@@ -1439,24 +1459,34 @@ class GoveeShell:
 
     def do_version(self, arg: str) -> None:
         """Show shell version information."""
-        self.console.print()
-        self.console.print(f"[bold cyan]Govee ArtNet Bridge Shell[/]")
-        self.console.print(f"[dim]Version:[/] {SHELL_VERSION}")
-        self.console.print()
-        self.console.print("[dim]Features:[/]")
-        self.console.print("  • Interactive shell with autocomplete and history")
-        self.console.print("  • Real-time WebSocket log streaming")
-        self.console.print("  • Rich formatted tables and dashboards")
-        self.console.print("  • Bookmarks, aliases, and sessions")
-        self.console.print("  • Watch mode for continuous monitoring")
-        self.console.print("  • Batch command execution")
-        self.console.print()
+        # Capture all output to buffer for consistent spacing
+        buffer = StringIO()
+        temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
+
+        temp_console.print()
+        temp_console.print(f"[bold cyan]Govee ArtNet Bridge Shell[/]")
+        temp_console.print(f"[dim]Version:[/] {SHELL_VERSION}")
+        temp_console.print()
+        temp_console.print("[dim]Features:[/]")
+        temp_console.print("  • Interactive shell with autocomplete and history")
+        temp_console.print("  • Real-time WebSocket log streaming")
+        temp_console.print("  • Rich formatted tables and dashboards")
+        temp_console.print("  • Bookmarks, aliases, and sessions")
+        temp_console.print("  • Watch mode for continuous monitoring")
+        temp_console.print("  • Batch command execution")
+        temp_console.print()
+
+        self._paginate_text(buffer.getvalue())
 
     def do_tips(self, arg: str) -> None:
         """Show helpful tips for using the shell."""
-        self.console.print()
-        self.console.rule("[bold cyan]Shell Tips & Tricks")
-        self.console.print()
+        # Capture all output to buffer for consistent spacing
+        buffer = StringIO()
+        temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
+
+        temp_console.print()
+        temp_console.rule("[bold cyan]Shell Tips & Tricks")
+        temp_console.print()
 
         tips_table = Table(show_header=False, show_edge=False, pad_edge=False)
         tips_table.add_column("Tip", style="cyan")
@@ -1473,8 +1503,10 @@ class GoveeShell:
         tips_table.add_row("💡 Control pagination: [bold]console pagination 30[/]")
         tips_table.add_row("💡 Tail logs live: [bold]logs tail --level ERROR[/]")
 
-        self.console.print(tips_table)
-        self.console.print()
+        temp_console.print(tips_table)
+        temp_console.print()
+
+        self._paginate_text(buffer.getvalue())
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
