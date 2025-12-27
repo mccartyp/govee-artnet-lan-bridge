@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
+import shutil
 import string
 import sys
 from dataclasses import dataclass
@@ -13,7 +15,9 @@ from typing import Any, Callable, Iterable, Mapping, MutableMapping, Optional
 import httpx
 import yaml
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
@@ -33,6 +37,7 @@ class ClientConfig:
     api_bearer_token: Optional[str]
     output: str
     timeout: float = 10.0
+    page_size: Optional[int] = None  # None means no pagination
 
 
 def _env(name: str, default: Optional[str] = None) -> Optional[str]:
@@ -81,6 +86,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "Defaults to 'json'; use 'yaml' for YAML output, 'table' for formatted tables."
         ),
     )
+    parser.add_argument(
+        "--page-size",
+        type=int,
+        default=_env("PAGE_SIZE"),
+        help=(
+            f"Number of output lines before pausing (env: {ENV_PREFIX}PAGE_SIZE). "
+            "Defaults to terminal height minus 2. Set to 0 to disable pagination."
+        ),
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=False)
 
@@ -125,6 +139,14 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
         ),
     )
     device_sub = devices.add_subparsers(dest="device_command", required=True)
+
+    # Add help subcommand
+    help_cmd = device_sub.add_parser(
+        "help",
+        help="Show help for devices commands",
+        description="Display detailed help for all device management commands",
+    )
+    help_cmd.set_defaults(func=lambda config, client, args: devices.print_help())
 
     list_cmd = device_sub.add_parser(
         "list",
@@ -334,6 +356,14 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
     )
     mapping_sub = mappings.add_subparsers(dest="mapping_command", required=True)
 
+    # Add help subcommand
+    help_cmd = mapping_sub.add_parser(
+        "help",
+        help="Show help for mappings commands",
+        description="Display detailed help for all mapping management commands",
+    )
+    help_cmd.set_defaults(func=lambda config, client, args: mappings.print_help())
+
     list_cmd = mapping_sub.add_parser(
         "list",
         help="List mappings (GET /mappings -> array of mapping objects)",
@@ -453,11 +483,27 @@ def _load_config(args: argparse.Namespace) -> ClientConfig:
     if output not in {"json", "yaml", "table"}:
         raise CliError("Output format must be 'json', 'yaml', or 'table'")
 
+    # Determine page size
+    page_size = args.page_size
+    if page_size is not None and isinstance(page_size, str):
+        try:
+            page_size = int(page_size)
+        except ValueError:
+            raise CliError(f"Invalid page size: {page_size}")
+
+    if page_size is None:
+        # Default to terminal height minus 2 (for prompt and spacing)
+        terminal_height = shutil.get_terminal_size().lines
+        page_size = max(10, terminal_height - 2)  # Minimum 10 lines
+    elif page_size == 0:
+        page_size = None  # Disable pagination
+
     return ClientConfig(
         server_url=args.server_url,
         api_key=args.api_key,
         api_bearer_token=args.api_bearer_token,
         output=output,
+        page_size=page_size,
     )
 
 
@@ -500,34 +546,187 @@ def _build_client(config: ClientConfig) -> httpx.Client:
     )
 
 
-def _print_output(data: Any, output: str) -> None:
+def _paginate_output(text: str, config: Optional[ClientConfig]) -> None:
+    """
+    Print text with optional pagination.
+
+    Args:
+        text: Text to print
+        config: Client configuration with page_size
+    """
+    if not config or not config.page_size:
+        # No pagination
+        sys.stdout.write(text)
+        sys.stdout.flush()
+        return
+
+    lines = text.split("\n")
+    line_count = 0
+
+    for line in lines:
+        sys.stdout.write(line + "\n")
+        line_count += 1
+
+        if line_count >= config.page_size and line_count < len(lines) - 1:
+            # Pause for user input
+            try:
+                response = input("\n[Press Enter to continue, 'q' to quit] ")
+                if response.lower().startswith('q'):
+                    sys.stdout.write("\n[Output truncated]\n")
+                    return
+                line_count = 0
+            except (KeyboardInterrupt, EOFError):
+                sys.stdout.write("\n[Output interrupted]\n")
+                return
+
+    sys.stdout.flush()
+
+
+def _is_device_list(data: Any) -> bool:
+    """
+    Check if data appears to be a device list.
+
+    Args:
+        data: Data to check
+
+    Returns:
+        True if data looks like a device list
+    """
+    if not isinstance(data, list) or len(data) == 0:
+        return False
+    if not isinstance(data[0], dict):
+        return False
+    # Check for device-specific keys
+    first_item = data[0]
+    device_keys = {"id", "ip", "enabled", "capabilities"}
+    return len(device_keys & set(first_item.keys())) >= 3
+
+
+def _print_device_cards(devices: list[dict[str, Any]], console: Console, config: Optional[ClientConfig]) -> None:
+    """
+    Print devices in a card-style format with multiple lines per device.
+
+    Args:
+        devices: List of device dictionaries
+        console: Rich console instance
+        config: Client configuration (for pagination)
+    """
+    line_count = 0
+
+    for idx, device in enumerate(devices):
+        # Create a table for this device with 2 columns
+        table = Table(show_header=False, box=None, padding=(0, 1))
+        table.add_column("Field", style="cyan", width=20)
+        table.add_column("Value", style="yellow")
+
+        # Key fields to display in order
+        key_fields = [
+            ("ID", "id"),
+            ("IP", "ip"),
+            ("Model", "model_number"),
+            ("Type", "device_type"),
+            ("Description", "description"),
+            ("Enabled", "enabled"),
+            ("Manual", "manual"),
+            ("Discovered", "discovered"),
+            ("Configured", "configured"),
+            ("Offline", "offline"),
+            ("Stale", "stale"),
+        ]
+
+        # Add key fields
+        for label, key in key_fields:
+            if key in device and device[key] is not None:
+                value = device[key]
+                if isinstance(value, bool):
+                    value_str = "✓" if value else "✗"
+                    style = "green" if value else "red"
+                    table.add_row(label, f"[{style}]{value_str}[/{style}]")
+                else:
+                    table.add_row(label, str(value))
+
+        # Add capabilities as JSON if present
+        if "capabilities" in device and device["capabilities"]:
+            caps_str = json.dumps(device["capabilities"], indent=2) if isinstance(device["capabilities"], dict) else str(device["capabilities"])
+            table.add_row("Capabilities", caps_str)
+
+        # Add metadata fields if present
+        metadata_fields = [
+            ("LED Count", "led_count"),
+            ("Length (m)", "length_meters"),
+            ("Segments", "segment_count"),
+            ("Last Seen", "last_seen"),
+            ("First Seen", "first_seen"),
+        ]
+
+        for label, key in metadata_fields:
+            if key in device and device[key] is not None:
+                table.add_row(label, str(device[key]))
+
+        # Print device header and table
+        header_text = f"[bold magenta]Device {idx + 1} of {len(devices)}[/bold magenta]"
+        console.print(header_text)
+        console.print(table)
+
+        # Add separator between devices
+        if idx < len(devices) - 1:
+            console.print("─" * 80)
+
+        # Count lines for pagination (rough estimate: 2 lines per field + header + separator)
+        estimated_lines = len([r for r in table.rows]) + 3
+        line_count += estimated_lines
+
+        # Check if we need to pause
+        if config and config.page_size and line_count >= config.page_size and idx < len(devices) - 1:
+            try:
+                response = input("\n[Press Enter to continue, 'q' to quit] ")
+                if response.lower().startswith('q'):
+                    console.print("\n[dim][Output truncated][/dim]")
+                    return
+                line_count = 0
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[dim][Output interrupted][/dim]")
+                return
+
+
+def _print_output(data: Any, output: str, config: Optional[ClientConfig] = None) -> None:
     """
     Print output in specified format.
 
     Args:
         data: Data to print
         output: Output format (json, yaml, or table)
+        config: Client configuration (for pagination)
     """
     if output == "yaml":
-        yaml.safe_dump(data, sys.stdout, sort_keys=False)
+        stream = io.StringIO()
+        yaml.safe_dump(data, stream, sort_keys=False)
+        output_text = stream.getvalue()
+        _paginate_output(output_text, config)
     elif output == "table":
         console = Console()
-        _print_table(data, console)
+        _print_table(data, console, config)
     else:
-        json.dump(data, sys.stdout, indent=2)
-        sys.stdout.write("\n")
+        output_text = json.dumps(data, indent=2) + "\n"
+        _paginate_output(output_text, config)
 
 
-def _print_table(data: Any, console: Console) -> None:
+def _print_table(data: Any, console: Console, config: Optional[ClientConfig] = None) -> None:
     """
     Print data as a rich table.
 
     Args:
         data: Data to print (dict or list of dicts)
         console: Rich console instance
+        config: Client configuration (for pagination and device detection)
     """
     if data is None:
         console.print("[dim]No data[/]")
+        return
+
+    # Handle device lists with special card format
+    if _is_device_list(data):
+        _print_device_cards(data, console, config)
         return
 
     # Handle list of items (most common case)
@@ -596,7 +795,7 @@ def _api_get(client: httpx.Client, endpoint: str, config: ClientConfig) -> Any:
         Response data (parsed JSON)
     """
     data = _handle_response(client.get(endpoint))
-    _print_output(data, config.output)
+    _print_output(data, config.output, config)
     return data
 
 
@@ -616,7 +815,7 @@ def _api_get_by_id(
         Response data (parsed JSON)
     """
     data = _handle_response(client.get(f"{endpoint}/{resource_id}"))
-    _print_output(data, config.output)
+    _print_output(data, config.output, config)
     return data
 
 
@@ -636,7 +835,7 @@ def _device_set_enabled(
         Updated device data
     """
     data = _handle_response(client.patch(f"/devices/{device_id}", json={"enabled": enabled}))
-    _print_output(data, config.output)
+    _print_output(data, config.output, config)
     return data
 
 
@@ -659,7 +858,7 @@ def _api_delete(
     """
     _handle_response(client.delete(f"{endpoint}/{resource_id}"))
     if custom_output is not None:
-        _print_output(custom_output, config.output)
+        _print_output(custom_output, config.output, config)
 
 
 def _cmd_health(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
@@ -711,7 +910,7 @@ def _cmd_devices_add(config: ClientConfig, client: httpx.Client, args: argparse.
 
     _validate_device_payload(payload, "create")
     data = _handle_response(client.post("/devices", json=payload))
-    _print_output(data, config.output)
+    _print_output(data, config.output, config)
 
 
 def _cmd_devices_update(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
@@ -746,7 +945,7 @@ def _cmd_devices_update(config: ClientConfig, client: httpx.Client, args: argpar
 
     _validate_device_payload(payload, "update")
     data = _handle_response(client.patch(f"/devices/{args.device_id}", json=payload))
-    _print_output(data, config.output)
+    _print_output(data, config.output, config)
 
 
 def _cmd_devices_enable(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
@@ -762,7 +961,7 @@ def _cmd_devices_test(config: ClientConfig, client: httpx.Client, args: argparse
     data = _handle_response(
         client.post(f"/devices/{args.device_id}/test", json={"payload": payload})
     )
-    _print_output(data, config.output)
+    _print_output(data, config.output, config)
 
 
 def _cmd_devices_command(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
@@ -797,7 +996,7 @@ def _cmd_devices_command(config: ClientConfig, client: httpx.Client, args: argpa
     data = _handle_response(
         client.post(f"/devices/{args.device_id}/command", json=payload)
     )
-    _print_output(data, config.output)
+    _print_output(data, config.output, config)
 
 
 def _cmd_mappings_list(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
@@ -837,7 +1036,7 @@ def _cmd_mappings_create(config: ClientConfig, client: httpx.Client, args: argpa
 
     _validate_mapping_payload(payload, "create")
     data = _handle_response(client.post("/mappings", json=payload))
-    _print_output(data, config.output)
+    _print_output(data, config.output, config)
 
 
 def _cmd_mappings_update(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
@@ -865,7 +1064,7 @@ def _cmd_mappings_update(config: ClientConfig, client: httpx.Client, args: argpa
     data = _handle_response(
         client.put(f"/mappings/{args.mapping_id}", json=payload)
     )
-    _print_output(data, config.output)
+    _print_output(data, config.output, config)
 
 
 def _cmd_mappings_delete(config: ClientConfig, client: httpx.Client, args: argparse.Namespace) -> None:
