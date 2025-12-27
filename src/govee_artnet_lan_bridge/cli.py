@@ -554,20 +554,26 @@ def _paginate_output(text: str, config: Optional[ClientConfig]) -> None:
         text: Text to print
         config: Client configuration with page_size
     """
+    # Strip trailing newlines to prevent excessive blank space at bottom
+    text = text.rstrip('\n')
+
     if not config or not config.page_size:
-        # No pagination
-        sys.stdout.write(text)
+        # No pagination - write text with single trailing newline
+        sys.stdout.write(text + '\n')
         sys.stdout.flush()
         return
 
     lines = text.split("\n")
     line_count = 0
 
-    for line in lines:
-        sys.stdout.write(line + "\n")
+    for i, line in enumerate(lines):
+        sys.stdout.write(line)
+        # Only add newline if not the last line
+        if i < len(lines) - 1:
+            sys.stdout.write("\n")
         line_count += 1
 
-        if line_count >= config.page_size and line_count < len(lines) - 1:
+        if line_count >= config.page_size and i < len(lines) - 1:
             # Pause for user input
             try:
                 response = input("\n[Press Enter to continue, 'q' to quit] ")
@@ -579,6 +585,8 @@ def _paginate_output(text: str, config: Optional[ClientConfig]) -> None:
                 sys.stdout.write("\n[Output interrupted]\n")
                 return
 
+    # Add single trailing newline at the end
+    sys.stdout.write('\n')
     sys.stdout.flush()
 
 
