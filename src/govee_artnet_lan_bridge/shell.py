@@ -315,6 +315,7 @@ class GoveeShell:
             "health": self.do_health,
             "devices": self.do_devices,
             "mappings": self.do_mappings,
+            "channels": self.do_channels,
             "logs": self.do_logs,
             "monitor": self.do_monitor,
             "output": self.do_output,
@@ -347,7 +348,7 @@ class GoveeShell:
             'connect': None,
             'disconnect': None,
             'status': None,
-            'health': None,
+            'health': {'detailed': None},
             'devices': {
                 'list': {
                     'detailed': None,
@@ -359,12 +360,13 @@ class GoveeShell:
                 'disable': None
             },
             'mappings': {'list': None, 'get': None, 'delete': None, 'channel-map': None},
+            'channels': {'list': None},
             'logs': {'stats': None},
             'monitor': {'status': None, 'dashboard': None},
             'output': {'json': None, 'table': None, 'yaml': None},
             'bookmark': {'add': None, 'list': None, 'delete': None, 'use': None},
             'alias': {'add': None, 'list': None, 'delete': None, 'clear': None},
-            'watch': {'devices': None, 'mappings': None, 'logs': None},
+            'watch': {'devices': None, 'mappings': None, 'logs': None, 'dashboard': None},
             'batch': {'load': None},
             'session': {'save': None, 'list': None, 'delete': None},
             'help': None,
@@ -1043,15 +1045,129 @@ class GoveeShell:
             self._handle_error(exc, "status")
 
     def do_health(self, arg: str) -> None:
-        """Check bridge health."""
+        """
+        Check bridge health.
+        Usage: health                # Show simplified health summary
+               health detailed       # Show detailed health information
+        """
         if not self.client:
             self._append_output("Not connected. Use 'connect' first.\n")
             return
 
+        args = shlex.split(arg) if arg else []
+
         try:
-            self._capture_api_output(_api_get, self.client, "/health", self.config)
+            if args and args[0] == "detailed":
+                # Show detailed health info (original behavior)
+                self._capture_api_output(_api_get, self.client, "/health", self.config)
+            else:
+                # Show simplified health status
+                self._show_health_summary()
         except Exception as exc:
             self._handle_error(exc, "health")
+
+    def _show_health_summary(self) -> None:
+        """Show simplified health status with component statuses."""
+        try:
+            response = self.client.get("/health")
+            health_data = _handle_response(response)
+
+            # Overall status
+            overall_status = health_data.get("status", "unknown")
+            status_style = "bold green" if overall_status == "healthy" else "bold yellow" if overall_status == "degraded" else "bold red"
+            status_indicator = "✓" if overall_status == "healthy" else "⚠" if overall_status == "degraded" else "✗"
+
+            self._append_output(f"\n[{status_style}]{status_indicator} Bridge Health: {overall_status.upper()}[/]\n\n")
+
+            # Component status table
+            subsystems = health_data.get("subsystems", {})
+            if subsystems:
+                table = Table(title="Component Status", show_header=True, header_style="bold cyan", box=box.ROUNDED)
+                table.add_column("Component", style="cyan", width=20)
+                table.add_column("Status", style="white", width=15, justify="center")
+                table.add_column("Details", style="dim", width=40)
+
+                for name, data in subsystems.items():
+                    sub_status = data.get("status", "unknown")
+
+                    # Determine status indicator and style
+                    if sub_status == "ok" or sub_status == "healthy":
+                        indicator = "✓"
+                        status_style = "green"
+                        status_text = "Healthy"
+                    elif sub_status == "degraded":
+                        indicator = "⚠"
+                        status_style = "yellow"
+                        status_text = "Degraded"
+                    else:
+                        indicator = "✗"
+                        status_style = "red"
+                        status_text = "Error"
+
+                    # Extract details if available
+                    details = data.get("message", "") or data.get("error", "") or ""
+                    if not details and isinstance(data, dict):
+                        # Try to construct details from other fields
+                        detail_parts = []
+                        for key, value in data.items():
+                            if key not in ("status", "message", "error") and value:
+                                detail_parts.append(f"{key}: {value}")
+                        details = ", ".join(detail_parts) if detail_parts else ""
+
+                    table.add_row(
+                        name.replace("_", " ").title(),
+                        f"[{status_style}]{indicator} {status_text}[/]",
+                        details[:40] if details else ""
+                    )
+
+                self._append_output(table)
+            else:
+                self._append_output("[dim]No component details available[/]\n")
+
+            self._append_output(f"\n[dim]Use 'health detailed' for full health information[/]\n")
+
+        except Exception as exc:
+            self._append_output(f"[red]Error fetching health: {exc}[/]\n")
+
+    def _format_last_seen_age(self, last_seen: Optional[str]) -> str:
+        """Format last_seen timestamp as human-readable age.
+
+        Args:
+            last_seen: ISO timestamp string or None
+
+        Returns:
+            Human-readable age string (e.g., "2d 3h 15m 42s", "5m 12s", "never")
+        """
+        if not last_seen:
+            return "[dim]never[/]"
+
+        try:
+            from datetime import datetime
+            last_seen_dt = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+            now = datetime.now(last_seen_dt.tzinfo) if last_seen_dt.tzinfo else datetime.now()
+            delta = now - last_seen_dt
+
+            # Calculate components
+            total_seconds = int(delta.total_seconds())
+            if total_seconds < 0:
+                return "[dim]just now[/]"
+
+            days = total_seconds // 86400
+            hours = (total_seconds % 86400) // 3600
+            minutes = (total_seconds % 3600) // 60
+            seconds = total_seconds % 60
+
+            # Format based on age
+            if days > 0:
+                return f"{days}d {hours}h {minutes}m {seconds}s"
+            elif hours > 0:
+                return f"{hours}h {minutes}m {seconds}s"
+            elif minutes > 0:
+                return f"{minutes}m {seconds}s"
+            else:
+                return f"{seconds}s"
+        except Exception:
+            return "[dim]unknown[/]"
 
     def _show_devices_simple(self, filter_id: Optional[str] = None, filter_ip: Optional[str] = None, filter_state: Optional[str] = None) -> None:
         """Show devices in simplified 2-line table format.
@@ -1096,24 +1212,19 @@ class GoveeShell:
                 self._append_output("[yellow]No devices match the filters[/]\n")
                 return
 
-            # Create simplified table
+            # Create simplified table (reordered columns, removed Enabled/Configured, added Last Seen)
             table = Table(title="Devices", show_header=True, header_style="bold cyan", box=box.ROUNDED)
             table.add_column("ID", style="cyan", width=20, no_wrap=True)
-            table.add_column("Model", style="yellow", width=15)
             table.add_column("IP Address", style="green", width=15)
-            table.add_column("Enabled", style="magenta", width=8, justify="center")
-            table.add_column("Configured", style="blue", width=11, justify="center")
+            table.add_column("Model", style="yellow", width=15)
             table.add_column("State", style="white", width=20)
+            table.add_column("Last Seen", style="magenta", width=18)
 
             # Add device rows
             for device in devices:
                 device_id = device.get("id", "N/A")[:20]  # Truncate long IDs
                 model = device.get("model_number", "Unknown")
                 ip_address = device.get("ip", "N/A")
-                enabled = "✓" if device.get("enabled", False) else "✗"
-                enabled_style = "green" if device.get("enabled", False) else "red"
-                configured = "✓" if device.get("configured", False) else "✗"
-                configured_style = "green" if device.get("configured", False) else "red"
 
                 # Determine state(s)
                 states = []
@@ -1134,13 +1245,15 @@ class GoveeShell:
                 else:
                     state_str = "[dim]Unknown[/]"
 
+                # Format last seen age
+                last_seen_age = self._format_last_seen_age(device.get("last_seen"))
+
                 table.add_row(
                     device_id,
-                    model,
                     ip_address,
-                    f"[{enabled_style}]{enabled}[/]",
-                    f"[{configured_style}]{configured}[/]",
-                    state_str
+                    model,
+                    state_str,
+                    last_seen_age
                 )
 
             self._append_output(table)
@@ -1335,6 +1448,42 @@ class GoveeShell:
         except Exception as exc:
             self._handle_error(exc, "devices")
 
+    def _show_mappings_list(self) -> None:
+        """Show mappings list with unicode table borders."""
+        try:
+            response = self.client.get("/mappings")
+            mappings = _handle_response(response)
+
+            if not mappings:
+                self._append_output("[yellow]No mappings found[/]\n")
+                return
+
+            # Create table with unicode borders
+            table = Table(title="ArtNet Mappings", show_header=True, header_style="bold cyan", box=box.ROUNDED)
+            table.add_column("ID", style="cyan", width=8)
+            table.add_column("Device ID", style="yellow", width=20)
+            table.add_column("Universe", style="green", width=8, justify="right")
+            table.add_column("Channel", style="magenta", width=8, justify="right")
+            table.add_column("Length", style="blue", width=6, justify="right")
+            table.add_column("Template", style="white", width=12)
+
+            # Add mapping rows
+            for mapping in mappings:
+                table.add_row(
+                    str(mapping.get("id", "N/A")),
+                    str(mapping.get("device_id", "N/A"))[:20],
+                    str(mapping.get("universe", "N/A")),
+                    str(mapping.get("start_channel", "N/A")),
+                    str(mapping.get("channel_length", "N/A")),
+                    str(mapping.get("template", "N/A"))
+                )
+
+            self._append_output(table)
+            self._append_output(f"\n[dim]Total: {len(mappings)} mapping(s)[/]\n")
+
+        except Exception as exc:
+            self._append_output(f"[red]Error fetching mappings: {exc}[/]\n")
+
     def do_mappings(self, arg: str) -> None:
         """
         Mapping commands: list, get, delete, channel-map.
@@ -1356,7 +1505,7 @@ class GoveeShell:
 
         try:
             if command == "list":
-                self._capture_api_output(_api_get, self.client, "/mappings", self.config)
+                self._show_mappings_list()
             elif command == "get" and len(args) >= 2:
                 mapping_id = args[1]
                 self._capture_api_output(_api_get_by_id, self.client, "/mappings", mapping_id, self.config)
@@ -1374,6 +1523,151 @@ class GoveeShell:
                 self._append_output("[yellow]Try: mappings list, mappings get <id>, mappings delete <id>, mappings channel-map[/]" + "\n")
         except Exception as exc:
             self._handle_error(exc, "mappings")
+
+    def do_channels(self, arg: str) -> None:
+        """
+        Channel commands: list channels for a universe.
+        Usage: channels list [universe]    # Default universe is 0
+        Examples:
+            channels list              # Show channels for universe 0
+            channels list 1            # Show channels for universe 1
+        """
+        if not self.client:
+            self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
+            return
+
+        args = shlex.split(arg)
+        if not args:
+            self._append_output("[yellow]Usage: channels list [universe][/]" + "\n")
+            return
+
+        command = args[0]
+
+        try:
+            if command == "list":
+                # Parse universe argument (default to 0)
+                universe = 0
+                if len(args) > 1:
+                    try:
+                        universe = int(args[1])
+                    except ValueError:
+                        self._append_output(f"[red]Invalid universe number: {args[1]}[/]\n")
+                        return
+
+                self._show_channels_list(universe)
+            else:
+                self._append_output(f"[red]Unknown command: channels {arg}[/]" + "\n")
+                self._append_output("[yellow]Try: channels list [universe][/]" + "\n")
+        except Exception as exc:
+            self._handle_error(exc, "channels")
+
+    def _show_channels_list(self, universe: int = 0) -> None:
+        """Show DMX channels for the specified universe.
+
+        Args:
+            universe: ArtNet universe number (default 0)
+        """
+        try:
+            # Fetch mappings and devices
+            mappings_response = self.client.get("/mappings")
+            mappings = _handle_response(mappings_response)
+
+            devices_response = self.client.get("/devices")
+            devices = _handle_response(devices_response)
+
+            # Create device lookup by ID
+            device_lookup = {d["id"]: d for d in devices} if devices else {}
+
+            # Filter mappings for this universe
+            universe_mappings = [m for m in mappings if m.get("universe") == universe]
+
+            if not universe_mappings:
+                self._append_output(f"[yellow]No mappings found for universe {universe}[/]\n")
+                return
+
+            # Build channel map (1-512)
+            channel_map = {}  # channel_num -> (device_id, ip, function, mapping_info)
+
+            # Channel function names for common templates
+            TEMPLATE_FUNCTIONS = {
+                "rgb": ["Red", "Green", "Blue"],
+                "rgbw": ["Red", "Green", "Blue", "White"],
+                "rgbww": ["Red", "Green", "Blue", "Warm White", "Cool White"],
+                "brightness": ["Brightness"],
+                "dimmer": ["Dimmer"],
+                "cct": ["Color Temp", "Brightness"],
+                "rgbcct": ["Red", "Green", "Blue", "Color Temp", "Brightness"],
+            }
+
+            for mapping in universe_mappings:
+                device_id = mapping.get("device_id", "N/A")
+                start_channel = mapping.get("start_channel", 1)
+                channel_length = mapping.get("channel_length", 1)
+                template = mapping.get("template", "").lower()
+
+                # Get device IP
+                device = device_lookup.get(device_id, {})
+                device_ip = device.get("ip", "N/A")
+
+                # Determine channel functions
+                functions = TEMPLATE_FUNCTIONS.get(template, [f"Ch{i+1}" for i in range(channel_length)])
+
+                # Populate channel map
+                for i in range(channel_length):
+                    channel_num = start_channel + i
+                    if 1 <= channel_num <= 512:
+                        function = functions[i] if i < len(functions) else f"Ch{i+1}"
+                        channel_map[channel_num] = (device_id, device_ip, function, template)
+
+            if not channel_map:
+                self._append_output(f"[yellow]No channels populated for universe {universe}[/]\n")
+                return
+
+            # Create table with unicode borders
+            table = Table(
+                title=f"DMX Channels - Universe {universe}",
+                show_header=True,
+                header_style="bold cyan",
+                box=box.ROUNDED
+            )
+            table.add_column("Channel", style="cyan", width=8, justify="right")
+            table.add_column("Device ID", style="yellow", width=20)
+            table.add_column("IP Address", style="green", width=15)
+            table.add_column("Function", style="magenta", width=15)
+            table.add_column("Template", style="dim", width=10)
+
+            # Add rows for populated channels (sorted by channel number)
+            for channel_num in sorted(channel_map.keys()):
+                device_id, device_ip, function, template = channel_map[channel_num]
+
+                # Apply color coding to functions
+                if "Red" in function:
+                    function_style = "[red]" + function + "[/]"
+                elif "Green" in function:
+                    function_style = "[green]" + function + "[/]"
+                elif "Blue" in function:
+                    function_style = "[blue]" + function + "[/]"
+                elif "White" in function or "Brightness" in function or "Dimmer" in function:
+                    function_style = "[white]" + function + "[/]"
+                elif "Temp" in function or "CCT" in function:
+                    function_style = "[yellow]" + function + "[/]"
+                else:
+                    function_style = function
+
+                table.add_row(
+                    str(channel_num),
+                    device_id[:20],
+                    device_ip,
+                    function_style,
+                    template
+                )
+
+            self._append_output(table)
+            self._append_output(f"\n[dim]Total: {len(channel_map)} populated channel(s) in universe {universe}[/]\n")
+            self._append_output(f"[dim]Range: {min(channel_map.keys())} - {max(channel_map.keys())}[/]\n")
+
+        except Exception as exc:
+            self._append_output(f"[red]Error fetching channels: {exc}[/]\n")
 
     def do_logs(self, arg: str) -> None:
         """
@@ -1814,16 +2108,19 @@ class GoveeShell:
 
     def do_watch(self, arg: str) -> None:
         """
-        Watch devices or status with continuous updates.
-        Usage: watch devices [interval]
-               watch mappings [interval]
-               watch logs [interval]
+        Watch devices, mappings, logs, or dashboard (single refresh).
+        Usage: watch devices
+               watch mappings
+               watch logs
+               watch dashboard
         Examples:
-            watch devices 2      # Refresh devices every 2 seconds
-            watch mappings 5     # Refresh mappings every 5 seconds
+            watch devices        # Refresh devices once
+            watch mappings       # Refresh mappings once
+            watch dashboard      # Show dashboard
 
-        Note: Watch mode continuously refreshes data at the specified interval.
-              Press Ctrl+C to stop watching.
+        Note: In interactive shell mode, continuous watch is not supported to prevent UI blocking.
+              Use 'monitor dashboard' for real-time updates, or run the command manually as needed.
+              For continuous monitoring, use the CLI in non-interactive mode.
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -1831,46 +2128,34 @@ class GoveeShell:
 
         args = shlex.split(arg)
         if not args:
-            self._append_output("[yellow]Usage: watch devices|mappings|logs [interval][/]" + "\n")
+            self._append_output("[yellow]Usage: watch devices|mappings|logs|dashboard[/]" + "\n")
             return
 
         command = args[0]
-        interval = float(args[1]) if len(args) > 1 else DEFAULT_WATCH_INTERVAL
-
-        self._append_output(f"[cyan]Watch mode: Refreshing {command} every {interval}s (Press Ctrl+C to stop)[/]\n")
-        self._append_output(f"[dim]Note: Use PgUp/PgDn to scroll, output will refresh automatically[/]\n\n")
 
         try:
-            import time
-            iterations = 0
-            max_iterations = 1000  # Safety limit to prevent infinite loops
+            # Add timestamp header
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self._append_output(f"\n[bold cyan]─── Refreshed at {timestamp} ───[/]\n")
 
-            while iterations < max_iterations:
-                iterations += 1
+            # Execute command based on target
+            if command == "devices":
+                self._show_devices_simple()
+            elif command == "mappings":
+                self._show_mappings_list()
+            elif command == "logs":
+                self.do_logs("")
+            elif command == "dashboard":
+                self._monitor_dashboard()
+            else:
+                self._append_output(f"[red]Unknown watch target: {command}[/]\n")
+                self._append_output("[yellow]Valid targets: devices, mappings, logs, dashboard[/]\n")
 
-                # Add timestamp header
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                self._append_output(f"\n[bold cyan]─── Refresh #{iterations} at {timestamp} ───[/]\n")
+            self._append_output(f"\n[dim]Tip: Run the command again to refresh, or use 'monitor dashboard' for live updates[/]\n")
 
-                # Execute command based on target
-                if command == "devices":
-                    self._show_devices_simple()
-                elif command == "mappings":
-                    self.do_mappings("list")
-                elif command == "logs":
-                    self.do_logs("stats")
-                else:
-                    self._append_output(f"[red]Unknown watch target: {command}[/]\n")
-                    self._append_output("[yellow]Valid targets: devices, mappings, logs[/]\n")
-                    break
-
-                # Sleep for interval (this will block input during sleep)
-                # Use run_in_terminal to allow the UI to update
-                time.sleep(interval)
-
-        except KeyboardInterrupt:
-            self._append_output("\n[yellow]Watch stopped after {iterations} iterations[/]\n")
+        except Exception as exc:
+            self._handle_error(exc, f"watch {command}")
 
     def do_batch(self, arg: str) -> None:
         """
@@ -2058,7 +2343,7 @@ class GoveeShell:
         help_table.add_row(
             "health",
             "Check bridge health",
-            "health"
+            "health\nhealth detailed"
         )
         help_table.add_row(
             "devices",
@@ -2069,6 +2354,11 @@ class GoveeShell:
             "mappings",
             "Manage ArtNet mappings",
             "mappings list\nmappings get <id>\nmappings delete <id>"
+        )
+        help_table.add_row(
+            "channels",
+            "View DMX channel assignments",
+            "channels list\nchannels list 1"
         )
         help_table.add_row(
             "logs",
@@ -2092,8 +2382,8 @@ class GoveeShell:
         )
         help_table.add_row(
             "watch",
-            "Continuous monitoring",
-            "watch devices\nwatch dashboard 5"
+            "Refresh data views",
+            "watch devices\nwatch mappings\nwatch dashboard"
         )
         help_table.add_row(
             "batch",
