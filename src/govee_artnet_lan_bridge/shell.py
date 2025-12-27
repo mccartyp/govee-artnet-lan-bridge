@@ -305,10 +305,10 @@ class GoveeShell:
             Configuration dictionary with defaults
         """
         # Auto-detect terminal height for default pagination
-        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line) + buffer (2 lines)
+        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 7)
+        default_page_size = max(10, terminal_height - 5)
 
         defaults = {
             "shell": {
@@ -384,8 +384,8 @@ class GoveeShell:
         if self.auto_pagination:
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line) + buffer (2 lines)
-            new_page_size = max(10, terminal_height - 7)
+            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
+            new_page_size = max(10, terminal_height - 5)
 
             # Update config with new page size
             self.config = ClientConfig(
@@ -627,27 +627,31 @@ class GoveeShell:
     def _paginate_text(self, text: str) -> None:
         """
         Print text with optional pagination based on config.
+        Uses Rich Console for output to respect prompt_toolkit's screen management.
 
         Args:
-            text: Text to print
+            text: Text to print (may contain ANSI formatting)
         """
         # Strip trailing newlines to prevent excessive blank space at bottom
         text = text.rstrip('\n')
 
         if not self.config.page_size:
-            # No pagination - write text with single trailing newline
-            sys.stdout.write(text + '\n')
-            sys.stdout.flush()
+            # No pagination - print text with single trailing newline
+            # Use markup=False and highlight=False to preserve ANSI codes
+            self.console.print(text, markup=False, highlight=False)
             return
 
         lines = text.split("\n")
         line_count = 0
 
         for i, line in enumerate(lines):
-            sys.stdout.write(line)
-            # Only add newline if not the last line
+            # Use console.print with end="" to avoid double newlines
+            # markup=False and highlight=False preserve ANSI codes from pre-rendered text
             if i < len(lines) - 1:
-                sys.stdout.write("\n")
+                self.console.print(line, markup=False, highlight=False)
+            else:
+                # Last line - no trailing newline yet
+                self.console.print(line, markup=False, highlight=False, end="")
             line_count += 1
 
             if line_count >= self.config.page_size and i < len(lines) - 1:
@@ -655,16 +659,15 @@ class GoveeShell:
                 try:
                     response = input("\n[Press Enter to continue, 'q' to quit] ")
                     if response.lower().startswith('q'):
-                        sys.stdout.write("\n[Output truncated]\n")
+                        self.console.print("\n[Output truncated]")
                         return
                     line_count = 0
                 except (KeyboardInterrupt, EOFError):
-                    sys.stdout.write("\n[Output interrupted]\n")
+                    self.console.print("\n[Output interrupted]")
                     return
 
         # Add single trailing newline at the end
-        sys.stdout.write('\n')
-        sys.stdout.flush()
+        self.console.print()
 
     def _format_command_help(self, command: str, docstring: str) -> str:
         """
