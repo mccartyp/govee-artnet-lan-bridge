@@ -1255,7 +1255,7 @@ class GoveeShell:
         # Show enhanced help with examples using rich
         # Capture output to a string buffer for pagination
         buffer = StringIO()
-        temp_console = Console(file=buffer, force_terminal=False, width=self.console.width)
+        temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
 
         temp_console.print()
         temp_console.print("═" * 80)
