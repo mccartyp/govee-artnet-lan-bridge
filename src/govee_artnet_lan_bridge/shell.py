@@ -1,4 +1,18 @@
-"""Interactive shell for govee-artnet CLI."""
+"""Interactive shell for govee-artnet CLI.
+
+ARCHITECTURAL NOTE - APPLICATION-BASED RENDERING
+================================================
+
+This shell uses prompt_toolkit's Application model for full-screen terminal control.
+All output is routed through a TextArea widget to ensure proper integration with
+prompt_toolkit's rendering system and prevent toolbar overlap issues.
+
+Key components:
+- Application with HSplit layout (output pane + input field + toolbar)
+- TextArea for scrollable output (replaces direct console.print() calls)
+- Command execution in event loop with proper screen management
+- Terminal resize handled automatically by Application
+"""
 
 from __future__ import annotations
 
@@ -14,15 +28,19 @@ from typing import Any, Callable, Optional
 
 import httpx
 import yaml
-from prompt_toolkit import PromptSession
+from prompt_toolkit import Application
+from prompt_toolkit.application import run_in_terminal
+from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, Window
+from prompt_toolkit.layout.controls import BufferControl
 from prompt_toolkit.styles import Style
-from rich import box
-from rich.align import Align
-from rich.console import Console, Group
+from prompt_toolkit.widgets import TextArea
+from rich.console import Console
 from rich.table import Table
-from rich.text import Text
 
 from .cli import (
     ClientConfig,
@@ -47,33 +65,6 @@ DEFAULT_LOG_LINES = 50
 
 # Cache configuration
 DEFAULT_CACHE_TTL = 5.0  # Default cache TTL in seconds
-
-
-def _getch() -> str:
-    """
-    Read a single character from stdin without requiring Enter.
-    Cross-platform implementation (Unix/Windows).
-
-    Returns:
-        Single character string
-    """
-    try:
-        # Unix/Linux/MacOS
-        import tty
-        import termios
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(fd)
-            ch = sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        return ch
-    except (ImportError, AttributeError):
-        # Windows
-        import msvcrt
-        return msvcrt.getch().decode('utf-8')
-
 
 # Toolbar styling for prompt_toolkit
 TOOLBAR_STYLE = Style.from_dict({
@@ -199,8 +190,8 @@ class GoveeShell:
         """
         self.config = config
         self.client: Optional[httpx.Client] = None
-        # Configure console with no legacy windows mode and disable soft wrapping
-        self.console = Console(legacy_windows=False, soft_wrap=False)
+        # Configure console for formatting output to buffers (not terminal)
+        self.console = Console(legacy_windows=False, soft_wrap=False, force_terminal=True)
 
         # Initialize response cache for performance
         cache_ttl = float(os.environ.get("GOVEE_ARTNET_CACHE_TTL", str(DEFAULT_CACHE_TTL)))
@@ -289,21 +280,82 @@ class GoveeShell:
             "EOF": self.do_EOF,
         }
 
+        # Create output TextArea (scrollable, read-only)
+        self.output_area = TextArea(
+            text="",
+            read_only=True,
+            scrollbar=True,
+            focus_on_click=False,
+            wrap_lines=False,
+        )
+
         # Set up autocomplete with all command names
         completer = WordCompleter(list(self.commands.keys()), ignore_case=True)
 
-        # Create prompt session with history, autocomplete, and status toolbar
-        # Reserve 3 lines for toolbar: 1 for border + 2 for status info
-        self.session: PromptSession = PromptSession(
-            history=FileHistory(str(history_file)),
+        # Create input buffer with history and autocomplete
+        self.input_buffer = Buffer(
             completer=completer,
             complete_while_typing=True,
-            bottom_toolbar=self._get_bottom_toolbar,
-            reserve_space_for_menu=3,
-            style=TOOLBAR_STYLE,
+            history=FileHistory(str(history_file)),
+            multiline=False,
+            accept_handler=self._accept_input,
         )
 
-        # Set up terminal resize handler (Unix-like systems only)
+        # Set up key bindings
+        kb = KeyBindings()
+
+        @kb.add('c-c')
+        def _(event):
+            """Handle Ctrl+C - clear input or show message."""
+            if self.input_buffer.text:
+                self.input_buffer.reset()
+            else:
+                self._append_output("\n[yellow]Use 'exit' or Ctrl+D to quit.[/]\n")
+
+        @kb.add('c-d')
+        def _(event):
+            """Handle Ctrl+D - exit shell."""
+            event.app.exit(result=True)
+
+        @kb.add('c-l')
+        def _(event):
+            """Handle Ctrl+L - clear screen."""
+            self.output_area.text = ""
+            event.app.invalidate()
+
+        # Create layout with output pane, separator, prompt + input field, and toolbar
+        from prompt_toolkit.layout import WindowAlign
+        self.root_container = HSplit([
+            self.output_area,
+            Window(height=1, char='─'),
+            Window(
+                content=BufferControl(
+                    buffer=self.input_buffer,
+                    input_processors=[],
+                ),
+                height=1,
+                get_line_prefix=lambda line_number, wrap_count: f"{self.prompt}",
+            ),
+            Window(height=1, char='─'),
+            Window(
+                content=FormattedTextControl(
+                    text=self._get_bottom_toolbar,
+                ),
+                height=2,
+                style="class:bottom-toolbar",
+            ),
+        ])
+
+        # Create Application
+        self.app: Application = Application(
+            layout=Layout(self.root_container),
+            key_bindings=kb,
+            style=TOOLBAR_STYLE,
+            full_screen=True,
+            mouse_support=True,
+        )
+
+        # Set up terminal resize handler for pagination (prompt_toolkit handles layout resize)
         if hasattr(signal, 'SIGWINCH'):
             signal.signal(signal.SIGWINCH, self._handle_terminal_resize)
 
@@ -335,10 +387,10 @@ class GoveeShell:
             Configuration dictionary with defaults
         """
         # Auto-detect terminal height for default pagination
-        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (2 lines) + extra buffer for wrapping/spacing (4 lines)
+        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 10)
+        default_page_size = max(10, terminal_height - 5)
 
         defaults = {
             "shell": {
@@ -388,6 +440,68 @@ class GoveeShell:
             # If config file is invalid, use defaults
             return defaults
 
+    def _append_output(self, text: str) -> None:
+        """
+        Append text to the output area using Rich formatting.
+
+        Args:
+            text: Text to append (supports Rich markup and Rich objects like Table)
+        """
+        # Use Rich console to format the text to ANSI
+        buffer = StringIO()
+        temp_console = Console(
+            file=buffer,
+            force_terminal=True,
+            width=self.console.width,
+            legacy_windows=False,
+            soft_wrap=False,
+        )
+        temp_console.print(text, end="")
+
+        # Append to output area
+        formatted_text = buffer.getvalue()
+        current_text = self.output_area.text
+        self.output_area.text = current_text + formatted_text
+
+        # Scroll to bottom
+        self.output_area.buffer.cursor_position = len(self.output_area.text)
+
+        # Trigger redraw
+        self.app.invalidate()
+
+    def _accept_input(self, buffer: Buffer) -> bool:
+        """
+        Handle command input when user presses Enter.
+
+        Args:
+            buffer: Input buffer
+
+        Returns:
+            True to keep the buffer text, False to clear it
+        """
+        # Get command text
+        line = buffer.text
+
+        # Clear the buffer immediately
+        buffer.reset()
+
+        # Echo the command with prompt
+        self._append_output(f"{self.prompt}{line}\n")
+
+        # Process command
+        if line and not line.isspace():
+            # Preprocess (aliases)
+            line = self.precmd(line)
+
+            # Execute command
+            stop = self.onecmd(line)
+
+            # Handle exit
+            if stop:
+                self.app.exit(result=True)
+
+        return False  # Buffer already cleared
+
     def _connect(self) -> None:
         """Establish connection to the bridge server."""
         try:
@@ -395,10 +509,10 @@ class GoveeShell:
             # Test connection
             response = self.client.get("/health")
             response.raise_for_status()
-            self.console.print(f"[green]Connected to {self.config.server_url}[/]")
+            self._append_output(f"[green]Connected to {self.config.server_url}[/]\n")
         except Exception as exc:
-            self.console.print(f"[yellow]Warning: Could not connect to {self.config.server_url}: {exc}[/]")
-            self.console.print("[dim]Some commands may not work. Use 'connect' to retry.[/]")
+            self._append_output(f"[yellow]Warning: Could not connect to {self.config.server_url}: {exc}[/]\n")
+            self._append_output("[dim]Some commands may not work. Use 'connect' to retry.[/]\n")
             self.client = None
 
     def _handle_terminal_resize(self, signum: int, frame: Any) -> None:
@@ -414,8 +528,8 @@ class GoveeShell:
         if self.auto_pagination:
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (2 lines) + extra buffer for wrapping/spacing (4 lines)
-            new_page_size = max(10, terminal_height - 10)
+            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
+            new_page_size = max(10, terminal_height - 5)
 
             # Update config with new page size
             self.config = ClientConfig(
@@ -657,74 +771,44 @@ class GoveeShell:
     def _paginate_text(self, text: str) -> None:
         """
         Print text with optional pagination based on config.
-        Uses Rich Console for output to respect prompt_toolkit's screen management.
-
-        Pagination controls (like 'less'):
-        - Space: advance one page
-        - Enter: advance one line
-        - q: quit
 
         Args:
-            text: Text to print (may contain ANSI formatting)
+            text: Text to print
         """
         # Strip trailing newlines to prevent excessive blank space at bottom
         text = text.rstrip('\n')
 
         if not self.config.page_size:
-            # No pagination - print text with single trailing newline
-            # Use markup=False and highlight=False to preserve ANSI codes
-            self.console.print(text, markup=False, highlight=False)
+            # No pagination - write text with single trailing newline
+            sys.stdout.write(text + '\n')
+            sys.stdout.flush()
             return
 
         lines = text.split("\n")
         line_count = 0
 
         for i, line in enumerate(lines):
-            # Use console.print with end="" to avoid double newlines
-            # markup=False and highlight=False preserve ANSI codes from pre-rendered text
+            sys.stdout.write(line)
+            # Only add newline if not the last line
             if i < len(lines) - 1:
-                self.console.print(line, markup=False, highlight=False)
-            else:
-                # Last line - no trailing newline yet
-                self.console.print(line, markup=False, highlight=False, end="")
+                sys.stdout.write("\n")
             line_count += 1
 
             if line_count >= self.config.page_size and i < len(lines) - 1:
-                # Pause for user input with less-style controls
+                # Pause for user input
                 try:
-                    # Print prompt and read single character
-                    sys.stdout.write("\n[Space=page, Enter=line, q=quit] ")
-                    sys.stdout.flush()
-                    response = _getch()
-
-                    # Clear the prompt line
-                    sys.stdout.write('\r' + ' ' * 40 + '\r')
-                    sys.stdout.flush()
-
-                    if response.lower() == 'q':
-                        self.console.print("\n[Output truncated]")
+                    response = input("\n[Press Enter to continue, 'q' to quit] ")
+                    if response.lower().startswith('q'):
+                        sys.stdout.write("\n[Output truncated]\n")
                         return
-                    elif response in ('\r', '\n'):
-                        # Enter pressed - advance one line
-                        # Set line_count so next iteration shows 1 line then pauses
-                        line_count = self.config.page_size - 1
-                    elif response == ' ':
-                        # Space pressed - advance one page
-                        line_count = 0
-                    else:
-                        # Any other input - treat as space (next page)
-                        line_count = 0
+                    line_count = 0
                 except (KeyboardInterrupt, EOFError):
-                    self.console.print("\n[Output interrupted]")
+                    sys.stdout.write("\n[Output interrupted]\n")
                     return
 
-        # Add trailing newlines to ensure toolbar space
-        # When we return to prompt_toolkit, it will display a 3-line toolbar at the bottom
-        # We need to leave space for it by adding extra newlines
-        self.console.print()
-        # Add extra blank lines to push content up and leave room for toolbar
-        for _ in range(3):
-            self.console.print()
+        # Add single trailing newline at the end
+        sys.stdout.write('\n')
+        sys.stdout.flush()
 
     def _format_command_help(self, command: str, docstring: str) -> str:
         """
@@ -835,7 +919,7 @@ class GoveeShell:
     def do_health(self, arg: str) -> None:
         """Check bridge health."""
         if not self.client:
-            self.console.print("Not connected. Use 'connect' first.")
+            print("Not connected. Use 'connect' first.")
             return
 
         try:
@@ -1068,8 +1152,7 @@ class GoveeShell:
                         logger_name = data.get("logger", "")
                         message_text = data.get("message", "")
 
-                        # Use console.print to respect toolbar, but disable markup to avoid interpreting log content
-                        self.console.print(f"[{timestamp}] {level:7} | {logger_name:25} | {message_text}", markup=False, highlight=False)
+                        print(f"[{timestamp}] {level:7} | {logger_name:25} | {message_text}")
 
                     except TimeoutError:
                         # No message received, continue
@@ -1215,20 +1298,24 @@ class GoveeShell:
         args = shlex.split(arg)
 
         if not args or (len(args) == 1 and args[0] == "pagination"):
-            # Show current pagination setting
+            # Show current pagination setting with auto status
             if self.config.page_size is None:
-                self.console.print("Pagination: [yellow]disabled[/]")
+                status = "[yellow]disabled[/]"
             else:
-                self.console.print(f"Pagination: [green]{self.config.page_size} lines[/]")
-            self.console.print("[dim]Usage: console pagination <lines|off|auto>[/]")
+                auto_str = " [dim](auto-detected)[/]" if self.auto_pagination else ""
+                status = f"[green]{self.config.page_size} lines[/]{auto_str}"
+
+            self._append_output(f"Pagination: {status}\n")
+            self._append_output("[dim]Note: With scrollable output pane, pagination is less critical.[/]\n")
+            self._append_output("[dim]Usage: console pagination <lines|off|auto>[/]\n")
             return
 
         if len(args) < 2 or args[0] != "pagination":
-            self.console.print("[red]Usage: console pagination <lines|off|auto>[/]")
-            self.console.print("Examples:")
-            self.console.print("  console pagination 20    # Set to 20 lines")
-            self.console.print("  console pagination off   # Disable")
-            self.console.print("  console pagination auto  # Auto-detect")
+            self._append_output("[red]Usage: console pagination <lines|off|auto>[/]\n")
+            self._append_output("Examples:\n")
+            self._append_output("  console pagination 20    # Set to 20 lines\n")
+            self._append_output("  console pagination off   # Disable\n")
+            self._append_output("  console pagination auto  # Auto-detect\n")
             return
 
         setting = args[1].lower()
@@ -1245,12 +1332,12 @@ class GoveeShell:
             try:
                 page_size = int(setting)
                 if page_size < 1:
-                    self.console.print("[red]Page size must be a positive number[/]")
+                    self._append_output("[red]Page size must be a positive number[/]\n")
                     return
                 self.auto_pagination = False  # User set explicit size, disable auto-resize
             except ValueError:
-                self.console.print(f"[red]Invalid pagination setting: {setting}[/]")
-                self.console.print("Use a number, 'off', or 'auto'")
+                self._append_output(f"[red]Invalid pagination setting: {setting}[/]\n")
+                self._append_output("Use a number, 'off', or 'auto'\n")
                 return
 
         # Update configuration
@@ -1271,15 +1358,16 @@ class GoveeShell:
                 tomli_w.dump(self.shell_config, f)
         except ImportError:
             # tomli_w not available, just print a warning
-            self.console.print("[dim]Note: Install tomli_w to persist this setting[/]")
+            self._append_output("[dim]Note: Install tomli_w to persist this setting[/]\n")
         except Exception as exc:
-            self.console.print(f"[dim]Warning: Could not save config: {exc}[/]")
+            self._append_output(f"[dim]Warning: Could not save config: {exc}[/]\n")
 
         # Confirm the change
         if page_size is None:
-            self.console.print("[green]Pagination disabled[/]")
+            self._append_output("[green]Pagination disabled[/]\n")
         else:
-            self.console.print(f"[green]Pagination set to {page_size} lines[/]")
+            auto_note = " (auto-detected on resize)" if self.auto_pagination else ""
+            self._append_output(f"[green]Pagination set to {page_size} lines{auto_note}[/]\n")
 
     def do_bookmark(self, arg: str) -> None:
         """
@@ -1642,25 +1730,17 @@ class GoveeShell:
 
         # Show enhanced help with examples using rich
         # Capture output to a string buffer for pagination
-        import shutil
-        terminal_width = shutil.get_terminal_size(fallback=(80, 24)).columns
-        # Use width - 1 for safety margin to avoid wrapping
-        border_width = max(40, terminal_width - 1)
-
         buffer = StringIO()
         temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
 
-        # Print header without extra spacing
-        temp_console.print()  # Blank line at top
-        temp_console.print("═" * border_width)
-        # Use Text with justify to avoid Align's extra spacing
-        title = Text("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan", justify="center")
-        temp_console.print(title)
-        temp_console.print("═" * border_width)
-        temp_console.print()  # Blank line after header
+        temp_console.print()
+        temp_console.print("═" * 80)
+        temp_console.print("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan", justify="center")
+        temp_console.print("═" * 80)
+        temp_console.print()
 
-        # Create help table with double-line box drawing characters
-        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True, box=box.DOUBLE, collapse_padding=True)
+        # Create help table
+        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True)
         help_table.add_column("Command", style="cyan", width=15)
         help_table.add_column("Description", style="white", width=30)
         help_table.add_column("Example", style="yellow", width=35)
@@ -1784,9 +1864,10 @@ class GoveeShell:
         temp_console.print("  • Watch mode for continuous monitoring")
         temp_console.print("  • Batch command execution")
 
-        # Output via console.print to respect prompt_toolkit screen management
+        # Write directly to stdout with controlled newlines
         output = buffer.getvalue().rstrip('\n')
-        self.console.print(output, markup=False, highlight=False)
+        sys.stdout.write(output + '\n')
+        sys.stdout.flush()
 
     def do_tips(self, arg: str) -> None:
         """Show helpful tips for using the shell."""
@@ -1815,19 +1896,21 @@ class GoveeShell:
 
         temp_console.print(tips_table)
 
-        # Output via console.print to respect prompt_toolkit screen management
+        # Write directly to stdout with controlled newlines
         output = buffer.getvalue().rstrip('\n')
-        self.console.print(output, markup=False, highlight=False)
+        sys.stdout.write(output + '\n')
+        sys.stdout.flush()
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
-        self.console.clear()
+        self.output_area.text = ""
+        self.app.invalidate()
 
     def do_exit(self, arg: str) -> bool:
         """Exit the shell."""
         if self.client:
             self.client.close()
-        self.console.print("[cyan]Goodbye![/]")
+        self._append_output("[cyan]Goodbye![/]\n")
         return True
 
     def do_quit(self, arg: str) -> bool:
@@ -1836,7 +1919,7 @@ class GoveeShell:
 
     def do_EOF(self, arg: str) -> bool:
         """Handle Ctrl+D."""
-        self.console.print()  # Print newline
+        print()  # Print newline
         return self.do_exit(arg)
 
     def onecmd(self, line: str) -> bool:
@@ -1849,6 +1932,22 @@ class GoveeShell:
         Returns:
             True if the shell should exit, False otherwise
         """
+        # SIGWINCH fallback: Check terminal size on each command (for systems without SIGWINCH)
+        if not hasattr(signal, 'SIGWINCH') and self.auto_pagination:
+            import shutil
+            terminal_height = shutil.get_terminal_size().lines
+            new_page_size = max(10, terminal_height - 5)
+            if new_page_size != self.config.page_size:
+                # Update pagination without user notification
+                self.config = ClientConfig(
+                    server_url=self.config.server_url,
+                    api_key=self.config.api_key,
+                    api_bearer_token=self.config.api_bearer_token,
+                    output=self.config.output,
+                    timeout=self.config.timeout,
+                    page_size=new_page_size,
+                )
+
         # Handle empty line
         if not line or line.isspace():
             return False
@@ -1865,12 +1964,12 @@ class GoveeShell:
                 result = handler(arg)
                 return result if result is not None else False
             except Exception as exc:
-                self.console.print(f"[bold red]Error executing command:[/] {exc}")
+                self._append_output(f"[bold red]Error executing command:[/] {exc}\n")
                 return False
         else:
             # Unknown command
-            self.console.print(f"[red]Unknown command: {command}[/]")
-            self.console.print("[dim]Type 'help' or '?' for available commands.[/]")
+            self._append_output(f"[red]Unknown command: {command}[/]\n")
+            self._append_output("[dim]Type 'help' or '?' for available commands.[/]\n")
             return False
 
     def postcmd(self, stop: bool, line: str) -> bool:
@@ -1892,51 +1991,31 @@ class GoveeShell:
 
     def cmdloop(self, intro: Optional[str] = None) -> None:
         """
-        Custom command loop using prompt_toolkit for better UX.
+        Run the Application event loop.
 
         Args:
             intro: Introduction message (optional)
         """
-        # Clear the screen on startup for a clean interface
-        import os
-        os.system('cls' if os.name == 'nt' else 'clear')
-
-        # Print custom intro with tips
+        # Show intro in output area
         if intro is None:
-            self.console.print()
-            self.console.rule("[bold cyan]Govee ArtNet Bridge - Interactive Shell")
-            self.console.print()
-            self.console.print(f"[dim]Version {SHELL_VERSION}[/]")
-            self.console.print()
-            self.console.print("[cyan]Quick Tips:[/]")
-            self.console.print("  • Type [bold]help[/] to see all commands")
-            self.console.print("  • Use [bold]Tab[/] for autocomplete")
-            self.console.print("  • Press [bold]↑/↓[/] to navigate command history")
-            self.console.print("  • Try [bold]alias[/] to create shortcuts")
-            self.console.print("  • Use [bold]bookmark[/] to save device IDs")
-            self.console.print("  • Press [bold]Ctrl+D[/] or type [bold]exit[/] to quit")
-            self.console.print()
+            self._append_output("\n")
+            self._append_output("[bold cyan]═" * 40 + "[/]\n")
+            self._append_output("[bold cyan]Govee ArtNet Bridge - Interactive Shell[/]\n")
+            self._append_output("[bold cyan]═" * 40 + "[/]\n")
+            self._append_output(f"[dim]Version {SHELL_VERSION}[/]\n\n")
+            self._append_output("[cyan]Quick Tips:[/]\n")
+            self._append_output("  • Type [bold]help[/] to see all commands\n")
+            self._append_output("  • Use [bold]Tab[/] for autocomplete\n")
+            self._append_output("  • Press [bold]↑/↓[/] to navigate command history\n")
+            self._append_output("  • Try [bold]alias[/] to create shortcuts\n")
+            self._append_output("  • Use [bold]bookmark[/] to save device IDs\n")
+            self._append_output("  • Press [bold]Ctrl+D[/] or type [bold]exit[/] to quit\n")
+            self._append_output("  • Press [bold]Ctrl+L[/] to clear the screen\n\n")
         elif intro:
-            self.console.print(intro, style="bold cyan")
-            self.console.print()
+            self._append_output(f"[bold cyan]{intro}[/]\n\n")
 
-        # Main loop
-        stop = False
-        while not stop:
-            try:
-                # Get input with prompt_toolkit (autocomplete + history)
-                line = self.session.prompt(self.prompt)
-
-                # Process command
-                line = self.precmd(line)
-                stop = self.onecmd(line)
-                stop = self.postcmd(stop, line)
-
-            except KeyboardInterrupt:
-                self.console.print("\nUse 'exit' or Ctrl+D to quit.", style="yellow")
-            except EOFError:
-                # Handle Ctrl+D
-                stop = self.do_EOF("")
+        # Run the application
+        self.app.run()
 
         # Cleanup
         self.postloop()
