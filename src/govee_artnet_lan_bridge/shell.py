@@ -329,7 +329,6 @@ class GoveeShell:
                     focusable=False,
                 ),
                 wrap_lines=False,
-                scrollbar=True,
             ),
             Window(height=1, char='─'),
             Window(
