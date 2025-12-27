@@ -1,4 +1,18 @@
-"""Interactive shell for govee-artnet CLI."""
+"""Interactive shell for govee-artnet CLI.
+
+ARCHITECTURAL NOTE - APPLICATION-BASED RENDERING
+================================================
+
+This shell uses prompt_toolkit's Application model for full-screen terminal control.
+All output is routed through a TextArea widget to ensure proper integration with
+prompt_toolkit's rendering system and prevent toolbar overlap issues.
+
+Key components:
+- Application with HSplit layout (output pane + input field + toolbar)
+- TextArea for scrollable output (replaces direct console.print() calls)
+- Command execution in event loop with proper screen management
+- Terminal resize handled automatically by Application
+"""
 
 from __future__ import annotations
 
@@ -14,13 +28,19 @@ from typing import Any, Callable, Optional
 
 import httpx
 import yaml
-from prompt_toolkit import PromptSession
+from prompt_toolkit import Application
+from prompt_toolkit.application import run_in_terminal
+from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, Window, WindowAlign
+from prompt_toolkit.layout.controls import BufferControl
 from prompt_toolkit.styles import Style
+from prompt_toolkit.widgets import TextArea
 from rich import box
-from rich.align import Align
-from rich.console import Console, Group
+from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
@@ -199,8 +219,8 @@ class GoveeShell:
         """
         self.config = config
         self.client: Optional[httpx.Client] = None
-        # Configure console with no legacy windows mode and disable soft wrapping
-        self.console = Console(legacy_windows=False, soft_wrap=False)
+        # Configure console for formatting output to buffers (not terminal)
+        self.console = Console(legacy_windows=False, soft_wrap=False, force_terminal=True)
 
         # Initialize response cache for performance
         cache_ttl = float(os.environ.get("GOVEE_ARTNET_CACHE_TTL", str(DEFAULT_CACHE_TTL)))
@@ -289,21 +309,81 @@ class GoveeShell:
             "EOF": self.do_EOF,
         }
 
+        # Create output TextArea (scrollable, read-only)
+        self.output_area = TextArea(
+            text="",
+            read_only=True,
+            scrollbar=True,
+            focus_on_click=False,
+            wrap_lines=False,
+        )
+
         # Set up autocomplete with all command names
         completer = WordCompleter(list(self.commands.keys()), ignore_case=True)
 
-        # Create prompt session with history, autocomplete, and status toolbar
-        # Reserve 3 lines for toolbar: 1 for border + 2 for status info
-        self.session: PromptSession = PromptSession(
-            history=FileHistory(str(history_file)),
+        # Create input buffer with history and autocomplete
+        self.input_buffer = Buffer(
             completer=completer,
             complete_while_typing=True,
-            bottom_toolbar=self._get_bottom_toolbar,
-            reserve_space_for_menu=3,
-            style=TOOLBAR_STYLE,
+            history=FileHistory(str(history_file)),
+            multiline=False,
+            accept_handler=self._accept_input,
         )
 
-        # Set up terminal resize handler (Unix-like systems only)
+        # Set up key bindings
+        kb = KeyBindings()
+
+        @kb.add('c-c')
+        def _(event):
+            """Handle Ctrl+C - clear input or show message."""
+            if self.input_buffer.text:
+                self.input_buffer.reset()
+            else:
+                self._append_output("\n[yellow]Use 'exit' or Ctrl+D to quit.[/]\n")
+
+        @kb.add('c-d')
+        def _(event):
+            """Handle Ctrl+D - exit shell."""
+            event.app.exit(result=True)
+
+        @kb.add('c-l')
+        def _(event):
+            """Handle Ctrl+L - clear screen."""
+            self.output_area.text = ""
+            event.app.invalidate()
+
+        # Create layout with output pane, separator, prompt + input field, and toolbar
+        self.root_container = HSplit([
+            self.output_area,
+            Window(height=1, char='─'),
+            Window(
+                content=BufferControl(
+                    buffer=self.input_buffer,
+                    input_processors=[],
+                ),
+                height=1,
+                get_line_prefix=lambda line_number, wrap_count: f"{self.prompt}",
+            ),
+            Window(height=1, char='─'),
+            Window(
+                content=FormattedTextControl(
+                    text=self._get_bottom_toolbar,
+                ),
+                height=2,
+                style="class:bottom-toolbar",
+            ),
+        ])
+
+        # Create Application
+        self.app: Application = Application(
+            layout=Layout(self.root_container),
+            key_bindings=kb,
+            style=TOOLBAR_STYLE,
+            full_screen=True,
+            mouse_support=True,
+        )
+
+        # Set up terminal resize handler for pagination (prompt_toolkit handles layout resize)
         if hasattr(signal, 'SIGWINCH'):
             signal.signal(signal.SIGWINCH, self._handle_terminal_resize)
 
@@ -388,6 +468,68 @@ class GoveeShell:
             # If config file is invalid, use defaults
             return defaults
 
+    def _append_output(self, text: str) -> None:
+        """
+        Append text to the output area using Rich formatting.
+
+        Args:
+            text: Text to append (supports Rich markup and Rich objects like Table)
+        """
+        # Use Rich console to format the text to ANSI
+        buffer = StringIO()
+        temp_console = Console(
+            file=buffer,
+            force_terminal=True,
+            width=self.console.width,
+            legacy_windows=False,
+            soft_wrap=False,
+        )
+        temp_console.print(text, end="")
+
+        # Append to output area
+        formatted_text = buffer.getvalue()
+        current_text = self.output_area.text
+        self.output_area.text = current_text + formatted_text
+
+        # Scroll to bottom
+        self.output_area.buffer.cursor_position = len(self.output_area.text)
+
+        # Trigger redraw
+        self.app.invalidate()
+
+    def _accept_input(self, buffer: Buffer) -> bool:
+        """
+        Handle command input when user presses Enter.
+
+        Args:
+            buffer: Input buffer
+
+        Returns:
+            True to keep the buffer text, False to clear it
+        """
+        # Get command text
+        line = buffer.text
+
+        # Clear the buffer immediately
+        buffer.reset()
+
+        # Echo the command with prompt
+        self._append_output(f"{self.prompt}{line}\n")
+
+        # Process command
+        if line and not line.isspace():
+            # Preprocess (aliases)
+            line = self.precmd(line)
+
+            # Execute command
+            stop = self.onecmd(line)
+
+            # Handle exit
+            if stop:
+                self.app.exit(result=True)
+
+        return False  # Buffer already cleared
+
     def _connect(self) -> None:
         """Establish connection to the bridge server."""
         try:
@@ -395,10 +537,10 @@ class GoveeShell:
             # Test connection
             response = self.client.get("/health")
             response.raise_for_status()
-            self.console.print(f"[green]Connected to {self.config.server_url}[/]")
+            self._append_output(f"[green]Connected to {self.config.server_url}[/]\n")
         except Exception as exc:
-            self.console.print(f"[yellow]Warning: Could not connect to {self.config.server_url}: {exc}[/]")
-            self.console.print("[dim]Some commands may not work. Use 'connect' to retry.[/]")
+            self._append_output(f"[yellow]Warning: Could not connect to {self.config.server_url}: {exc}[/]\n")
+            self._append_output("[dim]Some commands may not work. Use 'connect' to retry.[/]\n")
             self.client = None
 
     def _handle_terminal_resize(self, signum: int, frame: Any) -> None:
