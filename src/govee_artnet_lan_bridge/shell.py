@@ -738,8 +738,11 @@ class GoveeShell:
             if stop:
                 self.app.exit(result=True)
 
-        # Let prompt_toolkit handle clearing the buffer and saving to history
-        return True
+        # Manually save to history and clear buffer
+        # This ensures both operations happen in the correct order
+        buffer.append_to_history()
+        buffer.reset()
+        return False  # We've already handled clearing the buffer
 
     def _connect(self) -> None:
         """Establish connection to the bridge server."""
