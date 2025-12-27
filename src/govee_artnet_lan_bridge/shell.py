@@ -437,8 +437,8 @@ class GoveeShell:
                     '--start-channel': None,
                     '--channel': None,
                     '--length': None,
-                    '--type': {'single': None, 'color': None, 'range': None, 'discrete': None},
-                    '--field': {'r': None, 'g': None, 'b': None, 'w': None, 'brightness': None, 'ct': None, 'rgb': None, 'rgbw': None},
+                    '--type': {'range': None, 'discrete': None},
+                    '--field': {'r': None, 'g': None, 'b': None, 'w': None, 'brightness': None, 'ct': None},
                     '--allow-overlap': None,
                     '--help': None,
                 },
@@ -1637,24 +1637,24 @@ class GoveeShell:
                 self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --length <num> --type <type> --field <field>\n")
                 self._append_output("\n[bold]Field types (for manual configuration):[/]\n")
                 self._append_output("  Single field mappings (length=1):\n")
-                self._append_output("    --type single --field red          - Map to red channel only\n")
-                self._append_output("    --type single --field green        - Map to green channel only\n")
-                self._append_output("    --type single --field blue         - Map to blue channel only\n")
-                self._append_output("    --type single --field white        - Map to white channel only\n")
-                self._append_output("    --type single --field brightness   - Map to brightness control\n")
-                self._append_output("    --type single --field ct           - Map to color temperature (kelvin)\n")
+                self._append_output("    --type discrete --field r          - Map to red channel only\n")
+                self._append_output("    --type discrete --field g          - Map to green channel only\n")
+                self._append_output("    --type discrete --field b          - Map to blue channel only\n")
+                self._append_output("    --type discrete --field w          - Map to white channel only\n")
+                self._append_output("    --type discrete --field brightness - Map to brightness control\n")
+                self._append_output("    --type discrete --field ct         - Map to color temperature (kelvin)\n")
                 self._append_output("  Multi-channel mappings:\n")
-                self._append_output("    --type color --field rgb           - Map to RGB (length=3)\n")
-                self._append_output("    --type color --field rgbw          - Map to RGBW (length=4)\n")
+                self._append_output("    --type range --length 3            - Map to RGB (auto-detected from device capabilities)\n")
+                self._append_output("    --type range --length 4            - Map to RGBW (auto-detected from device capabilities)\n")
                 self._append_output("\n[bold]Examples:[/]\n")
                 self._append_output("  # Template-based (universe defaults to 0 if omitted)\n")
                 self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --template rgb --start-channel 1\n")
                 self._append_output("  mappings create --device-id @kitchen --universe 1 --template rgbw --start-channel 10\n")
                 self._append_output("\n  # Manual single field mapping\n")
-                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --type single --field brightness\n")
-                self._append_output("  mappings create --device-id @kitchen --channel 20 --type single --field white\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --type discrete --field brightness\n")
+                self._append_output("  mappings create --device-id @kitchen --channel 20 --type discrete --field w\n")
                 self._append_output("\n  # Manual multi-channel mapping\n")
-                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --length 3 --type color --field rgb\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --length 3 --type range\n")
                 return
             elif arg == "--device-id" and i + 1 < len(args):
                 device_id = self._resolve_bookmark(args[i + 1])
