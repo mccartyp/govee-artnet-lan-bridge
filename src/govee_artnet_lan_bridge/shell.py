@@ -770,45 +770,17 @@ class GoveeShell:
 
     def _paginate_text(self, text: str) -> None:
         """
-        Print text with optional pagination based on config.
+        Append text to output area (pagination handled by scrollable TextArea).
+
+        With Application architecture, the output TextArea is scrollable, so traditional
+        pagination is no longer needed. This method now simply appends text to the output.
 
         Args:
-            text: Text to print
+            text: Text to append
         """
-        # Strip trailing newlines to prevent excessive blank space at bottom
-        text = text.rstrip('\n')
-
-        if not self.config.page_size:
-            # No pagination - write text with single trailing newline
-            sys.stdout.write(text + '\n')
-            sys.stdout.flush()
-            return
-
-        lines = text.split("\n")
-        line_count = 0
-
-        for i, line in enumerate(lines):
-            sys.stdout.write(line)
-            # Only add newline if not the last line
-            if i < len(lines) - 1:
-                sys.stdout.write("\n")
-            line_count += 1
-
-            if line_count >= self.config.page_size and i < len(lines) - 1:
-                # Pause for user input
-                try:
-                    response = input("\n[Press Enter to continue, 'q' to quit] ")
-                    if response.lower().startswith('q'):
-                        sys.stdout.write("\n[Output truncated]\n")
-                        return
-                    line_count = 0
-                except (KeyboardInterrupt, EOFError):
-                    sys.stdout.write("\n[Output interrupted]\n")
-                    return
-
-        # Add single trailing newline at the end
-        sys.stdout.write('\n')
-        sys.stdout.flush()
+        # In Application mode, just append to output area
+        # The TextArea widget provides scrolling, so no need for manual pagination
+        self._append_output(text + "\n")
 
     def _format_command_help(self, command: str, docstring: str) -> str:
         """
@@ -919,7 +891,7 @@ class GoveeShell:
     def do_health(self, arg: str) -> None:
         """Check bridge health."""
         if not self.client:
-            print("Not connected. Use 'connect' first.")
+            self._append_output("Not connected. Use 'connect' first.\n")
             return
 
         try:
@@ -1152,16 +1124,16 @@ class GoveeShell:
                         logger_name = data.get("logger", "")
                         message_text = data.get("message", "")
 
-                        print(f"[{timestamp}] {level:7} | {logger_name:25} | {message_text}")
+                        self._append_output(f"[{timestamp}] {level:7} | {logger_name:25} | {message_text}\n")
 
                     except TimeoutError:
                         # No message received, continue
                         continue
 
         except KeyboardInterrupt:
-            self.console.print("\n[yellow]Stopped tailing logs[/]")
+            self._append_output("\n[yellow]Stopped tailing logs[/]\n")
         except Exception as exc:
-            self.console.print(f"[red]Error streaming logs: {exc}[/]")
+            self._append_output(f"[red]Error streaming logs: {exc}[/]\n")
 
     def do_monitor(self, arg: str) -> None:
         """
@@ -1864,10 +1836,9 @@ class GoveeShell:
         temp_console.print("  • Watch mode for continuous monitoring")
         temp_console.print("  • Batch command execution")
 
-        # Write directly to stdout with controlled newlines
+        # Append to output area
         output = buffer.getvalue().rstrip('\n')
-        sys.stdout.write(output + '\n')
-        sys.stdout.flush()
+        self._append_output(output + '\n')
 
     def do_tips(self, arg: str) -> None:
         """Show helpful tips for using the shell."""
@@ -1896,10 +1867,9 @@ class GoveeShell:
 
         temp_console.print(tips_table)
 
-        # Write directly to stdout with controlled newlines
+        # Append to output area
         output = buffer.getvalue().rstrip('\n')
-        sys.stdout.write(output + '\n')
-        sys.stdout.flush()
+        self._append_output(output + '\n')
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
@@ -1919,7 +1889,7 @@ class GoveeShell:
 
     def do_EOF(self, arg: str) -> bool:
         """Handle Ctrl+D."""
-        print()  # Print newline
+        self._append_output("\n")  # Print newline
         return self.do_exit(arg)
 
     def onecmd(self, line: str) -> bool:
@@ -2032,7 +2002,7 @@ def run_shell(config: ClientConfig) -> None:
         shell = GoveeShell(config)
         shell.cmdloop()
     except KeyboardInterrupt:
-        print("\nInterrupted. Goodbye!")
+        print("\nInterrupted. Goodbye!", file=sys.stderr)
     except Exception as exc:
         print(f"Shell error: {exc}", file=sys.stderr)
         sys.exit(1)
