@@ -729,21 +729,13 @@ def _print_table(data: Any, console: Console, config: Optional[ClientConfig] = N
         config: Client configuration (for pagination and device detection)
     """
     if data is None:
-        # Capture to string and use pagination for consistent spacing
-        buffer = io.StringIO()
-        temp_console = Console(file=buffer, force_terminal=True, width=console.width)
-        temp_console.print("[dim]No data[/]")
-        _paginate_output(buffer.getvalue(), config)
+        console.print("[dim]No data[/]")
         return
 
     # Handle device lists with special card format
     if _is_device_list(data):
         _print_device_cards(data, console, config)
         return
-
-    # Capture table output to string buffer for consistent spacing
-    buffer = io.StringIO()
-    temp_console = Console(file=buffer, force_terminal=True, width=console.width)
 
     # Handle list of items (most common case)
     if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
@@ -757,7 +749,7 @@ def _print_table(data: Any, console: Console, config: Optional[ClientConfig] = N
         for item in data:
             table.add_row(*[str(v) for v in item.values()])
 
-        temp_console.print(table)
+        console.print(table)
 
     # Handle single dict
     elif isinstance(data, dict):
@@ -773,14 +765,11 @@ def _print_table(data: Any, console: Console, config: Optional[ClientConfig] = N
                 value_str = str(value)
             table.add_row(str(key), value_str)
 
-        temp_console.print(table)
+        console.print(table)
 
     # Fallback to JSON for other types
     else:
-        temp_console.print_json(data=data)
-
-    # Use pagination function for consistent spacing (strips trailing newlines)
-    _paginate_output(buffer.getvalue(), config)
+        console.print_json(data=data)
 
 
 def _handle_response(response: httpx.Response) -> Any:
