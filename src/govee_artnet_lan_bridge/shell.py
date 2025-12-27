@@ -38,9 +38,10 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl
 from prompt_toolkit.layout.dimension import Dimension
-from prompt_toolkit.lexers import SimpleLexer
+from prompt_toolkit.lexers import Lexer, SimpleLexer
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import TextArea
+from prompt_toolkit.document import Document
 from rich.console import Console
 from rich.table import Table
 
@@ -178,6 +179,56 @@ class ResponseCache:
         return self.stats.copy()
 
 
+class ANSILexer(Lexer):
+    """
+    Lexer that interprets ANSI escape codes in buffer text.
+
+    This lexer processes the document text and converts ANSI escape
+    sequences to prompt_toolkit styled text fragments.
+    """
+
+    def lex_document(self, document: Document):
+        """
+        Lex the document by converting ANSI codes to styled fragments.
+
+        Args:
+            document: The document to lex
+
+        Returns:
+            A callable that returns styled text tuples for each line
+        """
+        # Convert entire document text using ANSI() once
+        # ANSI() returns a list of (style, text) tuples
+        ansi_formatted = ANSI(document.text)
+
+        # Split the formatted text by lines
+        lines_with_styles = []
+        current_line = []
+
+        for style, text in ansi_formatted:
+            # Split text by newlines while preserving style
+            parts = text.split('\n')
+            for i, part in enumerate(parts):
+                if i > 0:
+                    # New line encountered, save current and start new
+                    lines_with_styles.append(current_line)
+                    current_line = []
+                if part:  # Add non-empty parts
+                    current_line.append((style, part))
+
+        # Don't forget the last line
+        if current_line:
+            lines_with_styles.append(current_line)
+
+        # Return a callable that gives the styled fragments for each line
+        def get_line(line_number):
+            if line_number < len(lines_with_styles):
+                return lines_with_styles[line_number]
+            return []
+
+        return get_line
+
+
 class GoveeShell:
     """Interactive shell for the Govee ArtNet bridge using prompt_toolkit."""
 
@@ -282,8 +333,14 @@ class GoveeShell:
             "EOF": self.do_EOF,
         }
 
-        # Create output storage (for displaying command output with ANSI colors)
-        self.output_text = ""
+        # Create output buffer (read-only buffer for displaying command output with ANSI colors)
+        self.output_buffer = Buffer(
+            read_only=True,
+            multiline=True,
+        )
+
+        # Follow-tail mode: auto-scroll to bottom when new output is added
+        self.follow_tail = True
 
         # Set up autocomplete with all command names
         completer = WordCompleter(list(self.commands.keys()), ignore_case=True)
@@ -316,21 +373,47 @@ class GoveeShell:
         @kb.add('c-l')
         def _(event):
             """Handle Ctrl+L - clear screen."""
-            self.output_text = ""
+            self.output_buffer.set_document(Document(""), bypass_readonly=True)
             event.app.invalidate()
+
+        @kb.add('c-t')
+        def _(event):
+            """Handle Ctrl+T - toggle follow-tail mode."""
+            self.follow_tail = not self.follow_tail
+            status = "enabled" if self.follow_tail else "disabled"
+            self._append_output(f"\n[dim]Follow-tail {status}[/]\n")
+
+        @kb.add('pageup')
+        def _(event):
+            """Handle Page Up in output - disable follow-tail."""
+            # Only handle if output buffer has focus
+            if event.app.layout.has_focus(self.output_buffer):
+                self.follow_tail = False
+                # Perform the page up scroll
+                event.current_buffer.cursor_up(count=event.app.output.get_size().rows - 1)
+
+        @kb.add('up')
+        def _(event):
+            """Handle Up arrow in output - disable follow-tail if not at bottom."""
+            # Only handle if output buffer has focus
+            if event.app.layout.has_focus(self.output_buffer):
+                # If cursor is not at the end, disable follow-tail
+                if event.current_buffer.cursor_position < len(event.current_buffer.text):
+                    self.follow_tail = False
+                event.current_buffer.cursor_up()
 
         # Create layout with output pane, separator, prompt + input field, and toolbar
         from prompt_toolkit.layout import WindowAlign
         self.root_container = HSplit([
             # Output pane - scrollable window with ANSI-formatted text
-            # Auto-scroll to bottom by returning a large scroll offset
+            # Uses BufferControl with ANSILexer for cursor-based auto-scroll
             Window(
-                content=FormattedTextControl(
-                    text=lambda: ANSI(self.output_text),
-                    focusable=False,
+                content=BufferControl(
+                    buffer=self.output_buffer,
+                    lexer=ANSILexer(),
+                    focusable=True,  # Allow manual scrolling
                 ),
                 wrap_lines=False,
-                get_vertical_scroll=lambda: 999999,  # Always scroll to bottom
             ),
             Window(height=1, char='─'),
             Window(
@@ -447,7 +530,7 @@ class GoveeShell:
 
     def _append_output(self, text: str) -> None:
         """
-        Append text to the output area using Rich formatting.
+        Append text to the output buffer using Rich formatting.
 
         Args:
             text: Text to append (supports Rich markup and Rich objects like Table)
@@ -463,9 +546,24 @@ class GoveeShell:
         )
         temp_console.print(text, end="")
 
-        # Append ANSI formatted text to output
+        # Get current content and append new text
+        current_text = self.output_buffer.text
         formatted_text = buffer.getvalue()
-        self.output_text += formatted_text
+        new_text = current_text + formatted_text
+
+        # Update buffer document
+        # If follow-tail is enabled, move cursor to end for auto-scroll
+        # Otherwise, keep cursor at current position to allow manual scrolling
+        if self.follow_tail:
+            cursor_position = len(new_text)
+        else:
+            # Keep cursor at its current position
+            cursor_position = min(self.output_buffer.cursor_position, len(new_text))
+
+        self.output_buffer.set_document(
+            Document(text=new_text, cursor_position=cursor_position),
+            bypass_readonly=True
+        )
 
         # Trigger redraw
         self.app.invalidate()
@@ -1726,10 +1824,17 @@ class GoveeShell:
                 if docstring:
                     # Format with colors and styling (returns ANSI-formatted text)
                     help_text = self._format_command_help(arg, docstring)
-                    # Append directly (already ANSI-formatted, bypass _append_output)
-                    self.output_text += help_text
+                    # Append directly to buffer (already ANSI-formatted)
+                    current_text = self.output_buffer.text
+                    new_text = current_text + help_text
                     if not help_text.endswith('\n'):
-                        self.output_text += '\n'
+                        new_text += '\n'
+                    # Respect follow-tail mode
+                    cursor_pos = len(new_text) if self.follow_tail else min(self.output_buffer.cursor_position, len(new_text))
+                    self.output_buffer.set_document(
+                        Document(text=new_text, cursor_position=cursor_pos),
+                        bypass_readonly=True
+                    )
                     self.app.invalidate()
                 else:
                     # Rich markup, use _append_output
@@ -1853,11 +1958,18 @@ class GoveeShell:
         temp_console.print("Type 'help <command>' for detailed help on a specific command.", style="dim")
         temp_console.print()
 
-        # Append to output area (already ANSI-formatted, bypass _append_output)
+        # Append to output buffer (already ANSI-formatted)
         output = buffer.getvalue()
-        self.output_text += output
+        current_text = self.output_buffer.text
+        new_text = current_text + output
         if not output.endswith('\n'):
-            self.output_text += '\n'
+            new_text += '\n'
+        # Respect follow-tail mode
+        cursor_pos = len(new_text) if self.follow_tail else min(self.output_buffer.cursor_position, len(new_text))
+        self.output_buffer.set_document(
+            Document(text=new_text, cursor_position=cursor_pos),
+            bypass_readonly=True
+        )
         self.app.invalidate()
 
     def do_version(self, arg: str) -> None:
@@ -1878,11 +1990,18 @@ class GoveeShell:
         temp_console.print("  • Watch mode for continuous monitoring")
         temp_console.print("  • Batch command execution")
 
-        # Append to output area (already ANSI-formatted, bypass _append_output)
+        # Append to output buffer (already ANSI-formatted)
         output = buffer.getvalue()
-        self.output_text += output
+        current_text = self.output_buffer.text
+        new_text = current_text + output
         if not output.endswith('\n'):
-            self.output_text += '\n'
+            new_text += '\n'
+        # Respect follow-tail mode
+        cursor_pos = len(new_text) if self.follow_tail else min(self.output_buffer.cursor_position, len(new_text))
+        self.output_buffer.set_document(
+            Document(text=new_text, cursor_position=cursor_pos),
+            bypass_readonly=True
+        )
         self.app.invalidate()
 
     def do_tips(self, arg: str) -> None:
@@ -1912,16 +2031,23 @@ class GoveeShell:
 
         temp_console.print(tips_table)
 
-        # Append to output area (already ANSI-formatted, bypass _append_output)
+        # Append to output buffer (already ANSI-formatted)
         output = buffer.getvalue()
-        self.output_text += output
+        current_text = self.output_buffer.text
+        new_text = current_text + output
         if not output.endswith('\n'):
-            self.output_text += '\n'
+            new_text += '\n'
+        # Respect follow-tail mode
+        cursor_pos = len(new_text) if self.follow_tail else min(self.output_buffer.cursor_position, len(new_text))
+        self.output_buffer.set_document(
+            Document(text=new_text, cursor_position=cursor_pos),
+            bypass_readonly=True
+        )
         self.app.invalidate()
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
-        self.output_text = ""
+        self.output_buffer.set_document(Document(""), bypass_readonly=True)
         self.app.invalidate()
 
     def do_exit(self, arg: str) -> bool:
