@@ -1870,9 +1870,12 @@ class GoveeShell:
         temp_console.print("  • Watch mode for continuous monitoring")
         temp_console.print("  • Batch command execution")
 
-        # Append to output area
-        output = buffer.getvalue().rstrip('\n')
-        self._append_output(output + '\n')
+        # Append to output area (already ANSI-formatted, bypass _append_output)
+        output = buffer.getvalue()
+        self.output_text += output
+        if not output.endswith('\n'):
+            self.output_text += '\n'
+        self.app.invalidate()
 
     def do_tips(self, arg: str) -> None:
         """Show helpful tips for using the shell."""
@@ -1901,9 +1904,12 @@ class GoveeShell:
 
         temp_console.print(tips_table)
 
-        # Append to output area
-        output = buffer.getvalue().rstrip('\n')
-        self._append_output(output + '\n')
+        # Append to output area (already ANSI-formatted, bypass _append_output)
+        output = buffer.getvalue()
+        self.output_text += output
+        if not output.endswith('\n'):
+            self.output_text += '\n'
+        self.app.invalidate()
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
