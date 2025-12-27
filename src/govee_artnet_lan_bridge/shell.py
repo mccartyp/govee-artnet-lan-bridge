@@ -1571,7 +1571,7 @@ class GoveeShell:
             table.add_column("Universe", style="green", width=8, justify="right")
             table.add_column("Channel", style="magenta", width=8, justify="right")
             table.add_column("Length", style="blue", width=6, justify="right")
-            table.add_column("Fields", style="white", width=20)
+            table.add_column("Fields", style="white", width=25)
 
             # Add mapping rows
             for mapping in mappings:
