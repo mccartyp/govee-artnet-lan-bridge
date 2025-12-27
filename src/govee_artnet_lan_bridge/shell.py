@@ -16,6 +16,7 @@ import yaml
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.table import Table
 
@@ -42,6 +43,16 @@ DEFAULT_LOG_LINES = 50
 
 # Cache configuration
 DEFAULT_CACHE_TTL = 5.0  # Default cache TTL in seconds
+
+# Toolbar styling for prompt_toolkit
+TOOLBAR_STYLE = Style.from_dict({
+    "toolbar-border": "#666666",
+    "toolbar-info": "#888888",
+    "status-connected": "#00ff00 bold",
+    "status-disconnected": "#ff0000 bold",
+    "status-healthy": "#00ff00",
+    "status-degraded": "#ffaa00",
+})
 
 
 class ResponseCache:
@@ -130,6 +141,14 @@ class GoveeShell:
         # Track previous data for delta detection in watch mode
         self.previous_data: dict[str, Any] = {}
 
+        # Toolbar status tracking (updated periodically)
+        self.toolbar_status = {
+            "configured_devices": 0,
+            "discovered_devices": 0,
+            "health_status": "unknown",
+            "last_update": None,
+        }
+
         # Set up command history and data directory
         self.data_dir = Path.home() / ".govee_artnet"
         self.data_dir.mkdir(exist_ok=True)
@@ -200,11 +219,15 @@ class GoveeShell:
         # Set up autocomplete with all command names
         completer = WordCompleter(list(self.commands.keys()), ignore_case=True)
 
-        # Create prompt session with history and autocomplete
+        # Create prompt session with history, autocomplete, and status toolbar
+        # Reserve 3 lines for toolbar: 1 for border + 2 for status info
         self.session: PromptSession = PromptSession(
             history=FileHistory(str(history_file)),
             completer=completer,
             complete_while_typing=True,
+            bottom_toolbar=self._get_bottom_toolbar,
+            reserve_space_for_menu=3,
+            style=TOOLBAR_STYLE,
         )
 
         self._connect()
@@ -299,6 +322,82 @@ class GoveeShell:
             self.console.print(f"[yellow]Warning: Could not connect to {self.config.server_url}: {exc}[/]")
             self.console.print("[dim]Some commands may not work. Use 'connect' to retry.[/]")
             self.client = None
+
+    def _update_toolbar_status(self) -> None:
+        """Update toolbar status information from bridge API."""
+        if not self.client:
+            return
+
+        try:
+            # Fetch health status
+            health_response = self.client.get("/health", timeout=1.0)
+            if health_response.status_code == 200:
+                health_data = health_response.json()
+                self.toolbar_status["health_status"] = health_data.get("status", "unknown")
+
+            # Fetch device counts
+            devices_response = self.client.get("/devices", timeout=1.0)
+            if devices_response.status_code == 200:
+                devices = devices_response.json()
+                if isinstance(devices, list):
+                    configured = sum(1 for d in devices if d.get("mappings"))
+                    self.toolbar_status["configured_devices"] = configured
+                    self.toolbar_status["discovered_devices"] = len(devices) - configured
+
+            import time
+            self.toolbar_status["last_update"] = time.time()
+        except Exception:
+            # Silently ignore errors - toolbar is non-critical
+            pass
+
+    def _get_bottom_toolbar(self) -> list[tuple[str, str]]:
+        """
+        Generate bottom toolbar content with status information.
+
+        Returns:
+            List of (style, text) tuples for prompt_toolkit
+        """
+        # Update status periodically (every 5 seconds)
+        import time
+        if (self.toolbar_status["last_update"] is None or
+            time.time() - self.toolbar_status["last_update"] > 5):
+            self._update_toolbar_status()
+
+        toolbar_parts = []
+
+        # Top border line
+        try:
+            import shutil
+            width = shutil.get_terminal_size().columns
+            toolbar_parts.append(("class:toolbar-border", "─" * width + "\n"))
+        except Exception:
+            toolbar_parts.append(("class:toolbar-border", "─" * 80 + "\n"))
+
+        # Connection status
+        if self.client:
+            toolbar_parts.append(("class:status-connected", "● Connected"))
+        else:
+            toolbar_parts.append(("class:status-disconnected", "○ Disconnected"))
+
+        # Device counts
+        configured = self.toolbar_status["configured_devices"]
+        discovered = self.toolbar_status["discovered_devices"]
+        toolbar_parts.append(("class:toolbar-info", f" │ Devices: {configured} configured, {discovered} discovered"))
+
+        # Health status
+        health = self.toolbar_status["health_status"]
+        if health == "healthy":
+            health_style = "class:status-healthy"
+            health_icon = "✓"
+        elif health == "degraded":
+            health_style = "class:status-degraded"
+            health_icon = "⚠"
+        else:
+            health_style = "class:toolbar-info"
+            health_icon = "?"
+        toolbar_parts.append((health_style, f" │ Health: {health_icon} {health}"))
+
+        return toolbar_parts
 
     def _handle_error(self, exc: Exception, context: str = "") -> None:
         """
