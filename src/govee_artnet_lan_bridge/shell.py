@@ -31,7 +31,7 @@ import yaml
 from prompt_toolkit import Application
 from prompt_toolkit.application import run_in_terminal
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import WordCompleter, NestedCompleter
 from prompt_toolkit.formatted_text import ANSI, FormattedText, to_formatted_text
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
@@ -44,6 +44,7 @@ from prompt_toolkit.widgets import TextArea
 from prompt_toolkit.document import Document
 from rich.console import Console
 from rich.table import Table
+from rich import box
 
 from .cli import (
     ClientConfig,
@@ -317,7 +318,6 @@ class GoveeShell:
             "logs": self.do_logs,
             "monitor": self.do_monitor,
             "output": self.do_output,
-            "console": self.do_console,
             "bookmark": self.do_bookmark,
             "alias": self.do_alias,
             "watch": self.do_watch,
@@ -342,8 +342,30 @@ class GoveeShell:
         # Follow-tail mode: auto-scroll to bottom when new output is added
         self.follow_tail = True
 
-        # Set up autocomplete with all command names
-        completer = WordCompleter(list(self.commands.keys()), ignore_case=True)
+        # Set up multi-level autocomplete with command structure
+        completer = NestedCompleter.from_nested_dict({
+            'connect': None,
+            'disconnect': None,
+            'status': None,
+            'health': None,
+            'devices': {'list': {'detailed': None}, 'enable': None, 'disable': None},
+            'mappings': {'list': None, 'get': None, 'delete': None, 'channel-map': None},
+            'logs': {'stats': None},
+            'monitor': {'status': None, 'dashboard': None},
+            'output': {'json': None, 'table': None, 'yaml': None},
+            'bookmark': {'add': None, 'list': None, 'delete': None, 'use': None},
+            'alias': {'add': None, 'list': None, 'delete': None, 'clear': None},
+            'watch': {'devices': None, 'mappings': None, 'logs': None},
+            'batch': {'load': None},
+            'session': {'save': None, 'list': None, 'delete': None},
+            'help': None,
+            '?': None,
+            'version': None,
+            'tips': None,
+            'clear': None,
+            'exit': None,
+            'quit': None,
+        })
 
         # Create input buffer with history and autocomplete
         self.input_buffer = Buffer(
@@ -589,11 +611,10 @@ class GoveeShell:
         # Clear the buffer immediately
         buffer.reset()
 
-        # Echo the command with prompt
-        self._append_output(f"{self.prompt}{line}\n")
-
         # Process command
         if line and not line.isspace():
+            # Echo the command with prompt (only for non-empty commands)
+            self._append_output(f"{self.prompt}{line}\n")
             # Preprocess (aliases)
             line = self.precmd(line)
 
@@ -906,20 +927,6 @@ class GoveeShell:
                 del self.cache.cache[key]
             self.cache.stats["size"] = len(self.cache.cache)
 
-    def _paginate_text(self, text: str) -> None:
-        """
-        Append text to output area (pagination handled by scrollable TextArea).
-
-        With Application architecture, the output TextArea is scrollable, so traditional
-        pagination is no longer needed. This method now simply appends text to the output.
-
-        Args:
-            text: Text to append
-        """
-        # In Application mode, just append to output area
-        # The TextArea widget provides scrolling, so no need for manual pagination
-        self._append_output(text + "\n")
-
     def _format_command_help(self, command: str, docstring: str) -> str:
         """
         Format command help with colors and styling using rich.
@@ -1037,10 +1044,53 @@ class GoveeShell:
         except Exception as exc:
             self._handle_error(exc, "health")
 
+    def _show_devices_simple(self) -> None:
+        """Show devices in simplified 2-line table format."""
+        try:
+            # Fetch devices from API
+            response = self.client.get("/devices")
+            devices = _handle_response(response)
+
+            if not devices:
+                self._append_output("[yellow]No devices found[/]\n")
+                return
+
+            # Create simplified table
+            table = Table(title="Devices", show_header=True, header_style="bold cyan", box=box.ROUNDED)
+            table.add_column("ID", style="cyan", width=20, no_wrap=True)
+            table.add_column("Model", style="yellow", width=15)
+            table.add_column("IP Address", style="green", width=15)
+            table.add_column("Enabled", style="magenta", width=8, justify="center")
+            table.add_column("Source", style="blue", width=10)
+
+            # Add device rows
+            for device in devices:
+                device_id = device.get("device_id", "N/A")[:20]  # Truncate long IDs
+                model = device.get("model", "Unknown")
+                ip_address = device.get("ip_address", "N/A")
+                enabled = "✓" if device.get("enabled", False) else "✗"
+                enabled_style = "green" if device.get("enabled", False) else "red"
+                source = device.get("source", "unknown")
+
+                table.add_row(
+                    device_id,
+                    model,
+                    ip_address,
+                    f"[{enabled_style}]{enabled}[/]",
+                    source
+                )
+
+            self._append_output(table)
+            self._append_output(f"\n[dim]Total: {len(devices)} device(s). Use 'devices list detailed' for full info.[/]\n")
+
+        except Exception as exc:
+            self._append_output(f"[red]Error fetching devices: {exc}[/]\n")
+
     def do_devices(self, arg: str) -> None:
         """
-        Device commands: list, add, update, enable, disable, command.
-        Usage: devices list
+        Device commands: list, list detailed, enable, disable.
+        Usage: devices list              # Show simplified 2-line view
+               devices list detailed     # Show full device details
                devices enable <device_id>
                devices disable <device_id>
         """
@@ -1057,7 +1107,13 @@ class GoveeShell:
 
         try:
             if command == "list":
-                self._capture_api_output(_api_get, self.client, "/devices", self.config)
+                # Check if "detailed" subcommand was provided
+                if len(args) > 1 and args[1] == "detailed":
+                    # Show full detailed view
+                    self._capture_api_output(_api_get, self.client, "/devices", self.config)
+                else:
+                    # Show simplified 2-line view
+                    self._show_devices_simple()
             elif command == "enable" and len(args) >= 2:
                 device_id = args[1]
                 self._capture_api_output(_device_set_enabled, self.client, device_id, True, self.config)
@@ -1323,7 +1379,7 @@ class GoveeShell:
             self._append_output("\n")
 
             # Devices table
-            devices_table = Table(title="Devices", show_header=True, header_style="bold magenta")
+            devices_table = Table(title="Devices", show_header=True, header_style="bold magenta", box=box.ROUNDED)
             devices_table.add_column("Type", style="cyan")
             devices_table.add_column("Count", justify="right", style="yellow")
 
@@ -1333,8 +1389,8 @@ class GoveeShell:
             devices_table.add_row("Manual", str(manual_count))
             devices_table.add_row("[bold]Total[/]", f"[bold]{discovered_count + manual_count}[/]")
 
-            self._append_output(devices_table + "\n")
-            self._append_output("\n")
+            self._append_output(devices_table)
+            self._append_output("\n\n")
 
             # Queue info
             queue_depth = status_data.get("queue_depth", 0)
@@ -1345,7 +1401,7 @@ class GoveeShell:
             # Subsystems table
             subsystems = health_data.get("subsystems", {})
             if subsystems:
-                subsystems_table = Table(title="Subsystems", show_header=True, header_style="bold magenta")
+                subsystems_table = Table(title="Subsystems", show_header=True, header_style="bold magenta", box=box.ROUNDED)
                 subsystems_table.add_column("Name", style="cyan")
                 subsystems_table.add_column("Status", style="green")
 
@@ -1355,8 +1411,8 @@ class GoveeShell:
                     status_style = "green" if sub_status == "ok" else "red"
                     subsystems_table.add_row(name, f"[{status_style}]{indicator} {sub_status}[/]")
 
-                self._append_output(subsystems_table + "\n")
-                self._append_output("\n")
+                self._append_output(subsystems_table)
+                self._append_output("\n\n")
 
         except Exception as exc:
             self._append_output(f"[bold red]Error fetching dashboard:[/] {exc}" + "\n")
@@ -1392,94 +1448,6 @@ class GoveeShell:
         )
         self._append_output(f"[green]Output format set to: {new_format}[/]" + "\n")
 
-    def do_console(self, arg: str) -> None:
-        """
-        Configure console pagination settings.
-        Usage: console pagination <lines>
-               console pagination off
-               console pagination auto
-               console pagination
-        Examples:
-            console pagination 20      # Set page size to 20 lines
-            console pagination 50      # Set page size to 50 lines
-            console pagination off     # Disable pagination
-            console pagination auto    # Auto-detect terminal height
-            console pagination         # Show current setting
-        """
-        args = shlex.split(arg)
-
-        if not args or (len(args) == 1 and args[0] == "pagination"):
-            # Show current pagination setting with auto status
-            if self.config.page_size is None:
-                status = "[yellow]disabled[/]"
-            else:
-                auto_str = " [dim](auto-detected)[/]" if self.auto_pagination else ""
-                status = f"[green]{self.config.page_size} lines[/]{auto_str}"
-
-            self._append_output(f"Pagination: {status}\n")
-            self._append_output("[dim]Note: With scrollable output pane, pagination is less critical.[/]\n")
-            self._append_output("[dim]Usage: console pagination <lines|off|auto>[/]\n")
-            return
-
-        if len(args) < 2 or args[0] != "pagination":
-            self._append_output("[red]Usage: console pagination <lines|off|auto>[/]\n")
-            self._append_output("Examples:\n")
-            self._append_output("  console pagination 20    # Set to 20 lines\n")
-            self._append_output("  console pagination off   # Disable\n")
-            self._append_output("  console pagination auto  # Auto-detect\n")
-            return
-
-        setting = args[1].lower()
-
-        if setting == "off":
-            page_size = None
-            self.auto_pagination = False  # Disable auto-resize
-        elif setting == "auto":
-            import shutil
-            terminal_height = shutil.get_terminal_size().lines
-            page_size = max(10, terminal_height - 2)
-            self.auto_pagination = True  # Enable auto-resize
-        else:
-            try:
-                page_size = int(setting)
-                if page_size < 1:
-                    self._append_output("[red]Page size must be a positive number[/]\n")
-                    return
-                self.auto_pagination = False  # User set explicit size, disable auto-resize
-            except ValueError:
-                self._append_output(f"[red]Invalid pagination setting: {setting}[/]\n")
-                self._append_output("Use a number, 'off', or 'auto'\n")
-                return
-
-        # Update configuration
-        self.config = ClientConfig(
-            server_url=self.config.server_url,
-            api_key=self.config.api_key,
-            api_bearer_token=self.config.api_bearer_token,
-            output=self.config.output,
-            timeout=self.config.timeout,
-            page_size=page_size,
-        )
-
-        # Save to shell config for persistence
-        self.shell_config["console"] = {"page_size": page_size}
-        try:
-            import tomli_w
-            with open(self.config_file, "wb") as f:
-                tomli_w.dump(self.shell_config, f)
-        except ImportError:
-            # tomli_w not available, just print a warning
-            self._append_output("[dim]Note: Install tomli_w to persist this setting[/]\n")
-        except Exception as exc:
-            self._append_output(f"[dim]Warning: Could not save config: {exc}[/]\n")
-
-        # Confirm the change
-        if page_size is None:
-            self._append_output("[green]Pagination disabled[/]\n")
-        else:
-            auto_note = " (auto-detected on resize)" if self.auto_pagination else ""
-            self._append_output(f"[green]Pagination set to {page_size} lines{auto_note}[/]\n")
-
     def do_bookmark(self, arg: str) -> None:
         """
         Manage bookmarks for devices and servers.
@@ -1513,7 +1481,7 @@ class GoveeShell:
                 self._append_output("[dim]No bookmarks saved[/]" + "\n")
                 return
 
-            table = Table(title="Bookmarks", show_header=True, header_style="bold magenta")
+            table = Table(title="Bookmarks", show_header=True, header_style="bold magenta", box=box.ROUNDED)
             table.add_column("Name", style="cyan")
             table.add_column("Value", style="yellow")
 
@@ -1578,7 +1546,7 @@ class GoveeShell:
                 self._append_output("[dim]No aliases defined[/]" + "\n")
                 return
 
-            table = Table(title="Aliases", show_header=True, header_style="bold magenta")
+            table = Table(title="Aliases", show_header=True, header_style="bold magenta", box=box.ROUNDED)
             table.add_column("Alias", style="cyan")
             table.add_column("Command", style="yellow")
 
@@ -1620,7 +1588,7 @@ class GoveeShell:
             total_requests = stats["hits"] + stats["misses"]
             hit_rate = (stats["hits"] / total_requests * 100) if total_requests > 0 else 0
 
-            table = Table(title="Cache Statistics", show_header=True, header_style="bold magenta")
+            table = Table(title="Cache Statistics", show_header=True, header_style="bold magenta", box=box.ROUNDED)
             table.add_column("Metric", style="cyan")
             table.add_column("Value", style="yellow")
 
@@ -1643,12 +1611,14 @@ class GoveeShell:
         """
         Watch devices or status with continuous updates.
         Usage: watch devices [interval]
-               watch status [interval]
-               watch dashboard [interval]
+               watch mappings [interval]
+               watch logs [interval]
         Examples:
-            watch devices        # Update every 2 seconds
-            watch status 5       # Update every 5 seconds
-            watch dashboard 3    # Update every 3 seconds
+            watch devices 2      # Refresh devices every 2 seconds
+            watch mappings 5     # Refresh mappings every 5 seconds
+
+        Note: Watch mode continuously refreshes data at the specified interval.
+              Press Ctrl+C to stop watching.
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -1656,43 +1626,46 @@ class GoveeShell:
 
         args = shlex.split(arg)
         if not args:
-            self._append_output("Usage: watch devices|status|dashboard [interval]" + "\n")
+            self._append_output("[yellow]Usage: watch devices|mappings|logs [interval][/]" + "\n")
             return
 
         command = args[0]
         interval = float(args[1]) if len(args) > 1 else DEFAULT_WATCH_INTERVAL
 
-        self._append_output(f"[cyan]Watching {command} (Press Ctrl+C to stop, updating every {interval}s)[/]" + "\n")
-        self._append_output("\n")
+        self._append_output(f"[cyan]Watch mode: Refreshing {command} every {interval}s (Press Ctrl+C to stop)[/]\n")
+        self._append_output(f"[dim]Note: Use PgUp/PgDn to scroll, output will refresh automatically[/]\n\n")
 
         try:
             import time
+            iterations = 0
+            max_iterations = 1000  # Safety limit to prevent infinite loops
 
-            # Note: Watch mode benefits from response caching when interval < cache TTL.
-            # For example, with 2s interval and 5s cache TTL, only 2 out of 5 iterations
-            # will make actual API calls, reducing server load by 60%.
-            # Use 'cache stats' to monitor cache hit rate.
+            while iterations < max_iterations:
+                iterations += 1
 
-            while True:
-                # Clear screen
-                self.console.clear()
+                # Add timestamp header
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self._append_output(f"\n[bold cyan]─── Refresh #{iterations} at {timestamp} ───[/]\n")
 
-                # Execute command
+                # Execute command based on target
                 if command == "devices":
-                    self.do_devices("list")
-                elif command == "status":
-                    self.do_status("")
-                elif command == "dashboard":
-                    self._monitor_dashboard()
+                    self._show_devices_simple()
+                elif command == "mappings":
+                    self.do_mappings("list")
+                elif command == "logs":
+                    self.do_logs("stats")
                 else:
-                    self._append_output(f"[red]Unknown watch target: {command}[/]" + "\n")
+                    self._append_output(f"[red]Unknown watch target: {command}[/]\n")
+                    self._append_output("[yellow]Valid targets: devices, mappings, logs[/]\n")
                     break
 
-                # Wait
+                # Sleep for interval (this will block input during sleep)
+                # Use run_in_terminal to allow the UI to update
                 time.sleep(interval)
 
         except KeyboardInterrupt:
-            self._append_output("\n[yellow]Watch stopped[/]" + "\n")
+            self._append_output("\n[yellow]Watch stopped after {iterations} iterations[/]\n")
 
     def do_batch(self, arg: str) -> None:
         """
@@ -1796,7 +1769,7 @@ class GoveeShell:
                 self._append_output("[dim]No sessions saved[/]" + "\n")
                 return
 
-            table = Table(title="Sessions", show_header=True, header_style="bold magenta")
+            table = Table(title="Sessions", show_header=True, header_style="bold magenta", box=box.ROUNDED)
             table.add_column("Name", style="cyan")
             table.add_column("Server URL", style="yellow")
             table.add_column("Output Format", style="green")
@@ -1861,7 +1834,7 @@ class GoveeShell:
         temp_console.print()
 
         # Create help table
-        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True)
+        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True, box=box.ROUNDED)
         help_table.add_column("Command", style="cyan", width=15)
         help_table.add_column("Description", style="white", width=30)
         help_table.add_column("Example", style="yellow", width=35)
@@ -2031,7 +2004,7 @@ class GoveeShell:
         tips_table.add_row("💡 Run batch files: [bold]batch setup.txt[/]")
         tips_table.add_row("💡 Save sessions: [bold]session save prod[/]")
         tips_table.add_row("💡 Use [bold]output table[/] for pretty formatting")
-        tips_table.add_row("💡 Control pagination: [bold]console pagination 30[/]")
+        tips_table.add_row("💡 Scroll output: [bold]PgUp/PgDn[/] to scroll, [bold]Ctrl+T[/] to toggle follow-tail")
         tips_table.add_row("💡 Tail logs live: [bold]logs tail --level ERROR[/]")
 
         temp_console.print(tips_table)
@@ -2147,7 +2120,6 @@ class GoveeShell:
         """
         # Show intro in output area
         if intro is None:
-            self._append_output("\n")
             self._append_output("[bold cyan]═" * 40 + "[/]\n")
             self._append_output("[bold cyan]Govee ArtNet Bridge - Interactive Shell[/]\n")
             self._append_output("[bold cyan]═" * 40 + "[/]\n")
@@ -2161,7 +2133,7 @@ class GoveeShell:
             self._append_output("  • Try [bold]alias[/] to create shortcuts\n")
             self._append_output("  • Use [bold]bookmark[/] to save device IDs\n")
             self._append_output("  • Press [bold]Ctrl+D[/] or type [bold]exit[/] to quit\n")
-            self._append_output("  • Press [bold]Ctrl+L[/] to clear the screen\n\n")
+            self._append_output("  • Press [bold]Ctrl+L[/] to clear the screen\n")
         elif intro:
             self._append_output(f"[bold cyan]{intro}[/]\n\n")
 
