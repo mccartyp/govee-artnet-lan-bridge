@@ -139,8 +139,10 @@ class GoveeShell:
         # Load shell configuration
         self.shell_config = self._load_shell_config()
 
-        # Apply default output format from config if not already set
+        # Apply default output format and pagination from config if not already set
         default_output = self.shell_config.get("shell", {}).get("default_output", config.output)
+        default_page_size = self.shell_config.get("console", {}).get("page_size", config.page_size)
+
         if config.output == "json" and default_output != "json":
             # Override default output if user hasn't specified one
             self.config = ClientConfig(
@@ -149,6 +151,17 @@ class GoveeShell:
                 api_bearer_token=config.api_bearer_token,
                 output=default_output,
                 timeout=config.timeout,
+                page_size=default_page_size,
+            )
+        elif default_page_size != config.page_size:
+            # Update page size from shell config
+            self.config = ClientConfig(
+                server_url=config.server_url,
+                api_key=config.api_key,
+                api_bearer_token=config.api_bearer_token,
+                output=config.output,
+                timeout=config.timeout,
+                page_size=default_page_size,
             )
 
         # Load bookmarks and aliases
@@ -166,6 +179,7 @@ class GoveeShell:
             "logs": self.do_logs,
             "monitor": self.do_monitor,
             "output": self.do_output,
+            "console": self.do_console,
             "bookmark": self.do_bookmark,
             "alias": self.do_alias,
             "watch": self.do_watch,
@@ -234,6 +248,9 @@ class GoveeShell:
             "appearance": {
                 "colors": True,
                 "timestamps": False,
+            },
+            "console": {
+                "page_size": None,  # None means auto-detect terminal height
             },
         }
 
@@ -369,6 +386,8 @@ class GoveeShell:
                 api_key=self.config.api_key,
                 api_bearer_token=self.config.api_bearer_token,
                 output=self.config.output,
+                timeout=self.config.timeout,
+                page_size=self.config.page_size,
             )
         self._connect()
 
@@ -750,8 +769,90 @@ class GoveeShell:
             api_key=self.config.api_key,
             api_bearer_token=self.config.api_bearer_token,
             output=new_format,
+            timeout=self.config.timeout,
+            page_size=self.config.page_size,
         )
         print(f"Output format set to: {new_format}")
+
+    def do_console(self, arg: str) -> None:
+        """
+        Configure console pagination settings.
+        Usage: console pagination <lines>
+               console pagination off
+               console pagination auto
+               console pagination
+        Examples:
+            console pagination 20      # Set page size to 20 lines
+            console pagination 50      # Set page size to 50 lines
+            console pagination off     # Disable pagination
+            console pagination auto    # Auto-detect terminal height
+            console pagination         # Show current setting
+        """
+        args = shlex.split(arg)
+
+        if not args or (len(args) == 1 and args[0] == "pagination"):
+            # Show current pagination setting
+            if self.config.page_size is None:
+                self.console.print("Pagination: [yellow]disabled[/]")
+            else:
+                self.console.print(f"Pagination: [green]{self.config.page_size} lines[/]")
+            self.console.print("[dim]Usage: console pagination <lines|off|auto>[/]")
+            return
+
+        if len(args) < 2 or args[0] != "pagination":
+            self.console.print("[red]Usage: console pagination <lines|off|auto>[/]")
+            self.console.print("Examples:")
+            self.console.print("  console pagination 20    # Set to 20 lines")
+            self.console.print("  console pagination off   # Disable")
+            self.console.print("  console pagination auto  # Auto-detect")
+            return
+
+        setting = args[1].lower()
+
+        if setting == "off":
+            page_size = None
+        elif setting == "auto":
+            import shutil
+            terminal_height = shutil.get_terminal_size().lines
+            page_size = max(10, terminal_height - 2)
+        else:
+            try:
+                page_size = int(setting)
+                if page_size < 1:
+                    self.console.print("[red]Page size must be a positive number[/]")
+                    return
+            except ValueError:
+                self.console.print(f"[red]Invalid pagination setting: {setting}[/]")
+                self.console.print("Use a number, 'off', or 'auto'")
+                return
+
+        # Update configuration
+        self.config = ClientConfig(
+            server_url=self.config.server_url,
+            api_key=self.config.api_key,
+            api_bearer_token=self.config.api_bearer_token,
+            output=self.config.output,
+            timeout=self.config.timeout,
+            page_size=page_size,
+        )
+
+        # Save to shell config for persistence
+        self.shell_config["console"] = {"page_size": page_size}
+        try:
+            import tomli_w
+            with open(self.config_file, "wb") as f:
+                tomli_w.dump(self.shell_config, f)
+        except ImportError:
+            # tomli_w not available, just print a warning
+            self.console.print("[dim]Note: Install tomli_w to persist this setting[/]")
+        except Exception as exc:
+            self.console.print(f"[dim]Warning: Could not save config: {exc}[/]")
+
+        # Confirm the change
+        if page_size is None:
+            self.console.print("[green]Pagination disabled[/]")
+        else:
+            self.console.print(f"[green]Pagination set to {page_size} lines[/]")
 
     def do_bookmark(self, arg: str) -> None:
         """
@@ -1037,6 +1138,7 @@ class GoveeShell:
             session_data = {
                 "server_url": self.config.server_url,
                 "output": self.config.output,
+                "page_size": self.config.page_size,
             }
             sessions[name] = session_data
             self._save_json(sessions_file, sessions)
@@ -1051,11 +1153,15 @@ class GoveeShell:
                     api_key=self.config.api_key,
                     api_bearer_token=self.config.api_bearer_token,
                     output=session_data["output"],
+                    timeout=self.config.timeout,
+                    page_size=session_data.get("page_size", self.config.page_size),
                 )
                 self._connect()
                 self.console.print(f"[green]Session '{name}' loaded[/]")
                 self.console.print(f"  Server: {self.config.server_url}")
                 self.console.print(f"  Output: {self.config.output}")
+                if self.config.page_size:
+                    self.console.print(f"  Pagination: {self.config.page_size} lines")
             else:
                 self.console.print(f"[red]Session '{name}' not found[/]")
 
@@ -1171,6 +1277,11 @@ class GoveeShell:
             "output table\noutput json\noutput yaml"
         )
         help_table.add_row(
+            "console",
+            "Configure console settings",
+            "console pagination 20\nconsole pagination off\nconsole pagination auto"
+        )
+        help_table.add_row(
             "version",
             "Show shell version",
             "version"
@@ -1229,6 +1340,7 @@ class GoveeShell:
         tips_table.add_row("💡 Run batch files: [bold]batch setup.txt[/]")
         tips_table.add_row("💡 Save sessions: [bold]session save prod[/]")
         tips_table.add_row("💡 Use [bold]output table[/] for pretty formatting")
+        tips_table.add_row("💡 Control pagination: [bold]console pagination 30[/]")
         tips_table.add_row("💡 Tail logs live: [bold]logs tail --level ERROR[/]")
 
         self.console.print(tips_table)
