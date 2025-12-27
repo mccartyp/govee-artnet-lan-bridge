@@ -129,7 +129,12 @@ govee> status              # Show connection status
 ### Device Management
 
 ```bash
-govee> devices list                           # List all devices
+govee> devices list                           # List all devices (simplified view)
+govee> devices list detailed                  # Show detailed device information
+govee> devices list --state active            # Filter by state (active, disabled, offline)
+govee> devices list --id AA:BB:CC             # Filter by device ID (MAC address)
+govee> devices list --ip 192.168.1.100        # Filter by IP address
+govee> devices list detailed --state offline  # Detailed view with filters
 govee> devices enable <device_id>             # Enable a device
 govee> devices disable <device_id>            # Disable a device
 ```
