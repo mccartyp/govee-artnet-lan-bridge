@@ -120,7 +120,8 @@ class GoveeShell:
         """
         self.config = config
         self.client: Optional[httpx.Client] = None
-        self.console = Console()
+        # Configure console with no legacy windows mode and disable soft wrapping
+        self.console = Console(legacy_windows=False, soft_wrap=False)
 
         # Initialize response cache for performance
         cache_ttl = float(os.environ.get("GOVEE_ARTNET_CACHE_TTL", str(DEFAULT_CACHE_TTL)))
@@ -1450,7 +1451,6 @@ class GoveeShell:
         self.console.print("  • Bookmarks, aliases, and sessions")
         self.console.print("  • Watch mode for continuous monitoring")
         self.console.print("  • Batch command execution")
-        self.console.print()
 
     def do_tips(self, arg: str) -> None:
         """Show helpful tips for using the shell."""
@@ -1474,7 +1474,6 @@ class GoveeShell:
         tips_table.add_row("💡 Tail logs live: [bold]logs tail --level ERROR[/]")
 
         self.console.print(tips_table)
-        self.console.print()
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
