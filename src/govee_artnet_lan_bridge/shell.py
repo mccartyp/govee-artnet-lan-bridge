@@ -226,7 +226,7 @@ class GoveeShell:
             completer=completer,
             complete_while_typing=True,
             bottom_toolbar=self._get_bottom_toolbar,
-            reserve_space_for_menu=3,
+            reserve_space_for_menu=2,
             style=TOOLBAR_STYLE,
         )
 
