@@ -269,7 +269,7 @@ class GoveeShell:
             completer=completer,
             complete_while_typing=True,
             bottom_toolbar=self._get_bottom_toolbar,
-            reserve_space_for_menu=2,
+            reserve_space_for_menu=3,
             style=TOOLBAR_STYLE,
         )
 
@@ -305,9 +305,10 @@ class GoveeShell:
             Configuration dictionary with defaults
         """
         # Auto-detect terminal height for default pagination
+        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 2)
+        default_page_size = max(10, terminal_height - 5)
 
         defaults = {
             "shell": {
@@ -383,7 +384,8 @@ class GoveeShell:
         if self.auto_pagination:
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            new_page_size = max(10, terminal_height - 2)
+            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
+            new_page_size = max(10, terminal_height - 5)
 
             # Update config with new page size
             self.config = ClientConfig(
@@ -1828,6 +1830,10 @@ class GoveeShell:
         Args:
             intro: Introduction message (optional)
         """
+        # Clear the screen on startup for a clean interface
+        import os
+        os.system('cls' if os.name == 'nt' else 'clear')
+
         # Print custom intro with tips
         if intro is None:
             self.console.print()
