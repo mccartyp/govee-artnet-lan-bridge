@@ -32,7 +32,7 @@ from prompt_toolkit import Application
 from prompt_toolkit.application import run_in_terminal
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import WordCompleter
-from prompt_toolkit.formatted_text import ANSI, FormattedText
+from prompt_toolkit.formatted_text import ANSI, FormattedText, to_formatted_text
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, Window
@@ -197,9 +197,9 @@ class ANSILexer(Lexer):
         Returns:
             A callable that returns styled text tuples for each line
         """
-        # Convert entire document text using ANSI() once
-        # ANSI() returns a list of (style, text) tuples
-        ansi_formatted = ANSI(document.text)
+        # Convert ANSI text to formatted text fragments
+        # to_formatted_text() converts the ANSI object to a list of (style, text) tuples
+        ansi_formatted = to_formatted_text(ANSI(document.text))
 
         # Split the formatted text by lines
         lines_with_styles = []
