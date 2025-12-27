@@ -18,6 +18,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
+from rich import box
 from rich.console import Console
 from rich.table import Table
 
@@ -778,7 +779,7 @@ class GoveeShell:
     def do_health(self, arg: str) -> None:
         """Check bridge health."""
         if not self.client:
-            print("Not connected. Use 'connect' first.")
+            self.console.print("Not connected. Use 'connect' first.")
             return
 
         try:
@@ -1011,7 +1012,8 @@ class GoveeShell:
                         logger_name = data.get("logger", "")
                         message_text = data.get("message", "")
 
-                        print(f"[{timestamp}] {level:7} | {logger_name:25} | {message_text}")
+                        # Use console.print to respect toolbar, but disable markup to avoid interpreting log content
+                        self.console.print(f"[{timestamp}] {level:7} | {logger_name:25} | {message_text}", markup=False, highlight=False)
 
                     except TimeoutError:
                         # No message received, continue
@@ -1584,17 +1586,22 @@ class GoveeShell:
 
         # Show enhanced help with examples using rich
         # Capture output to a string buffer for pagination
+        import shutil
+        terminal_width = shutil.get_terminal_size(fallback=(80, 24)).columns
+        # Use width - 1 for safety margin to avoid wrapping
+        border_width = max(40, terminal_width - 1)
+
         buffer = StringIO()
         temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
 
         temp_console.print()
-        temp_console.print("═" * 80)
+        temp_console.print("═" * border_width)
         temp_console.print("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan", justify="center")
-        temp_console.print("═" * 80)
+        temp_console.print("═" * border_width)
         temp_console.print()
 
-        # Create help table
-        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True)
+        # Create help table with double-line box drawing characters
+        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True, box=box.DOUBLE)
         help_table.add_column("Command", style="cyan", width=15)
         help_table.add_column("Description", style="white", width=30)
         help_table.add_column("Example", style="yellow", width=35)
@@ -1718,10 +1725,9 @@ class GoveeShell:
         temp_console.print("  • Watch mode for continuous monitoring")
         temp_console.print("  • Batch command execution")
 
-        # Write directly to stdout with controlled newlines
+        # Output via console.print to respect prompt_toolkit screen management
         output = buffer.getvalue().rstrip('\n')
-        sys.stdout.write(output + '\n')
-        sys.stdout.flush()
+        self.console.print(output, markup=False, highlight=False)
 
     def do_tips(self, arg: str) -> None:
         """Show helpful tips for using the shell."""
@@ -1750,10 +1756,9 @@ class GoveeShell:
 
         temp_console.print(tips_table)
 
-        # Write directly to stdout with controlled newlines
+        # Output via console.print to respect prompt_toolkit screen management
         output = buffer.getvalue().rstrip('\n')
-        sys.stdout.write(output + '\n')
-        sys.stdout.flush()
+        self.console.print(output, markup=False, highlight=False)
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
@@ -1772,7 +1777,7 @@ class GoveeShell:
 
     def do_EOF(self, arg: str) -> bool:
         """Handle Ctrl+D."""
-        print()  # Print newline
+        self.console.print()  # Print newline
         return self.do_exit(arg)
 
     def onecmd(self, line: str) -> bool:
