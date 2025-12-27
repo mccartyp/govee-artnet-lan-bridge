@@ -1440,24 +1440,36 @@ class GoveeShell:
 
     def do_version(self, arg: str) -> None:
         """Show shell version information."""
-        self.console.print()
-        self.console.print(f"[bold cyan]Govee ArtNet Bridge Shell[/]")
-        self.console.print(f"[dim]Version:[/] {SHELL_VERSION}")
-        self.console.print()
-        self.console.print("[dim]Features:[/]")
-        self.console.print("  • Interactive shell with autocomplete and history")
-        self.console.print("  • Real-time WebSocket log streaming")
-        self.console.print("  • Rich formatted tables and dashboards")
-        self.console.print("  • Bookmarks, aliases, and sessions")
-        self.console.print("  • Watch mode for continuous monitoring")
-        self.console.print("  • Batch command execution")
-        self.console.print()
+        # Capture output to buffer to avoid Rich Console's terminal handling
+        buffer = StringIO()
+        temp_console = Console(file=buffer, force_terminal=True, width=self.console.width, legacy_windows=False)
+
+        temp_console.print()
+        temp_console.print(f"[bold cyan]Govee ArtNet Bridge Shell[/]")
+        temp_console.print(f"[dim]Version:[/] {SHELL_VERSION}")
+        temp_console.print()
+        temp_console.print("[dim]Features:[/]")
+        temp_console.print("  • Interactive shell with autocomplete and history")
+        temp_console.print("  • Real-time WebSocket log streaming")
+        temp_console.print("  • Rich formatted tables and dashboards")
+        temp_console.print("  • Bookmarks, aliases, and sessions")
+        temp_console.print("  • Watch mode for continuous monitoring")
+        temp_console.print("  • Batch command execution")
+
+        # Write directly to stdout with controlled newlines
+        output = buffer.getvalue().rstrip('\n')
+        sys.stdout.write(output + '\n')
+        sys.stdout.flush()
 
     def do_tips(self, arg: str) -> None:
         """Show helpful tips for using the shell."""
-        self.console.print()
-        self.console.rule("[bold cyan]Shell Tips & Tricks")
-        self.console.print()
+        # Capture output to buffer to avoid Rich Console's terminal handling
+        buffer = StringIO()
+        temp_console = Console(file=buffer, force_terminal=True, width=self.console.width, legacy_windows=False)
+
+        temp_console.print()
+        temp_console.rule("[bold cyan]Shell Tips & Tricks")
+        temp_console.print()
 
         tips_table = Table(show_header=False, show_edge=False, pad_edge=False)
         tips_table.add_column("Tip", style="cyan")
@@ -1474,8 +1486,12 @@ class GoveeShell:
         tips_table.add_row("💡 Control pagination: [bold]console pagination 30[/]")
         tips_table.add_row("💡 Tail logs live: [bold]logs tail --level ERROR[/]")
 
-        self.console.print(tips_table)
-        self.console.print()
+        temp_console.print(tips_table)
+
+        # Write directly to stdout with controlled newlines
+        output = buffer.getvalue().rstrip('\n')
+        sys.stdout.write(output + '\n')
+        sys.stdout.flush()
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
