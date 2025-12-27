@@ -46,12 +46,13 @@ DEFAULT_CACHE_TTL = 5.0  # Default cache TTL in seconds
 
 # Toolbar styling for prompt_toolkit
 TOOLBAR_STYLE = Style.from_dict({
-    "toolbar-border": "#666666",
-    "toolbar-info": "#888888",
-    "status-connected": "#00ff00 bold",
-    "status-disconnected": "#ff0000 bold",
-    "status-healthy": "#00ff00",
-    "status-degraded": "#ffaa00",
+    "toolbar": "bg:#2e3440",  # Dark background for entire toolbar
+    "toolbar-border": "#4c566a bg:#2e3440",  # Border line with dark background
+    "toolbar-info": "#d8dee9 bg:#2e3440",  # Light gray text on dark background
+    "status-connected": "#a3be8c bold bg:#2e3440",  # Green (connected) on dark background
+    "status-disconnected": "#bf616a bold bg:#2e3440",  # Red (disconnected) on dark background
+    "status-healthy": "#a3be8c bg:#2e3440",  # Green (healthy) on dark background
+    "status-degraded": "#ebcb8b bg:#2e3440",  # Yellow/amber (degraded) on dark background
 })
 
 
@@ -396,6 +397,9 @@ class GoveeShell:
             health_style = "class:toolbar-info"
             health_icon = "?"
         toolbar_parts.append((health_style, f" │ Health: {health_icon} {health}"))
+
+        # Add padding to fill the rest of the line with the toolbar background
+        toolbar_parts.append(("class:toolbar", " "))
 
         return toolbar_parts
 
