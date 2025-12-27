@@ -305,10 +305,10 @@ class GoveeShell:
             Configuration dictionary with defaults
         """
         # Auto-detect terminal height for default pagination
-        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
+        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line) + buffer (2 lines)
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 5)
+        default_page_size = max(10, terminal_height - 7)
 
         defaults = {
             "shell": {
@@ -384,8 +384,8 @@ class GoveeShell:
         if self.auto_pagination:
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line)
-            new_page_size = max(10, terminal_height - 5)
+            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line) + buffer (2 lines)
+            new_page_size = max(10, terminal_height - 7)
 
             # Update config with new page size
             self.config = ClientConfig(
