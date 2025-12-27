@@ -22,6 +22,7 @@ from rich import box
 from rich.align import Align
 from rich.console import Console, Group
 from rich.table import Table
+from rich.text import Text
 
 from .cli import (
     ClientConfig,
@@ -717,8 +718,13 @@ class GoveeShell:
                     self.console.print("\n[Output interrupted]")
                     return
 
-        # Add single trailing newline at the end
+        # Add trailing newlines to ensure toolbar space
+        # When we return to prompt_toolkit, it will display a 3-line toolbar at the bottom
+        # We need to leave space for it by adding extra newlines
         self.console.print()
+        # Add extra blank lines to push content up and leave room for toolbar
+        for _ in range(3):
+            self.console.print()
 
     def _format_command_help(self, command: str, docstring: str) -> str:
         """
@@ -1644,16 +1650,14 @@ class GoveeShell:
         buffer = StringIO()
         temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
 
-        # Create header as a single block to avoid extra spacing
-        header_title = Align.center("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan")
-        header = Group(
-            "",  # Blank line at top
-            "═" * border_width,
-            header_title,
-            "═" * border_width,
-            "",  # Blank line after header
-        )
-        temp_console.print(header)
+        # Print header without extra spacing
+        temp_console.print()  # Blank line at top
+        temp_console.print("═" * border_width)
+        # Use Text with justify to avoid Align's extra spacing
+        title = Text("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan", justify="center")
+        temp_console.print(title)
+        temp_console.print("═" * border_width)
+        temp_console.print()  # Blank line after header
 
         # Create help table with double-line box drawing characters
         help_table = Table(show_header=True, header_style="bold magenta", show_lines=True, box=box.DOUBLE, collapse_padding=True)
