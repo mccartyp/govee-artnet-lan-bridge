@@ -38,7 +38,17 @@ See [INSTALL.md](INSTALL.md) for systemd service setup and other installation op
 
 ## CLI Overview
 
-The `govee-artnet` CLI communicates with the bridge server via its REST API. By default, it connects to `http://127.0.0.1:8000`.
+The `govee-artnet` CLI communicates with the bridge server via its REST API. By default, it launches an interactive shell and connects to `http://127.0.0.1:8000`.
+
+You can run commands directly without the shell by specifying a command:
+
+```bash
+# Launch interactive shell (default)
+govee-artnet
+
+# Or run a command directly
+govee-artnet devices list
+```
 
 ### Connecting to a Remote Server
 
@@ -79,10 +89,13 @@ govee-artnet devices list --output yaml
 
 ### Interactive Shell Mode
 
-For an enhanced user experience with real-time monitoring and log viewing, use the interactive shell:
+The CLI launches in interactive shell mode by default, providing an enhanced user experience with real-time monitoring and log viewing:
 
 ```bash
-# Start interactive shell
+# Start interactive shell (default - just run govee-artnet)
+govee-artnet
+
+# Or explicitly use the shell command
 govee-artnet shell
 ```
 
@@ -94,7 +107,7 @@ The shell provides:
 - **Batch execution** - Run commands from scripts
 - **Enhanced output** - Beautiful formatted tables
 
-See the **[CLI Shell Guide](CLI_SHELL_README.md)** for complete shell documentation, configuration options, and examples.
+See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete shell documentation, configuration options, and examples.
 
 #### Shell Configuration
 
