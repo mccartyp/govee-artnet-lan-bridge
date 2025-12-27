@@ -46,18 +46,51 @@ DEFAULT_CACHE_TTL = 5.0  # Default cache TTL in seconds
 
 # Toolbar styling for prompt_toolkit
 TOOLBAR_STYLE = Style.from_dict({
-    "toolbar": "bg:#2e3440",  # Dark background for entire toolbar
-    "toolbar-border": "#4c566a bg:#2e3440",  # Border line with dark background
-    "toolbar-info": "#d8dee9 bg:#2e3440",  # Light gray text on dark background
-    "status-connected": "#a3be8c bold bg:#2e3440",  # Green (connected) on dark background
-    "status-disconnected": "#bf616a bold bg:#2e3440",  # Red (disconnected) on dark background
-    "status-healthy": "#a3be8c bg:#2e3440",  # Green (healthy) on dark background
-    "status-degraded": "#ebcb8b bg:#2e3440",  # Yellow/amber (degraded) on dark background
-    "device-active": "#a3be8c bg:#2e3440",  # Green (active devices) on dark background
-    "device-unconfigured": "#ebcb8b bg:#2e3440",  # Yellow/amber (unconfigured) on dark background
-    "device-offline": "#bf616a bg:#2e3440",  # Red (offline devices) on dark background
-})
+    #"toolbar": "bg:#2e3440",  # Dark background for entire toolbar
+    #"toolbar": "fg:#1e3440",  # Dark background for entire toolbar
+    #"toolbar-border": "#4c566a bg:#2e3440",  # Border line with dark background
+    #"toolbar-border": "bg:#2e3440 #4c566a",  # Border line with dark background
+    #"toolbar-info": "#d8dee9 bg:#2e3440",  # Light gray text on dark background
+    #"toolbar-info": "#d8dee9 #2e3440",  # Light gray text on dark background
+    #"status-connected": "#a3be8c bold bg:#2e3440",  # Green (connected) on dark background
+    #"status-connected": "bg:#2e3440 #a3be8c bold",  # Green (connected) on dark background
+    #"status-disconnected": "#bf616a bold bg:#2e3440",  # Red (disconnected) on dark background
+    #"status-healthy": "#a3be8c bg:#2e3440",  # Green (healthy) on dark background
+    #"status-degraded": "#ebcb8b bg:#2e3440",  # Yellow/amber (degraded) on dark background
+    #"device-active": "#a3be8c bg:#2e3440",  # Green (active devices) on dark background
+    #"device-unconfigured": "#ebcb8b bg:#2e3440",  # Yellow/amber (unconfigured) on dark background
+    #"device-offline": "#bf616a bg:#2e3440",  # Red (offline devices) on dark background
 
+#    "bottom-toolbar": "fg:#d8dee9 bg:#2e3440 noreverse",
+
+#    "toolbar": "fg:#d8dee9 bg:#2e3440",
+#    "toolbar-border": "fg:#4c566a bg:#2e3440",
+#    "toolbar-info": "fg:#d8dee9 bg:#2e3440",
+#    "status-connected": "fg:#a3be8c bold bg:#2e3440",
+#    "status-disconnected": "fg:#bf616a bold bg:#2e3440",
+#    "status-healthy": "fg:#a3be8c bg:#2e3440",
+#    "status-degraded": "fg:#ebcb8b bg:#2e3440",
+#    "device-active": "fg:#a3be8c bg:#2e3440",
+#    "device-unconfigured": "fg:#ebcb8b bg:#2e3440",
+#    "device-offline": "fg:#bf616a bg:#2e3440",
+
+    "bottom-toolbar": "fg:#d8dee9 bg:ansibrightblack noreverse",
+
+    "toolbar": "fg:#d8dee9 bg:ansibrightblack",
+    "toolbar-border": "fg:ansiwhite bg:ansibrightblack",
+    "toolbar-info": "fg:#d8dee9 bg:ansibrightblack",
+
+    "status-connected": "fg:ansigreen bold bg:ansibrightblack",
+    "status-disconnected": "fg:ansired bold bg:ansibrightblack",
+
+    "status-healthy": "fg:ansigreen bg:ansibrightblack",
+    "status-degraded": "fg:ansiyellow bg:ansibrightblack",
+
+    "device-active": "fg:ansigreen bg:ansibrightblack",
+    "device-unconfigured": "fg:ansiyellow bg:ansibrightblack",
+    "device-offline": "fg:ansired bg:ansibrightblack",
+
+})
 
 class ResponseCache:
     """Simple response cache with TTL support."""
@@ -373,58 +406,119 @@ class GoveeShell:
 
     def _get_bottom_toolbar(self) -> list[tuple[str, str]]:
         """
-        Generate bottom toolbar content with status information.
-
-        Returns:
-            List of (style, text) tuples for prompt_toolkit
+        Two-line toolbar (Variant 2) with correct background fill.
+        Uses prompt_toolkit's `bottom-toolbar` class to ensure the toolbar window
+        background is always dark, even across newlines.
         """
-        # Update status periodically (every 5 seconds)
+        import shutil
         import time
-        if (self.toolbar_status["last_update"] is None or
-            time.time() - self.toolbar_status["last_update"] > 5):
+
+        try:
+            from prompt_toolkit.utils import get_cwidth
+        except Exception:  # pragma: no cover
+            def get_cwidth(s: str) -> int:
+                return len(s)
+
+        width = shutil.get_terminal_size(fallback=(80, 24)).columns
+
+        if (
+            self.toolbar_status["last_update"] is None
+            or time.time() - self.toolbar_status["last_update"] > 5
+        ):
             self._update_toolbar_status()
 
-        toolbar_parts = []
+        BASE = "class:bottom-toolbar"
 
-        # Top border line
-        try:
-            import shutil
-            width = shutil.get_terminal_size().columns
-            toolbar_parts.append(("class:toolbar-border", "─" * width + "\n"))
-        except Exception:
-            toolbar_parts.append(("class:toolbar-border", "─" * 80 + "\n"))
+        def S(cls: str) -> str:
+            # Always include the base toolbar container class.
+            # This ensures the window background stays dark.
+            return f"{BASE} class:{cls}"
 
-        # Connection status
+        def fit_line(fragments: list[tuple[str, str]], target_width: int) -> list[tuple[str, str]]:
+            out: list[tuple[str, str]] = []
+            used = 0
+
+            def add(style: str, text: str) -> None:
+                nonlocal used
+                if not text or used >= target_width:
+                    return
+                remaining = target_width - used
+                w = get_cwidth(text)
+                if w <= remaining:
+                    out.append((style, text))
+                    used += w
+                    return
+
+                ell = "…"
+                ell_w = get_cwidth(ell)
+                keep = remaining - ell_w if remaining > ell_w else remaining
+
+                t = text
+                while t and get_cwidth(t) > keep:
+                    t = t[:-1]
+
+                if keep > 0 and remaining > ell_w:
+                    out.append((style, t + ell))
+                elif keep > 0:
+                    out.append((style, t))
+                used = target_width
+
+            for s, t in fragments:
+                add(s, t)
+
+            if used < target_width:
+                out.append((S("toolbar"), " " * (target_width - used)))
+
+            return out
+
+        parts: list[tuple[str, str]] = []
+
+        # Border line
+        parts.append((S("toolbar-border"), "─" * width + "\n"))
+
+        # Line 1: Connection + devices
+        line1: list[tuple[str, str]] = []
         if self.client:
-            toolbar_parts.append(("class:status-connected", "● Connected"))
+            line1.append((S("status-connected"), "● Connected"))
         else:
-            toolbar_parts.append(("class:status-disconnected", "○ Disconnected"))
+            line1.append((S("status-disconnected"), "○ Disconnected"))
 
-        # Device counts with color-coded stats
-        toolbar_parts.append(("class:toolbar-info", " │ Devices Active: "))
-        toolbar_parts.append(("class:device-active", str(self.toolbar_status["active_devices"])))
-        toolbar_parts.append(("class:toolbar-info", " | Devices Unconfigured: "))
-        toolbar_parts.append(("class:device-unconfigured", str(self.toolbar_status["unconfigured_devices"])))
-        toolbar_parts.append(("class:toolbar-info", " | Devices Offline: "))
-        toolbar_parts.append(("class:device-offline", str(self.toolbar_status["offline_devices"])))
+        line1.extend([
+            (S("toolbar-info"), " │ Devices: "),
+            (S("toolbar-info"), "Active "),
+            (S("device-active"), str(self.toolbar_status["active_devices"])),
+            (S("toolbar-info"), " | Unconfigured "),
+            (S("device-unconfigured"), str(self.toolbar_status["unconfigured_devices"])),
+            (S("toolbar-info"), " | Offline "),
+            (S("device-offline"), str(self.toolbar_status["offline_devices"])),
+        ])
 
-        # Health status
+        parts.extend(fit_line(line1, width))
+        parts.append((S("toolbar"), "\n"))  # newline must also be under bottom-toolbar
+
+        # Line 2: Health + server + updated
         health = self.toolbar_status["health_status"]
         if health == "healthy":
-            health_style = "class:status-healthy"
-            health_icon = "✓"
+            h_style, h_icon = S("status-healthy"), "✓"
         elif health == "degraded":
-            health_style = "class:status-degraded"
-            health_icon = "⚠"
+            h_style, h_icon = S("status-degraded"), "⚠"
         else:
-            health_style = "class:toolbar-info"
-            health_icon = "?"
-        toolbar_parts.append((health_style, f" │ Health: {health_icon} {health}"))
+            h_style, h_icon = S("toolbar-info"), "?"
 
-        # Add padding to fill the rest of the line with the toolbar background
-        toolbar_parts.append(("class:toolbar", " "))
+        last_update = self.toolbar_status["last_update"]
+        age_txt = f"{int(time.time() - last_update)}s ago" if last_update else "n/a"
 
-        return toolbar_parts
+        line2: list[tuple[str, str]] = [
+            (S("toolbar-info"), "Health: "),
+            (h_style, f"{h_icon} {health}"),
+            (S("toolbar-info"), " │ Server: "),
+            (S("toolbar-info"), self.config.server_url),
+            (S("toolbar-info"), " │ Updated: "),
+            (S("toolbar-info"), age_txt),
+        ]
+
+        parts.extend(fit_line(line2, width))
+        return parts
 
     def _handle_error(self, exc: Exception, context: str = "") -> None:
         """
