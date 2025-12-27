@@ -1722,13 +1722,16 @@ class GoveeShell:
                 # Get the docstring from the handler
                 docstring = handler.__doc__
                 if docstring:
-                    # Format with colors and styling
+                    # Format with colors and styling (returns ANSI-formatted text)
                     help_text = self._format_command_help(arg, docstring)
+                    # Append directly (already ANSI-formatted, bypass _append_output)
+                    self.output_text += help_text
+                    if not help_text.endswith('\n'):
+                        self.output_text += '\n'
+                    self.app.invalidate()
                 else:
-                    help_text = f"\n[yellow]No help available for command '{arg}'[/]\n"
-
-                # Apply pagination if configured
-                self._paginate_text(help_text)
+                    # Rich markup, use _append_output
+                    self._append_output(f"\n[yellow]No help available for command '{arg}'[/]\n")
             else:
                 self._append_output(f"[red]Unknown command: {arg}[/]" + "\n")
                 self._append_output("[dim]Type 'help' to see all available commands.[/]" + "\n")
@@ -1848,9 +1851,12 @@ class GoveeShell:
         temp_console.print("Type 'help <command>' for detailed help on a specific command.", style="dim")
         temp_console.print()
 
-        # Get the buffered output and paginate it
-        help_text = buffer.getvalue()
-        self._paginate_text(help_text)
+        # Append to output area (already ANSI-formatted, bypass _append_output)
+        output = buffer.getvalue()
+        self.output_text += output
+        if not output.endswith('\n'):
+            self.output_text += '\n'
+        self.app.invalidate()
 
     def do_version(self, arg: str) -> None:
         """Show shell version information."""
