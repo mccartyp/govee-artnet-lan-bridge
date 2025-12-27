@@ -505,6 +505,25 @@ class GoveeShell:
         except Exception as exc:
             self._append_output(f"[red]Error saving to {file_path}: {exc}[/]" + "\n")
 
+    def _resolve_bookmark(self, value: str) -> str:
+        """
+        Resolve bookmark reference to actual value.
+
+        Args:
+            value: Value that may be a bookmark reference (starts with @) or literal value
+
+        Returns:
+            The resolved value from bookmarks, or the original value if not a bookmark
+        """
+        if value.startswith("@"):
+            bookmark_name = value[1:]  # Remove @ prefix
+            if bookmark_name in self.bookmarks:
+                return self.bookmarks[bookmark_name]
+            else:
+                self._append_output(f"[yellow]Warning: Bookmark '@{bookmark_name}' not found, using literal value[/]\n")
+                return value
+        return value
+
     def _load_shell_config(self) -> dict[str, Any]:
         """
         Load shell configuration from TOML file.
@@ -632,6 +651,9 @@ class GoveeShell:
             # Handle exit
             if stop:
                 self.app.exit(result=True)
+
+        # Explicitly clear the input buffer to ensure it doesn't persist after execution
+        buffer.reset()
 
         return True  # Let prompt_toolkit clear buffer and save to history
 
@@ -1490,7 +1512,7 @@ class GoveeShell:
         """
         # Parse arguments
         device_id = None
-        universe = None
+        universe = 0  # Default to universe 0
         start_channel = None
         channel = None
         length = None
@@ -1505,18 +1527,35 @@ class GoveeShell:
             if arg == "--help":
                 self._append_output("[cyan]Mappings Create Help[/]\n")
                 self._append_output("\n[bold]Template-based (recommended):[/]\n")
-                self._append_output("  mappings create --device-id <id> --universe <num> --template <name> --start-channel <num>\n")
+                self._append_output("  mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>\n")
                 self._append_output("\n[bold]Available templates:[/]\n")
                 self._append_output("  • rgb        - 3 channels (red, green, blue)\n")
                 self._append_output("  • rgbw       - 4 channels (red, green, blue, white)\n")
                 self._append_output("  • brightness - 1 channel (brightness)\n")
                 self._append_output("  • temperature - 1 channel (color temperature)\n")
-                self._append_output("\n[bold]Manual configuration:[/]\n")
-                self._append_output("  mappings create --device-id <id> --universe <num> --channel <num> --length <num> --type <type> --field <field>\n")
+                self._append_output("\n[bold]Manual configuration for single fields:[/]\n")
+                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --type <type> --field <field>\n")
+                self._append_output("\n[bold]Manual configuration for multi-channel fields:[/]\n")
+                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --length <num> --type <type> --field <field>\n")
+                self._append_output("\n[bold]Field types (for manual configuration):[/]\n")
+                self._append_output("  Single field mappings (length=1):\n")
+                self._append_output("    --type single --field red          - Map to red channel only\n")
+                self._append_output("    --type single --field green        - Map to green channel only\n")
+                self._append_output("    --type single --field blue         - Map to blue channel only\n")
+                self._append_output("    --type single --field white        - Map to white channel only\n")
+                self._append_output("    --type single --field brightness   - Map to brightness control\n")
+                self._append_output("  Multi-channel mappings:\n")
+                self._append_output("    --type color --field rgb           - Map to RGB (length=3)\n")
+                self._append_output("    --type color --field rgbw          - Map to RGBW (length=4)\n")
                 self._append_output("\n[bold]Examples:[/]\n")
-                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --universe 0 --template rgb --start-channel 1\n")
-                self._append_output("  mappings create --device-id @kitchen --universe 0 --template rgbw --start-channel 10\n")
-                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --universe 0 --channel 1 --length 3 --type color --field rgb\n")
+                self._append_output("  # Template-based (universe defaults to 0 if omitted)\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --template rgb --start-channel 1\n")
+                self._append_output("  mappings create --device-id @kitchen --universe 1 --template rgbw --start-channel 10\n")
+                self._append_output("\n  # Manual single field mapping\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --type single --field brightness\n")
+                self._append_output("  mappings create --device-id @kitchen --channel 20 --type single --field white\n")
+                self._append_output("\n  # Manual multi-channel mapping\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --length 3 --type color --field rgb\n")
                 return
             elif arg == "--device-id" and i + 1 < len(args):
                 device_id = self._resolve_bookmark(args[i + 1])
@@ -1569,9 +1608,6 @@ class GoveeShell:
         # Validate required fields
         if not device_id:
             self._append_output("[red]Error: --device-id is required[/]\n")
-            return
-        if universe is None:
-            self._append_output("[red]Error: --universe is required[/]\n")
             return
 
         # Build payload
@@ -1641,11 +1677,12 @@ class GoveeShell:
         Mapping commands: list, get, create, delete, channel-map.
         Usage: mappings list
                mappings get <id>
-               mappings create --device-id <id> --universe <num> --template <name> --start-channel <num>
-               mappings create --device-id <id> --universe <num> --channel <num> --length <num> --type <type> --field <field>
+               mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>
+               mappings create --device-id <id> [--universe <num>] --channel <num> [--length <num>] --type <type> --field <field>
                mappings delete <id>
                mappings channel-map
         Templates: rgb, rgbw, brightness, temperature
+        Note: --universe defaults to 0 if omitted
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
