@@ -1881,7 +1881,7 @@ class GoveeShell:
                 return
 
             # Build channel map (1-512)
-            channel_map = {}  # channel_num -> (device_id, ip, function, mapping_info)
+            channel_map = {}  # channel_num -> (device_id, ip, function)
 
             # Channel function names for common templates
             TEMPLATE_FUNCTIONS = {
@@ -1914,22 +1914,19 @@ class GoveeShell:
                     # Map individual fields to display names
                     field_display = {
                         "r": "Red", "g": "Green", "b": "Blue", "w": "White",
-                        "brightness": "Brightness", "temperature": "Color Temp"
+                        "brightness": "Brightness", "temperature": "Color Temp", "ct": "Color Temp"
                     }
                     functions = [field_display.get(f, f.capitalize()) for f in fields_list]
                 elif not functions:
                     # Fallback for unknown mappings
                     functions = [f"Ch{i+1}" for i in range(channel_length)]
 
-                # Display string for the fields column
-                fields_str = ", ".join(fields_list) if fields_list else "N/A"
-
                 # Populate channel map
                 for i in range(channel_length):
                     channel_num = start_channel + i
                     if 1 <= channel_num <= 512:
                         function = functions[i] if i < len(functions) else f"Ch{i+1}"
-                        channel_map[channel_num] = (device_id, device_ip, function, fields_str)
+                        channel_map[channel_num] = (device_id, device_ip, function)
 
             if not channel_map:
                 self._append_output(f"[yellow]No channels populated for universe {universe}[/]\n")
@@ -1946,11 +1943,10 @@ class GoveeShell:
             table.add_column("Device ID", style="yellow", width=23)
             table.add_column("IP Address", style="green", width=15)
             table.add_column("Function", style="magenta", width=15)
-            table.add_column("Fields", style="dim", width=15)
 
             # Add rows for populated channels (sorted by channel number)
             for channel_num in sorted(channel_map.keys()):
-                device_id, device_ip, function, fields_str = channel_map[channel_num]
+                device_id, device_ip, function = channel_map[channel_num]
 
                 # Apply color coding to functions
                 if "Red" in function:
@@ -1970,8 +1966,7 @@ class GoveeShell:
                     str(channel_num),
                     device_id[:23],
                     device_ip,
-                    function_style,
-                    fields_str
+                    function_style
                 )
 
             self._append_output(table)
