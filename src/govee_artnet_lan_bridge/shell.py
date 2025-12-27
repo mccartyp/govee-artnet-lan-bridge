@@ -1451,6 +1451,7 @@ class GoveeShell:
         self.console.print("  • Bookmarks, aliases, and sessions")
         self.console.print("  • Watch mode for continuous monitoring")
         self.console.print("  • Batch command execution")
+        self.console.print()
 
     def do_tips(self, arg: str) -> None:
         """Show helpful tips for using the shell."""
@@ -1474,6 +1475,7 @@ class GoveeShell:
         tips_table.add_row("💡 Tail logs live: [bold]logs tail --level ERROR[/]")
 
         self.console.print(tips_table)
+        self.console.print()
 
     def do_clear(self, arg: str) -> None:
         """Clear the screen."""
