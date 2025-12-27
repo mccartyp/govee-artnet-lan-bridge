@@ -348,7 +348,16 @@ class GoveeShell:
             'disconnect': None,
             'status': None,
             'health': None,
-            'devices': {'list': {'detailed': None}, 'enable': None, 'disable': None},
+            'devices': {
+                'list': {
+                    'detailed': None,
+                    '--id': None,
+                    '--ip': None,
+                    '--state': {'active': None, 'disabled': None, 'offline': None}
+                },
+                'enable': None,
+                'disable': None
+            },
             'mappings': {'list': None, 'get': None, 'delete': None, 'channel-map': None},
             'logs': {'stats': None},
             'monitor': {'status': None, 'dashboard': None},
@@ -1044,8 +1053,14 @@ class GoveeShell:
         except Exception as exc:
             self._handle_error(exc, "health")
 
-    def _show_devices_simple(self) -> None:
-        """Show devices in simplified 2-line table format."""
+    def _show_devices_simple(self, filter_id: Optional[str] = None, filter_ip: Optional[str] = None, filter_state: Optional[str] = None) -> None:
+        """Show devices in simplified 2-line table format.
+
+        Args:
+            filter_id: Optional filter by device ID (MAC address)
+            filter_ip: Optional filter by IP address
+            filter_state: Optional filter by state (active, disabled, offline)
+        """
         try:
             # Fetch devices from API
             response = self.client.get("/devices")
@@ -1055,29 +1070,77 @@ class GoveeShell:
                 self._append_output("[yellow]No devices found[/]\n")
                 return
 
+            # Apply filters if provided
+            if filter_id:
+                devices = [d for d in devices if filter_id.lower() in d.get("id", "").lower()]
+            if filter_ip:
+                devices = [d for d in devices if filter_ip in d.get("ip", "")]
+            if filter_state:
+                state_lower = filter_state.lower()
+                filtered = []
+                for d in devices:
+                    is_offline = d.get("offline", False)
+                    is_enabled = d.get("enabled", False)
+                    is_configured = d.get("configured", False)
+
+                    # Determine device state
+                    if state_lower == "active" and not is_offline and is_configured and is_enabled:
+                        filtered.append(d)
+                    elif state_lower == "disabled" and not is_enabled:
+                        filtered.append(d)
+                    elif state_lower == "offline" and is_offline:
+                        filtered.append(d)
+                devices = filtered
+
+            if not devices:
+                self._append_output("[yellow]No devices match the filters[/]\n")
+                return
+
             # Create simplified table
             table = Table(title="Devices", show_header=True, header_style="bold cyan", box=box.ROUNDED)
             table.add_column("ID", style="cyan", width=20, no_wrap=True)
             table.add_column("Model", style="yellow", width=15)
             table.add_column("IP Address", style="green", width=15)
             table.add_column("Enabled", style="magenta", width=8, justify="center")
-            table.add_column("Source", style="blue", width=10)
+            table.add_column("Configured", style="blue", width=11, justify="center")
+            table.add_column("State", style="white", width=20)
 
             # Add device rows
             for device in devices:
-                device_id = device.get("device_id", "N/A")[:20]  # Truncate long IDs
-                model = device.get("model", "Unknown")
-                ip_address = device.get("ip_address", "N/A")
+                device_id = device.get("id", "N/A")[:20]  # Truncate long IDs
+                model = device.get("model_number", "Unknown")
+                ip_address = device.get("ip", "N/A")
                 enabled = "✓" if device.get("enabled", False) else "✗"
                 enabled_style = "green" if device.get("enabled", False) else "red"
-                source = device.get("source", "unknown")
+                configured = "✓" if device.get("configured", False) else "✗"
+                configured_style = "green" if device.get("configured", False) else "red"
+
+                # Determine state(s)
+                states = []
+                is_offline = device.get("offline", False)
+                is_enabled = device.get("enabled", False)
+                is_configured = device.get("configured", False)
+
+                if not is_offline and is_configured and is_enabled:
+                    states.append(("[green]", "Active"))
+                if not is_enabled:
+                    states.append(("[yellow]", "Disabled"))
+                if is_offline:
+                    states.append(("[red]", "Offline"))
+
+                # Format state column
+                if states:
+                    state_str = " / ".join([f"{color}{state}[/]" for color, state in states])
+                else:
+                    state_str = "[dim]Unknown[/]"
 
                 table.add_row(
                     device_id,
                     model,
                     ip_address,
                     f"[{enabled_style}]{enabled}[/]",
-                    source
+                    f"[{configured_style}]{configured}[/]",
+                    state_str
                 )
 
             self._append_output(table)
@@ -1086,13 +1149,134 @@ class GoveeShell:
         except Exception as exc:
             self._append_output(f"[red]Error fetching devices: {exc}[/]\n")
 
+    def _show_devices_detailed(self, filter_id: Optional[str] = None, filter_ip: Optional[str] = None, filter_state: Optional[str] = None) -> None:
+        """Show devices in detailed card format with colors.
+
+        Args:
+            filter_id: Optional filter by device ID (MAC address)
+            filter_ip: Optional filter by IP address
+            filter_state: Optional filter by state (active, disabled, offline)
+        """
+        try:
+            # Fetch devices from API
+            response = self.client.get("/devices")
+            devices = _handle_response(response)
+
+            if not devices:
+                self._append_output("[yellow]No devices found[/]\n")
+                return
+
+            # Apply filters if provided
+            if filter_id:
+                devices = [d for d in devices if filter_id.lower() in d.get("id", "").lower()]
+            if filter_ip:
+                devices = [d for d in devices if filter_ip in d.get("ip", "")]
+            if filter_state:
+                state_lower = filter_state.lower()
+                filtered = []
+                for d in devices:
+                    is_offline = d.get("offline", False)
+                    is_enabled = d.get("enabled", False)
+                    is_configured = d.get("configured", False)
+
+                    # Determine device state
+                    if state_lower == "active" and not is_offline and is_configured and is_enabled:
+                        filtered.append(d)
+                    elif state_lower == "disabled" and not is_enabled:
+                        filtered.append(d)
+                    elif state_lower == "offline" and is_offline:
+                        filtered.append(d)
+                devices = filtered
+
+            if not devices:
+                self._append_output("[yellow]No devices match the filters[/]\n")
+                return
+
+            # Print each device as a card
+            for idx, device in enumerate(devices):
+                # Create a table for this device
+                table = Table(show_header=False, box=None, padding=(0, 1))
+                table.add_column("Field", style="bold cyan", width=20)
+                table.add_column("Value", style="yellow")
+
+                # Key fields to display in order with colors
+                key_fields = [
+                    ("ID", "id"),
+                    ("IP", "ip"),
+                    ("Model", "model_number"),
+                    ("Type", "device_type"),
+                    ("Description", "description"),
+                    ("Enabled", "enabled"),
+                    ("Manual", "manual"),
+                    ("Discovered", "discovered"),
+                    ("Configured", "configured"),
+                    ("Offline", "offline"),
+                    ("Stale", "stale"),
+                ]
+
+                # Add key fields with appropriate colors
+                for label, key in key_fields:
+                    if key in device and device[key] is not None:
+                        value = device[key]
+                        if isinstance(value, bool):
+                            value_str = "✓" if value else "✗"
+                            # Color coding for boolean values
+                            if key in ("enabled", "configured", "discovered", "manual"):
+                                style = "green" if value else "red"
+                            elif key in ("offline", "stale"):
+                                style = "red" if value else "green"
+                            else:
+                                style = "green" if value else "red"
+                            table.add_row(f"[bold cyan]{label}[/]", f"[{style}]{value_str}[/]")
+                        else:
+                            table.add_row(f"[bold cyan]{label}[/]", str(value))
+
+                # Add capabilities as JSON if present
+                if "capabilities" in device and device["capabilities"]:
+                    import json
+                    caps_str = json.dumps(device["capabilities"], indent=2) if isinstance(device["capabilities"], dict) else str(device["capabilities"])
+                    table.add_row("[bold cyan]Capabilities[/]", caps_str)
+
+                # Add metadata fields if present
+                metadata_fields = [
+                    ("LED Count", "led_count"),
+                    ("Length (m)", "length_meters"),
+                    ("Segments", "segment_count"),
+                    ("Last Seen", "last_seen"),
+                    ("First Seen", "first_seen"),
+                ]
+
+                for label, key in metadata_fields:
+                    if key in device and device[key] is not None:
+                        table.add_row(f"[bold cyan]{label}[/]", str(device[key]))
+
+                # Print device header and table
+                header_text = f"[bold magenta]Device {idx + 1} of {len(devices)}[/]"
+                self._append_output(header_text + "\n")
+                self._append_output(table)
+
+                # Add separator between devices
+                if idx < len(devices) - 1:
+                    self._append_output("\n[dim]" + "─" * 80 + "[/]\n")
+
+            self._append_output(f"\n[dim]Total: {len(devices)} device(s).[/]\n")
+
+        except Exception as exc:
+            self._append_output(f"[red]Error fetching devices: {exc}[/]\n")
+
     def do_devices(self, arg: str) -> None:
         """
         Device commands: list, list detailed, enable, disable.
-        Usage: devices list              # Show simplified 2-line view
-               devices list detailed     # Show full device details
+        Usage: devices list [--id ID] [--ip IP] [--state STATE]              # Show simplified 2-line view
+               devices list detailed [--id ID] [--ip IP] [--state STATE]     # Show full device details
                devices enable <device_id>
                devices disable <device_id>
+        Examples:
+            devices list
+            devices list --id AA:BB:CC
+            devices list --ip 192.168.1.100
+            devices list --state active
+            devices list detailed --state offline
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -1107,13 +1291,34 @@ class GoveeShell:
 
         try:
             if command == "list":
+                # Parse optional filter parameters
+                filter_id = None
+                filter_ip = None
+                filter_state = None
+                is_detailed = False
+
+                i = 1
+                while i < len(args):
+                    if args[i] == "detailed":
+                        is_detailed = True
+                    elif args[i] == "--id" and i + 1 < len(args):
+                        filter_id = args[i + 1]
+                        i += 1
+                    elif args[i] == "--ip" and i + 1 < len(args):
+                        filter_ip = args[i + 1]
+                        i += 1
+                    elif args[i] == "--state" and i + 1 < len(args):
+                        filter_state = args[i + 1]
+                        i += 1
+                    i += 1
+
                 # Check if "detailed" subcommand was provided
-                if len(args) > 1 and args[1] == "detailed":
-                    # Show full detailed view
-                    self._capture_api_output(_api_get, self.client, "/devices", self.config)
+                if is_detailed:
+                    # Show full detailed view with filters
+                    self._show_devices_detailed(filter_id, filter_ip, filter_state)
                 else:
-                    # Show simplified 2-line view
-                    self._show_devices_simple()
+                    # Show simplified 2-line view with filters
+                    self._show_devices_simple(filter_id, filter_ip, filter_state)
             elif command == "enable" and len(args) >= 2:
                 device_id = args[1]
                 self._capture_api_output(_device_set_enabled, self.client, device_id, True, self.config)
@@ -1858,7 +2063,7 @@ class GoveeShell:
         help_table.add_row(
             "devices",
             "Manage devices",
-            "devices list\ndevices enable <id>\ndevices disable <id>"
+            "devices list\ndevices list --state active\ndevices list detailed --id AA:BB\ndevices enable <id>\ndevices disable <id>"
         )
         help_table.add_row(
             "mappings",
@@ -1904,11 +2109,6 @@ class GoveeShell:
             "output",
             "Set output format",
             "output table\noutput json\noutput yaml"
-        )
-        help_table.add_row(
-            "console",
-            "Configure console settings",
-            "console pagination 20\nconsole pagination off\nconsole pagination auto"
         )
         help_table.add_row(
             "version",
