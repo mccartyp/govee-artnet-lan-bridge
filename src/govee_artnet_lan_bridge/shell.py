@@ -7,6 +7,7 @@ import os
 import shlex
 import sys
 import time
+from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -365,6 +366,40 @@ class GoveeShell:
             for key in keys_to_remove:
                 del self.cache.cache[key]
             self.cache.stats["size"] = len(self.cache.cache)
+
+    def _paginate_text(self, text: str) -> None:
+        """
+        Print text with optional pagination based on config.
+
+        Args:
+            text: Text to print
+        """
+        if not self.config.page_size:
+            # No pagination
+            sys.stdout.write(text)
+            sys.stdout.flush()
+            return
+
+        lines = text.split("\n")
+        line_count = 0
+
+        for line in lines:
+            sys.stdout.write(line + "\n")
+            line_count += 1
+
+            if line_count >= self.config.page_size and line_count < len(lines) - 1:
+                # Pause for user input
+                try:
+                    response = input("\n[Press Enter to continue, 'q' to quit] ")
+                    if response.lower().startswith('q'):
+                        sys.stdout.write("\n[Output truncated]\n")
+                        return
+                    line_count = 0
+                except (KeyboardInterrupt, EOFError):
+                    sys.stdout.write("\n[Output interrupted]\n")
+                    return
+
+        sys.stdout.flush()
 
     def precmd(self, line: str) -> str:
         """Preprocess commands to expand aliases."""
@@ -1201,13 +1236,32 @@ class GoveeShell:
         """Show help for commands with examples."""
         if arg:
             # Show help for specific command
-            super().do_help(arg)
+            handler = self.commands.get(arg)
+            if handler:
+                # Get the docstring from the handler
+                docstring = handler.__doc__
+                if docstring:
+                    help_text = f"\nHelp for command '{arg}':\n\n{docstring}\n"
+                else:
+                    help_text = f"\nNo help available for command '{arg}'\n"
+
+                # Apply pagination if configured
+                self._paginate_text(help_text)
+            else:
+                self.console.print(f"[red]Unknown command: {arg}[/]")
+                self.console.print("[dim]Type 'help' to see all available commands.[/]")
             return
 
         # Show enhanced help with examples using rich
-        self.console.print()
-        self.console.rule("[bold cyan]Govee ArtNet Bridge Shell - Command Reference")
-        self.console.print()
+        # Capture output to a string buffer for pagination
+        buffer = StringIO()
+        temp_console = Console(file=buffer, force_terminal=False, width=self.console.width)
+
+        temp_console.print()
+        temp_console.print("═" * 80)
+        temp_console.print("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan", justify="center")
+        temp_console.print("═" * 80)
+        temp_console.print()
 
         # Create help table
         help_table = Table(show_header=True, header_style="bold magenta", show_lines=True)
@@ -1307,10 +1361,14 @@ class GoveeShell:
             "exit"
         )
 
-        self.console.print(help_table)
-        self.console.print()
-        self.console.print("[dim]Type 'help <command>' for detailed help on a specific command.[/]")
-        self.console.print()
+        temp_console.print(help_table)
+        temp_console.print()
+        temp_console.print("Type 'help <command>' for detailed help on a specific command.", style="dim")
+        temp_console.print()
+
+        # Get the buffered output and paginate it
+        help_text = buffer.getvalue()
+        self._paginate_text(help_text)
 
     def do_version(self, arg: str) -> None:
         """Show shell version information."""
