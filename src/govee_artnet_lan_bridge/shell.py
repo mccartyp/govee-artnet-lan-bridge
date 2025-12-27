@@ -1060,7 +1060,7 @@ class GoveeShell:
 
                 data = _handle_response(self.client.get("/logs/search", params=params))
                 self._append_output(f"[cyan]Found {data['count']} matching log entries:[/]" + "\n")
-                _print_output(data["logs"], self.config.output)
+                self._capture_api_output(_print_output, data["logs"], self.config.output)
 
             else:
                 # Regular log view
@@ -1085,7 +1085,7 @@ class GoveeShell:
 
                 data = _handle_response(self.client.get("/logs", params=params))
                 self._append_output(f"[cyan]Showing {data['lines']} of {data['total']} log entries:[/]" + "\n")
-                _print_output(data["logs"], self.config.output)
+                self._capture_api_output(_print_output, data["logs"], self.config.output)
 
         except Exception as exc:
             self._handle_error(exc, "logs")
@@ -1200,9 +1200,9 @@ class GoveeShell:
         """Display live dashboard with system status using rich formatting."""
         try:
             # Get health and status
-            with self.console.status("[bold cyan]Fetching dashboard data...", spinner="dots"):
-                health_data = _handle_response(self.client.get("/health"))
-                status_data = _handle_response(self.client.get("/status"))
+            self._append_output("[bold cyan]Fetching dashboard data...[/]\n")
+            health_data = _handle_response(self.client.get("/health"))
+            status_data = _handle_response(self.client.get("/status"))
 
             # Overall status
             overall_status = health_data.get("status", "unknown")
@@ -1210,11 +1210,12 @@ class GoveeShell:
             status_indicator = "✓" if overall_status == "ok" else "✗"
 
             # Create header
-            self._append_output( + "\n")
-            self.console.rule("[bold cyan]Govee ArtNet Bridge - Dashboard")
-            self._append_output( + "\n")
+            self._append_output("\n")
+            self._append_output("[bold cyan]" + "═" * 60 + "[/]\n")
+            self._append_output("[bold cyan]Govee ArtNet Bridge - Dashboard[/]\n")
+            self._append_output("[bold cyan]" + "═" * 60 + "[/]\n")
             self._append_output(f"Status: [{status_style}]{status_indicator} {overall_status.upper()}[/]" + "\n")
-            self._append_output( + "\n")
+            self._append_output("\n")
 
             # Devices table
             devices_table = Table(title="Devices", show_header=True, header_style="bold magenta")
@@ -1228,13 +1229,13 @@ class GoveeShell:
             devices_table.add_row("[bold]Total[/]", f"[bold]{discovered_count + manual_count}[/]")
 
             self._append_output(devices_table + "\n")
-            self._append_output( + "\n")
+            self._append_output("\n")
 
             # Queue info
             queue_depth = status_data.get("queue_depth", 0)
             queue_style = "green" if queue_depth < 100 else "yellow" if queue_depth < 500 else "red"
             self._append_output(f"Message Queue Depth: [{queue_style}]{queue_depth}[/]" + "\n")
-            self._append_output( + "\n")
+            self._append_output("\n")
 
             # Subsystems table
             subsystems = health_data.get("subsystems", {})
@@ -1250,7 +1251,7 @@ class GoveeShell:
                     subsystems_table.add_row(name, f"[{status_style}]{indicator} {sub_status}[/]")
 
                 self._append_output(subsystems_table + "\n")
-                self._append_output( + "\n")
+                self._append_output("\n")
 
         except Exception as exc:
             self._append_output(f"[bold red]Error fetching dashboard:[/] {exc}" + "\n")
@@ -1260,7 +1261,7 @@ class GoveeShell:
         self._append_output("[cyan]Fetching statistics...[/]" + "\n")
         try:
             status_data = _handle_response(self.client.get("/status"))
-            _print_output(status_data, self.config.output)
+            self._capture_api_output(_print_output, status_data, self.config.output)
         except Exception as exc:
             self._append_output(f"[red]Error fetching stats: {exc}[/]" + "\n")
 
@@ -1557,7 +1558,7 @@ class GoveeShell:
         interval = float(args[1]) if len(args) > 1 else DEFAULT_WATCH_INTERVAL
 
         self._append_output(f"[cyan]Watching {command} (Press Ctrl+C to stop, updating every {interval}s)[/]" + "\n")
-        self._append_output( + "\n")
+        self._append_output("\n")
 
         try:
             import time
@@ -1613,7 +1614,7 @@ class GoveeShell:
                 lines = f.readlines()
 
             self._append_output(f"[cyan]Executing {len(lines)} commands from {filename}[/]" + "\n")
-            self._append_output( + "\n")
+            self._append_output("\n")
 
             for i, line in enumerate(lines, 1):
                 line = line.strip()
@@ -1624,7 +1625,7 @@ class GoveeShell:
 
                 self._append_output(f"[dim]({i}) {line}[/]" + "\n")
                 self.onecmd(line)
-                self._append_output( + "\n")
+                self._append_output("\n")
 
             self._append_output("[green]Batch execution complete[/]" + "\n")
 
