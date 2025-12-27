@@ -236,7 +236,7 @@ class GoveeShell:
         # Auto-detect terminal height for default pagination
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 2)
+        default_page_size = max(10, terminal_height - 5)
 
         defaults = {
             "shell": {
@@ -912,7 +912,7 @@ class GoveeShell:
         elif setting == "auto":
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            page_size = max(10, terminal_height - 2)
+            page_size = max(10, terminal_height - 5)
         else:
             try:
                 page_size = int(setting)
