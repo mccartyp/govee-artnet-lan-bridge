@@ -359,7 +359,7 @@ class GoveeShell:
                 'enable': None,
                 'disable': None
             },
-            'mappings': {'list': None, 'get': None, 'delete': None, 'channel-map': None},
+            'mappings': {'list': None, 'get': None, 'create': None, 'delete': None, 'channel-map': None},
             'channels': {'list': None},
             'logs': {'stats': None},
             'monitor': {'status': None, 'dashboard': None},
@@ -614,13 +614,10 @@ class GoveeShell:
             buffer: Input buffer
 
         Returns:
-            True to keep the buffer text, False to clear it
+            True to clear buffer and save to history, False to keep buffer text
         """
         # Get command text
         line = buffer.text
-
-        # Clear the buffer immediately
-        buffer.reset()
 
         # Process command
         if line and not line.isspace():
@@ -636,7 +633,7 @@ class GoveeShell:
             if stop:
                 self.app.exit(result=True)
 
-        return False  # Buffer already cleared
+        return True  # Let prompt_toolkit clear buffer and save to history
 
     def _connect(self) -> None:
         """Establish connection to the bridge server."""
@@ -1484,13 +1481,171 @@ class GoveeShell:
         except Exception as exc:
             self._append_output(f"[red]Error fetching mappings: {exc}[/]\n")
 
+    def _create_mapping(self, args: list[str]) -> None:
+        """
+        Create a new mapping with template or manual configuration.
+
+        Args:
+            args: Command line arguments for mapping creation
+        """
+        # Parse arguments
+        device_id = None
+        universe = None
+        start_channel = None
+        channel = None
+        length = None
+        mapping_type = None
+        field = None
+        template = None
+        allow_overlap = False
+
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg == "--help":
+                self._append_output("[cyan]Mappings Create Help[/]\n")
+                self._append_output("\n[bold]Template-based (recommended):[/]\n")
+                self._append_output("  mappings create --device-id <id> --universe <num> --template <name> --start-channel <num>\n")
+                self._append_output("\n[bold]Available templates:[/]\n")
+                self._append_output("  • rgb        - 3 channels (red, green, blue)\n")
+                self._append_output("  • rgbw       - 4 channels (red, green, blue, white)\n")
+                self._append_output("  • brightness - 1 channel (brightness)\n")
+                self._append_output("  • temperature - 1 channel (color temperature)\n")
+                self._append_output("\n[bold]Manual configuration:[/]\n")
+                self._append_output("  mappings create --device-id <id> --universe <num> --channel <num> --length <num> --type <type> --field <field>\n")
+                self._append_output("\n[bold]Examples:[/]\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --universe 0 --template rgb --start-channel 1\n")
+                self._append_output("  mappings create --device-id @kitchen --universe 0 --template rgbw --start-channel 10\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --universe 0 --channel 1 --length 3 --type color --field rgb\n")
+                return
+            elif arg == "--device-id" and i + 1 < len(args):
+                device_id = self._resolve_bookmark(args[i + 1])
+                i += 2
+            elif arg == "--universe" and i + 1 < len(args):
+                try:
+                    universe = int(args[i + 1])
+                except ValueError:
+                    self._append_output(f"[red]Invalid universe number: {args[i + 1]}[/]\n")
+                    return
+                i += 2
+            elif arg == "--start-channel" and i + 1 < len(args):
+                try:
+                    start_channel = int(args[i + 1])
+                except ValueError:
+                    self._append_output(f"[red]Invalid start channel: {args[i + 1]}[/]\n")
+                    return
+                i += 2
+            elif arg == "--channel" and i + 1 < len(args):
+                try:
+                    channel = int(args[i + 1])
+                except ValueError:
+                    self._append_output(f"[red]Invalid channel: {args[i + 1]}[/]\n")
+                    return
+                i += 2
+            elif arg == "--length" and i + 1 < len(args):
+                try:
+                    length = int(args[i + 1])
+                except ValueError:
+                    self._append_output(f"[red]Invalid length: {args[i + 1]}[/]\n")
+                    return
+                i += 2
+            elif arg == "--type" and i + 1 < len(args):
+                mapping_type = args[i + 1]
+                i += 2
+            elif arg == "--field" and i + 1 < len(args):
+                field = args[i + 1]
+                i += 2
+            elif arg == "--template" and i + 1 < len(args):
+                template = args[i + 1]
+                i += 2
+            elif arg == "--allow-overlap":
+                allow_overlap = True
+                i += 1
+            else:
+                self._append_output(f"[red]Unknown argument: {arg}[/]\n")
+                self._append_output("[yellow]Use 'mappings create --help' for usage information[/]\n")
+                return
+
+        # Validate required fields
+        if not device_id:
+            self._append_output("[red]Error: --device-id is required[/]\n")
+            return
+        if universe is None:
+            self._append_output("[red]Error: --universe is required[/]\n")
+            return
+
+        # Build payload
+        payload: dict[str, Any] = {
+            "device_id": device_id,
+            "universe": universe,
+            "allow_overlap": allow_overlap,
+        }
+
+        if template:
+            # Template-based mapping
+            if template not in {"rgb", "rgbw", "brightness", "temperature"}:
+                self._append_output(f"[red]Invalid template: {template}[/]\n")
+                self._append_output("[yellow]Valid templates: rgb, rgbw, brightness, temperature[/]\n")
+                return
+
+            if start_channel is None and channel is None:
+                self._append_output("[red]Error: --start-channel (or --channel) is required when using a template[/]\n")
+                return
+
+            payload["template"] = template
+            payload["start_channel"] = start_channel if start_channel is not None else channel
+            if channel is not None:
+                payload["channel"] = channel
+        else:
+            # Manual mapping
+            if channel is None:
+                if start_channel is not None:
+                    channel = start_channel
+                else:
+                    self._append_output("[red]Error: --channel is required when not using a template[/]\n")
+                    return
+
+            payload["channel"] = channel
+            payload["length"] = length if length is not None else 1
+
+            if mapping_type:
+                payload["mapping_type"] = mapping_type
+            if field:
+                payload["field"] = field
+
+        # Create the mapping
+        try:
+            response = self.client.post("/mappings", json=payload)
+            data = _handle_response(response)
+
+            # Invalidate caches
+            self._invalidate_cache("/mappings")
+            self._invalidate_cache("/channel-map")
+
+            # Show success message with details
+            if template:
+                self._append_output(f"[green]✓ Created {template} mapping for device {device_id}[/]\n")
+            else:
+                self._append_output(f"[green]✓ Created mapping for device {device_id}[/]\n")
+
+            # Show the created mapping details
+            self._append_output(f"[dim]Mapping ID: {data.get('id', 'N/A')}[/]\n")
+            if isinstance(data, list):
+                self._append_output(f"[dim]Created {len(data)} channel mappings[/]\n")
+
+        except Exception as exc:
+            self._append_output(f"[red]Error creating mapping: {exc}[/]\n")
+
     def do_mappings(self, arg: str) -> None:
         """
-        Mapping commands: list, get, delete, channel-map.
+        Mapping commands: list, get, create, delete, channel-map.
         Usage: mappings list
                mappings get <id>
+               mappings create --device-id <id> --universe <num> --template <name> --start-channel <num>
+               mappings create --device-id <id> --universe <num> --channel <num> --length <num> --type <type> --field <field>
                mappings delete <id>
                mappings channel-map
+        Templates: rgb, rgbw, brightness, temperature
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -1509,6 +1664,8 @@ class GoveeShell:
             elif command == "get" and len(args) >= 2:
                 mapping_id = args[1]
                 self._capture_api_output(_api_get_by_id, self.client, "/mappings", mapping_id, self.config)
+            elif command == "create":
+                self._create_mapping(args[1:])
             elif command == "delete" and len(args) >= 2:
                 mapping_id = args[1]
                 self._capture_api_output(_api_delete, self.client, "/mappings", mapping_id, self.config)
@@ -1520,7 +1677,7 @@ class GoveeShell:
                 self._capture_api_output(_api_get, self.client, "/channel-map", self.config)
             else:
                 self._append_output(f"[red]Unknown or incomplete command: mappings {arg}[/]" + "\n")
-                self._append_output("[yellow]Try: mappings list, mappings get <id>, mappings delete <id>, mappings channel-map[/]" + "\n")
+                self._append_output("[yellow]Try: mappings list, mappings get <id>, mappings create --help, mappings delete <id>, mappings channel-map[/]" + "\n")
         except Exception as exc:
             self._handle_error(exc, "mappings")
 
@@ -2317,11 +2474,9 @@ class GoveeShell:
         buffer = StringIO()
         temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
 
-        temp_console.print()
-        temp_console.print("═" * 80)
+        temp_console.print("═" * self.console.width)
         temp_console.print("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan", justify="center")
-        temp_console.print("═" * 80)
-        temp_console.print()
+        temp_console.print("═" * self.console.width)
 
         # Create help table
         help_table = Table(show_header=True, header_style="bold magenta", show_lines=True, box=box.ROUNDED)
@@ -2353,7 +2508,7 @@ class GoveeShell:
         help_table.add_row(
             "mappings",
             "Manage ArtNet mappings",
-            "mappings list\nmappings get <id>\nmappings delete <id>"
+            "mappings list\nmappings get <id>\nmappings create --help\nmappings delete <id>"
         )
         help_table.add_row(
             "channels",
@@ -2422,9 +2577,8 @@ class GoveeShell:
         )
 
         temp_console.print(help_table)
-        temp_console.print()
         temp_console.print("Type 'help <command>' for detailed help on a specific command.", style="dim")
-        temp_console.print()
+        temp_console.print("═" * self.console.width)
 
         # Append to output buffer (already ANSI-formatted)
         output = buffer.getvalue()
