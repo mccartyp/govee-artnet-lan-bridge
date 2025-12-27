@@ -46,6 +46,33 @@ DEFAULT_LOG_LINES = 50
 # Cache configuration
 DEFAULT_CACHE_TTL = 5.0  # Default cache TTL in seconds
 
+
+def _getch() -> str:
+    """
+    Read a single character from stdin without requiring Enter.
+    Cross-platform implementation (Unix/Windows).
+
+    Returns:
+        Single character string
+    """
+    try:
+        # Unix/Linux/MacOS
+        import tty
+        import termios
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+    except (ImportError, AttributeError):
+        # Windows
+        import msvcrt
+        return msvcrt.getch().decode('utf-8')
+
+
 # Toolbar styling for prompt_toolkit
 TOOLBAR_STYLE = Style.from_dict({
     #"toolbar": "bg:#2e3440",  # Dark background for entire toolbar
@@ -306,10 +333,10 @@ class GoveeShell:
             Configuration dictionary with defaults
         """
         # Auto-detect terminal height for default pagination
-        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line) + blank line before pagination prompt (1 line)
+        # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (2 lines) + safety margin for line wrapping (2 lines)
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 6)
+        default_page_size = max(10, terminal_height - 8)
 
         defaults = {
             "shell": {
@@ -385,8 +412,8 @@ class GoveeShell:
         if self.auto_pagination:
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (1 line) + blank line before pagination prompt (1 line)
-            new_page_size = max(10, terminal_height - 6)
+            # Reserve space for: toolbar (3 lines) + prompt (1 line) + pagination prompt (2 lines) + safety margin for line wrapping (2 lines)
+            new_page_size = max(10, terminal_height - 8)
 
             # Update config with new page size
             self.config = ClientConfig(
@@ -663,11 +690,19 @@ class GoveeShell:
             if line_count >= self.config.page_size and i < len(lines) - 1:
                 # Pause for user input with less-style controls
                 try:
-                    response = input("\n[Space=page, Enter=line, q=quit] ")
-                    if response.lower().startswith('q'):
+                    # Print prompt and read single character
+                    sys.stdout.write("\n[Space=page, Enter=line, q=quit] ")
+                    sys.stdout.flush()
+                    response = _getch()
+
+                    # Clear the prompt line
+                    sys.stdout.write('\r' + ' ' * 40 + '\r')
+                    sys.stdout.flush()
+
+                    if response.lower() == 'q':
                         self.console.print("\n[Output truncated]")
                         return
-                    elif response == '':
+                    elif response in ('\r', '\n'):
                         # Enter pressed - advance one line
                         # Set line_count so next iteration shows 1 line then pauses
                         line_count = self.config.page_size - 1
