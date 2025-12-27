@@ -293,10 +293,10 @@ class GoveeShell:
             # Test connection
             response = self.client.get("/health")
             response.raise_for_status()
-            print(f"Connected to {self.config.server_url}")
+            self.console.print(f"[green]Connected to {self.config.server_url}[/]")
         except Exception as exc:
-            print(f"Warning: Could not connect to {self.config.server_url}: {exc}")
-            print("Some commands may not work. Use 'connect' to retry.")
+            self.console.print(f"[yellow]Warning: Could not connect to {self.config.server_url}: {exc}[/]")
+            self.console.print("[dim]Some commands may not work. Use 'connect' to retry.[/]")
             self.client = None
 
     def _handle_error(self, exc: Exception, context: str = "") -> None:
@@ -401,6 +401,64 @@ class GoveeShell:
 
         sys.stdout.flush()
 
+    def _format_command_help(self, command: str, docstring: str) -> str:
+        """
+        Format command help with colors and styling using rich.
+
+        Args:
+            command: The command name
+            docstring: The command's docstring
+
+        Returns:
+            Formatted help text with ANSI color codes
+        """
+        from io import StringIO
+        buffer = StringIO()
+        temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
+
+        # Print header
+        temp_console.print()
+        temp_console.print("─" * 80, style="dim")
+        temp_console.print(f"Help for command: {command}", style="bold cyan")
+        temp_console.print("─" * 80, style="dim")
+        temp_console.print()
+
+        # Parse and format the docstring
+        lines = docstring.strip().split("\n")
+        in_usage = False
+        in_examples = False
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Check for section headers
+            if stripped.startswith("Usage:"):
+                in_usage = True
+                in_examples = False
+                temp_console.print(stripped, style="bold green")
+            elif stripped.startswith("Examples:"):
+                in_usage = False
+                in_examples = True
+                temp_console.print()
+                temp_console.print(stripped, style="bold green")
+            elif not stripped:
+                # Blank line
+                temp_console.print()
+                in_usage = False
+                in_examples = False
+            elif in_usage:
+                # Usage lines - highlight command syntax
+                temp_console.print(f"  {stripped}", style="yellow")
+            elif in_examples:
+                # Example lines - highlight examples
+                temp_console.print(f"  {stripped}", style="cyan")
+            else:
+                # Description text
+                temp_console.print(stripped, style="white")
+
+        temp_console.print()
+        return buffer.getvalue()
+
     def precmd(self, line: str) -> str:
         """Preprocess commands to expand aliases."""
         if not line:
@@ -436,12 +494,12 @@ class GoveeShell:
         if self.client:
             self.client.close()
             self.client = None
-            print("Disconnected")
+            self.console.print("[yellow]Disconnected[/]")
 
     def do_status(self, arg: str) -> None:
         """Show connection status and bridge status."""
         if not self.client:
-            print(f"Not connected. Server URL: {self.config.server_url}")
+            self.console.print(f"[red]Not connected.[/] [dim]Server URL: {self.config.server_url}[/]")
             return
 
         try:
@@ -468,12 +526,12 @@ class GoveeShell:
                devices disable <device_id>
         """
         if not self.client:
-            print("Not connected. Use 'connect' first.")
+            self.console.print("[red]Not connected. Use 'connect' first.[/]")
             return
 
         args = shlex.split(arg)
         if not args:
-            print("Usage: devices <command> [args...]")
+            self.console.print("[yellow]Usage: devices <command> [args...][/]")
             return
 
         command = args[0]
@@ -492,8 +550,8 @@ class GoveeShell:
                 # Invalidate devices cache after mutation
                 self._invalidate_cache("/devices")
             else:
-                print(f"Unknown or incomplete command: devices {arg}")
-                print("Try: devices list, devices enable <id>, devices disable <id>")
+                self.console.print(f"[red]Unknown or incomplete command: devices {arg}[/]")
+                self.console.print("[yellow]Try: devices list, devices enable <id>, devices disable <id>[/]")
         except Exception as exc:
             self._handle_error(exc, "devices")
 
@@ -506,12 +564,12 @@ class GoveeShell:
                mappings channel-map
         """
         if not self.client:
-            print("Not connected. Use 'connect' first.")
+            self.console.print("[red]Not connected. Use 'connect' first.[/]")
             return
 
         args = shlex.split(arg)
         if not args:
-            print("Usage: mappings <command> [args...]")
+            self.console.print("[yellow]Usage: mappings <command> [args...][/]")
             return
 
         command = args[0]
@@ -528,12 +586,12 @@ class GoveeShell:
                 # Invalidate mappings cache after mutation
                 self._invalidate_cache("/mappings")
                 self._invalidate_cache("/channel-map")
-                print(f"Mapping {mapping_id} deleted")
+                self.console.print(f"[green]Mapping {mapping_id} deleted[/]")
             elif command == "channel-map":
                 _api_get(self.client, "/channel-map", self.config)
             else:
-                print(f"Unknown or incomplete command: mappings {arg}")
-                print("Try: mappings list, mappings get <id>, mappings delete <id>, mappings channel-map")
+                self.console.print(f"[red]Unknown or incomplete command: mappings {arg}[/]")
+                self.console.print("[yellow]Try: mappings list, mappings get <id>, mappings delete <id>, mappings channel-map[/]")
         except Exception as exc:
             self._handle_error(exc, "mappings")
 
@@ -554,7 +612,7 @@ class GoveeShell:
             logs search "error.*timeout" --regex
         """
         if not self.client:
-            print("Not connected. Use 'connect' first.")
+            self.console.print("[red]Not connected. Use 'connect' first.[/]")
             return
 
         args = shlex.split(arg)
@@ -568,7 +626,7 @@ class GoveeShell:
             # Check if this is a search command
             if args and args[0] == "search":
                 if len(args) < 2:
-                    print("Usage: logs search PATTERN [--regex] [--case-sensitive] [--lines N]")
+                    self.console.print("[yellow]Usage: logs search PATTERN [--regex] [--case-sensitive] [--lines N][/]")
                     return
 
                 pattern = args[1]
@@ -587,7 +645,7 @@ class GoveeShell:
                     i += 1
 
                 data = _handle_response(self.client.get("/logs/search", params=params))
-                print(f"Found {data['count']} matching log entries:")
+                self.console.print(f"[cyan]Found {data['count']} matching log entries:[/]")
                 _print_output(data["logs"], self.config.output)
 
             else:
@@ -612,7 +670,7 @@ class GoveeShell:
                     i += 1
 
                 data = _handle_response(self.client.get("/logs", params=params))
-                print(f"Showing {data['lines']} of {data['total']} log entries:")
+                self.console.print(f"[cyan]Showing {data['lines']} of {data['total']} log entries:[/]")
                 _print_output(data["logs"], self.config.output)
 
         except Exception as exc:
@@ -629,8 +687,8 @@ class GoveeShell:
         try:
             import websockets.sync.client as ws_client
         except ImportError:
-            print("Error: websockets library not installed")
-            print("Install with: pip install websockets")
+            self.console.print("[red]Error: websockets library not installed[/]")
+            self.console.print("[yellow]Install with: pip install websockets[/]")
             return
 
         # Parse filters
@@ -651,12 +709,12 @@ class GoveeShell:
         ws_url = self.config.server_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url += "/logs/stream"
 
-        print("Streaming logs (Press Ctrl+C to stop)...")
+        self.console.print("[cyan]Streaming logs (Press Ctrl+C to stop)...[/]")
         if level_filter:
-            print(f"  Level filter: {level_filter}")
+            self.console.print(f"[dim]  Level filter: {level_filter}[/]")
         if logger_filter:
-            print(f"  Logger filter: {logger_filter}")
-        print()
+            self.console.print(f"[dim]  Logger filter: {logger_filter}[/]")
+        self.console.print()
 
         try:
             with ws_client.connect(ws_url) as websocket:
@@ -692,9 +750,9 @@ class GoveeShell:
                         continue
 
         except KeyboardInterrupt:
-            print("\nStopped tailing logs")
+            self.console.print("\n[yellow]Stopped tailing logs[/]")
         except Exception as exc:
-            print(f"Error streaming logs: {exc}")
+            self.console.print(f"[red]Error streaming logs: {exc}[/]")
 
     def do_monitor(self, arg: str) -> None:
         """
@@ -703,12 +761,12 @@ class GoveeShell:
                monitor stats
         """
         if not self.client:
-            print("Not connected. Use 'connect' first.")
+            self.console.print("[red]Not connected. Use 'connect' first.[/]")
             return
 
         args = shlex.split(arg)
         if not args:
-            print("Usage: monitor dashboard|stats")
+            self.console.print("[yellow]Usage: monitor dashboard|stats[/]")
             return
 
         command = args[0]
@@ -719,8 +777,8 @@ class GoveeShell:
             elif command == "stats":
                 self._monitor_stats()
             else:
-                print(f"Unknown monitor command: {command}")
-                print("Try: monitor dashboard, monitor stats")
+                self.console.print(f"[red]Unknown monitor command: {command}[/]")
+                self.console.print("[yellow]Try: monitor dashboard, monitor stats[/]")
         except Exception as exc:
             self._handle_error(exc, "monitor")
 
@@ -785,12 +843,12 @@ class GoveeShell:
 
     def _monitor_stats(self) -> None:
         """Display system statistics."""
-        print("Fetching statistics...")
+        self.console.print("[cyan]Fetching statistics...[/]")
         try:
             status_data = _handle_response(self.client.get("/status"))
             _print_output(status_data, self.config.output)
         except Exception as exc:
-            print(f"Error fetching stats: {exc}")
+            self.console.print(f"[red]Error fetching stats: {exc}[/]")
 
     def do_output(self, arg: str) -> None:
         """
@@ -799,8 +857,8 @@ class GoveeShell:
         """
         args = shlex.split(arg)
         if not args or args[0] not in ("json", "yaml", "table"):
-            print("Usage: output json|yaml|table")
-            print(f"Current format: {self.config.output}")
+            self.console.print("[yellow]Usage: output json|yaml|table[/]")
+            self.console.print(f"[dim]Current format: {self.config.output}[/]")
             return
 
         new_format = args[0]
@@ -812,7 +870,7 @@ class GoveeShell:
             timeout=self.config.timeout,
             page_size=self.config.page_size,
         )
-        print(f"Output format set to: {new_format}")
+        self.console.print(f"[green]Output format set to: {new_format}[/]")
 
     def do_console(self, arg: str) -> None:
         """
@@ -1241,9 +1299,10 @@ class GoveeShell:
                 # Get the docstring from the handler
                 docstring = handler.__doc__
                 if docstring:
-                    help_text = f"\nHelp for command '{arg}':\n\n{docstring}\n"
+                    # Format with colors and styling
+                    help_text = self._format_command_help(arg, docstring)
                 else:
-                    help_text = f"\nNo help available for command '{arg}'\n"
+                    help_text = f"\n[yellow]No help available for command '{arg}'[/]\n"
 
                 # Apply pagination if configured
                 self._paginate_text(help_text)
@@ -1417,7 +1476,7 @@ class GoveeShell:
         """Exit the shell."""
         if self.client:
             self.client.close()
-        print("Goodbye!")
+        self.console.print("[cyan]Goodbye![/]")
         return True
 
     def do_quit(self, arg: str) -> bool:
@@ -1459,8 +1518,8 @@ class GoveeShell:
                 return False
         else:
             # Unknown command
-            print(f"Unknown command: {command}")
-            print("Type 'help' or '?' for available commands.")
+            self.console.print(f"[red]Unknown command: {command}[/]")
+            self.console.print("[dim]Type 'help' or '?' for available commands.[/]")
             return False
 
     def postcmd(self, stop: bool, line: str) -> bool:
