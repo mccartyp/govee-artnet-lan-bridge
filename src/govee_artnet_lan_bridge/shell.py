@@ -1484,17 +1484,21 @@ class GoveeShell:
             table.add_column("Universe", style="green", width=8, justify="right")
             table.add_column("Channel", style="magenta", width=8, justify="right")
             table.add_column("Length", style="blue", width=6, justify="right")
-            table.add_column("Template", style="white", width=12)
+            table.add_column("Fields", style="white", width=20)
 
             # Add mapping rows
             for mapping in mappings:
+                # Format fields list for display
+                fields = mapping.get("fields", [])
+                fields_str = ", ".join(fields) if fields else "N/A"
+
                 table.add_row(
                     str(mapping.get("id", "N/A")),
                     str(mapping.get("device_id", "N/A"))[:20],
                     str(mapping.get("universe", "N/A")),
-                    str(mapping.get("start_channel", "N/A")),
-                    str(mapping.get("channel_length", "N/A")),
-                    str(mapping.get("template", "N/A"))
+                    str(mapping.get("channel", "N/A")),
+                    str(mapping.get("length", "N/A")),
+                    fields_str
                 )
 
             self._append_output(table)
@@ -1665,9 +1669,13 @@ class GoveeShell:
                 self._append_output(f"[green]✓ Created mapping for device {device_id}[/]\n")
 
             # Show the created mapping details
-            self._append_output(f"[dim]Mapping ID: {data.get('id', 'N/A')}[/]\n")
             if isinstance(data, list):
-                self._append_output(f"[dim]Created {len(data)} channel mappings[/]\n")
+                # Template-based mapping returns a list of channel mappings
+                mapping_ids = [str(m.get('id', 'N/A')) for m in data]
+                self._append_output(f"[dim]Created {len(data)} channel mappings (IDs: {', '.join(mapping_ids)})[/]\n")
+            else:
+                # Manual mapping returns a single mapping object
+                self._append_output(f"[dim]Mapping ID: {data.get('id', 'N/A')}[/]\n")
 
         except Exception as exc:
             self._append_output(f"[red]Error creating mapping: {exc}[/]\n")
@@ -1795,23 +1803,40 @@ class GoveeShell:
 
             for mapping in universe_mappings:
                 device_id = mapping.get("device_id", "N/A")
-                start_channel = mapping.get("start_channel", 1)
-                channel_length = mapping.get("channel_length", 1)
-                template = mapping.get("template", "").lower()
+                start_channel = mapping.get("channel", 1)
+                channel_length = mapping.get("length", 1)
+                fields_list = mapping.get("fields", [])
 
                 # Get device IP
                 device = device_lookup.get(device_id, {})
                 device_ip = device.get("ip", "N/A")
 
-                # Determine channel functions
-                functions = TEMPLATE_FUNCTIONS.get(template, [f"Ch{i+1}" for i in range(channel_length)])
+                # Determine channel functions from the fields list
+                # Try to match against known templates, otherwise use the field names directly
+                fields_key = "".join(fields_list).lower() if fields_list else ""
+                functions = TEMPLATE_FUNCTIONS.get(fields_key, [])
+
+                # If no template match, derive functions from individual field names
+                if not functions and fields_list:
+                    # Map individual fields to display names
+                    field_display = {
+                        "r": "Red", "g": "Green", "b": "Blue", "w": "White",
+                        "brightness": "Brightness", "temperature": "Color Temp"
+                    }
+                    functions = [field_display.get(f, f.capitalize()) for f in fields_list]
+                elif not functions:
+                    # Fallback for unknown mappings
+                    functions = [f"Ch{i+1}" for i in range(channel_length)]
+
+                # Display string for the fields column
+                fields_str = ", ".join(fields_list) if fields_list else "N/A"
 
                 # Populate channel map
                 for i in range(channel_length):
                     channel_num = start_channel + i
                     if 1 <= channel_num <= 512:
                         function = functions[i] if i < len(functions) else f"Ch{i+1}"
-                        channel_map[channel_num] = (device_id, device_ip, function, template)
+                        channel_map[channel_num] = (device_id, device_ip, function, fields_str)
 
             if not channel_map:
                 self._append_output(f"[yellow]No channels populated for universe {universe}[/]\n")
@@ -1828,11 +1853,11 @@ class GoveeShell:
             table.add_column("Device ID", style="yellow", width=20)
             table.add_column("IP Address", style="green", width=15)
             table.add_column("Function", style="magenta", width=15)
-            table.add_column("Template", style="dim", width=10)
+            table.add_column("Fields", style="dim", width=15)
 
             # Add rows for populated channels (sorted by channel number)
             for channel_num in sorted(channel_map.keys()):
-                device_id, device_ip, function, template = channel_map[channel_num]
+                device_id, device_ip, function, fields_str = channel_map[channel_num]
 
                 # Apply color coding to functions
                 if "Red" in function:
@@ -1853,7 +1878,7 @@ class GoveeShell:
                     device_id[:20],
                     device_ip,
                     function_style,
-                    template
+                    fields_str
                 )
 
             self._append_output(table)
