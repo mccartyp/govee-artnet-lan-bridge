@@ -46,12 +46,16 @@ DEFAULT_CACHE_TTL = 5.0  # Default cache TTL in seconds
 
 # Toolbar styling for prompt_toolkit
 TOOLBAR_STYLE = Style.from_dict({
-    "toolbar-border": "#666666",
-    "toolbar-info": "#888888",
-    "status-connected": "#00ff00 bold",
-    "status-disconnected": "#ff0000 bold",
-    "status-healthy": "#00ff00",
-    "status-degraded": "#ffaa00",
+    "toolbar": "bg:#2e3440",  # Dark background for entire toolbar
+    "toolbar-border": "#4c566a bg:#2e3440",  # Border line with dark background
+    "toolbar-info": "#d8dee9 bg:#2e3440",  # Light gray text on dark background
+    "status-connected": "#a3be8c bold bg:#2e3440",  # Green (connected) on dark background
+    "status-disconnected": "#bf616a bold bg:#2e3440",  # Red (disconnected) on dark background
+    "status-healthy": "#a3be8c bg:#2e3440",  # Green (healthy) on dark background
+    "status-degraded": "#ebcb8b bg:#2e3440",  # Yellow/amber (degraded) on dark background
+    "device-active": "#a3be8c bg:#2e3440",  # Green (active devices) on dark background
+    "device-unconfigured": "#ebcb8b bg:#2e3440",  # Yellow/amber (unconfigured) on dark background
+    "device-offline": "#bf616a bg:#2e3440",  # Red (offline devices) on dark background
 })
 
 
@@ -143,8 +147,9 @@ class GoveeShell:
 
         # Toolbar status tracking (updated periodically)
         self.toolbar_status = {
-            "configured_devices": 0,
-            "discovered_devices": 0,
+            "active_devices": 0,
+            "unconfigured_devices": 0,
+            "offline_devices": 0,
             "health_status": "unknown",
             "last_update": None,
         }
@@ -340,9 +345,25 @@ class GoveeShell:
             if devices_response.status_code == 200:
                 devices = devices_response.json()
                 if isinstance(devices, list):
-                    configured = sum(1 for d in devices if d.get("mappings"))
-                    self.toolbar_status["configured_devices"] = configured
-                    self.toolbar_status["discovered_devices"] = len(devices) - configured
+                    # Active: online (not offline), configured, and enabled
+                    active = sum(
+                        1 for d in devices
+                        if d.get("enabled") and d.get("configured") and not d.get("offline")
+                    )
+                    # Unconfigured: online (not offline) but not configured (enabled doesn't matter for visibility)
+                    unconfigured = sum(
+                        1 for d in devices
+                        if not d.get("configured") and not d.get("offline")
+                    )
+                    # Offline: offline and enabled
+                    offline = sum(
+                        1 for d in devices
+                        if d.get("enabled") and d.get("offline")
+                    )
+
+                    self.toolbar_status["active_devices"] = active
+                    self.toolbar_status["unconfigured_devices"] = unconfigured
+                    self.toolbar_status["offline_devices"] = offline
 
             import time
             self.toolbar_status["last_update"] = time.time()
@@ -379,10 +400,13 @@ class GoveeShell:
         else:
             toolbar_parts.append(("class:status-disconnected", "○ Disconnected"))
 
-        # Device counts
-        configured = self.toolbar_status["configured_devices"]
-        discovered = self.toolbar_status["discovered_devices"]
-        toolbar_parts.append(("class:toolbar-info", f" │ Devices: {configured} configured, {discovered} discovered"))
+        # Device counts with color-coded stats
+        toolbar_parts.append(("class:toolbar-info", " │ Devices Active: "))
+        toolbar_parts.append(("class:device-active", str(self.toolbar_status["active_devices"])))
+        toolbar_parts.append(("class:toolbar-info", " | Devices Unconfigured: "))
+        toolbar_parts.append(("class:device-unconfigured", str(self.toolbar_status["unconfigured_devices"])))
+        toolbar_parts.append(("class:toolbar-info", " | Devices Offline: "))
+        toolbar_parts.append(("class:device-offline", str(self.toolbar_status["offline_devices"])))
 
         # Health status
         health = self.toolbar_status["health_status"]
@@ -396,6 +420,9 @@ class GoveeShell:
             health_style = "class:toolbar-info"
             health_icon = "?"
         toolbar_parts.append((health_style, f" │ Health: {health_icon} {health}"))
+
+        # Add padding to fill the rest of the line with the toolbar background
+        toolbar_parts.append(("class:toolbar", " "))
 
         return toolbar_parts
 
