@@ -7,6 +7,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import string
 import sys
 from dataclasses import dataclass
@@ -38,6 +39,38 @@ class ClientConfig:
     output: str
     timeout: float = 10.0
     page_size: Optional[int] = None  # None means no pagination
+
+
+# Global state for terminal resize handling
+_current_config: Optional[ClientConfig] = None
+_auto_pagination: bool = False
+
+
+def _handle_terminal_resize(signum: int, frame: Any) -> None:
+    """
+    Handle terminal window resize events (SIGWINCH).
+
+    Updates pagination size when auto-pagination is enabled.
+
+    Args:
+        signum: Signal number
+        frame: Current stack frame
+    """
+    global _current_config, _auto_pagination
+
+    if _auto_pagination and _current_config is not None:
+        terminal_height = shutil.get_terminal_size().lines
+        new_page_size = max(10, terminal_height - 2)
+
+        # Update config with new page size
+        _current_config = ClientConfig(
+            server_url=_current_config.server_url,
+            api_key=_current_config.api_key,
+            api_bearer_token=_current_config.api_bearer_token,
+            output=_current_config.output,
+            timeout=_current_config.timeout,
+            page_size=new_page_size,
+        )
 
 
 def _env(name: str, default: Optional[str] = None) -> Optional[str]:
@@ -479,6 +512,8 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
 
 
 def _load_config(args: argparse.Namespace) -> ClientConfig:
+    global _current_config, _auto_pagination
+
     output = args.output or "json"
     if output not in {"json", "yaml", "table"}:
         raise CliError("Output format must be 'json', 'yaml', or 'table'")
@@ -495,16 +530,29 @@ def _load_config(args: argparse.Namespace) -> ClientConfig:
         # Default to terminal height minus 2 (for prompt and spacing)
         terminal_height = shutil.get_terminal_size().lines
         page_size = max(10, terminal_height - 2)  # Minimum 10 lines
+        _auto_pagination = True  # Enable auto-resize for auto-detected page size
     elif page_size == 0:
         page_size = None  # Disable pagination
+        _auto_pagination = False
+    else:
+        _auto_pagination = False  # User specified explicit page size
 
-    return ClientConfig(
+    config = ClientConfig(
         server_url=args.server_url,
         api_key=args.api_key,
         api_bearer_token=args.api_bearer_token,
         output=output,
         page_size=page_size,
     )
+
+    # Store global config for resize handler
+    _current_config = config
+
+    # Set up terminal resize handler (Unix-like systems only)
+    if hasattr(signal, 'SIGWINCH'):
+        signal.signal(signal.SIGWINCH, _handle_terminal_resize)
+
+    return config
 
 
 def _build_client(config: ClientConfig) -> httpx.Client:
@@ -554,10 +602,15 @@ def _paginate_output(text: str, config: Optional[ClientConfig]) -> None:
         text: Text to print
         config: Client configuration with page_size
     """
+    global _current_config
+
+    # Use global config if available (to pick up resize updates), otherwise use passed config
+    active_config = _current_config if _current_config is not None else config
+
     # Strip trailing newlines to prevent excessive blank space at bottom
     text = text.rstrip('\n')
 
-    if not config or not config.page_size:
+    if not active_config or not active_config.page_size:
         # No pagination - write text with single trailing newline
         sys.stdout.write(text + '\n')
         sys.stdout.flush()
@@ -573,7 +626,7 @@ def _paginate_output(text: str, config: Optional[ClientConfig]) -> None:
             sys.stdout.write("\n")
         line_count += 1
 
-        if line_count >= config.page_size and i < len(lines) - 1:
+        if line_count >= active_config.page_size and i < len(lines) - 1:
             # Pause for user input
             try:
                 response = input("\n[Press Enter to continue, 'q' to quit] ")

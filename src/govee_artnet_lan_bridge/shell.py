@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import signal
 import sys
 import time
 from io import StringIO
@@ -198,6 +199,10 @@ class GoveeShell:
         # Load shell configuration
         self.shell_config = self._load_shell_config()
 
+        # Track if we're using auto pagination (for resize handling)
+        # Default to True since initial page_size is auto-detected from terminal
+        self.auto_pagination = True
+
         # Apply default output format and pagination from config if not already set
         default_output = self.shell_config.get("shell", {}).get("default_output", config.output)
         default_page_size = self.shell_config.get("console", {}).get("page_size", config.page_size)
@@ -267,6 +272,10 @@ class GoveeShell:
             reserve_space_for_menu=2,
             style=TOOLBAR_STYLE,
         )
+
+        # Set up terminal resize handler (Unix-like systems only)
+        if hasattr(signal, 'SIGWINCH'):
+            signal.signal(signal.SIGWINCH, self._handle_terminal_resize)
 
         self._connect()
 
@@ -360,6 +369,31 @@ class GoveeShell:
             self.console.print(f"[yellow]Warning: Could not connect to {self.config.server_url}: {exc}[/]")
             self.console.print("[dim]Some commands may not work. Use 'connect' to retry.[/]")
             self.client = None
+
+    def _handle_terminal_resize(self, signum: int, frame: Any) -> None:
+        """
+        Handle terminal window resize events (SIGWINCH).
+
+        Updates pagination size when auto-pagination is enabled.
+
+        Args:
+            signum: Signal number
+            frame: Current stack frame
+        """
+        if self.auto_pagination:
+            import shutil
+            terminal_height = shutil.get_terminal_size().lines
+            new_page_size = max(10, terminal_height - 2)
+
+            # Update config with new page size
+            self.config = ClientConfig(
+                server_url=self.config.server_url,
+                api_key=self.config.api_key,
+                api_bearer_token=self.config.api_bearer_token,
+                output=self.config.output,
+                timeout=self.config.timeout,
+                page_size=new_page_size,
+            )
 
     def _update_toolbar_status(self) -> None:
         """Update toolbar status information from bridge API."""
@@ -1138,16 +1172,19 @@ class GoveeShell:
 
         if setting == "off":
             page_size = None
+            self.auto_pagination = False  # Disable auto-resize
         elif setting == "auto":
             import shutil
             terminal_height = shutil.get_terminal_size().lines
             page_size = max(10, terminal_height - 2)
+            self.auto_pagination = True  # Enable auto-resize
         else:
             try:
                 page_size = int(setting)
                 if page_size < 1:
                     self.console.print("[red]Page size must be a positive number[/]")
                     return
+                self.auto_pagination = False  # User set explicit size, disable auto-resize
             except ValueError:
                 self.console.print(f"[red]Invalid pagination setting: {setting}[/]")
                 self.console.print("Use a number, 'off', or 'auto'")
