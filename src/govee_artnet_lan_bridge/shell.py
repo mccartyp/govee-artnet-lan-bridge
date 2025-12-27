@@ -120,7 +120,8 @@ class GoveeShell:
         """
         self.config = config
         self.client: Optional[httpx.Client] = None
-        self.console = Console()
+        # Configure console with no legacy windows mode and disable soft wrapping
+        self.console = Console(legacy_windows=False, soft_wrap=False)
 
         # Initialize response cache for performance
         cache_ttl = float(os.environ.get("GOVEE_ARTNET_CACHE_TTL", str(DEFAULT_CACHE_TTL)))
@@ -236,7 +237,7 @@ class GoveeShell:
         # Auto-detect terminal height for default pagination
         import shutil
         terminal_height = shutil.get_terminal_size().lines
-        default_page_size = max(10, terminal_height - 5)
+        default_page_size = max(10, terminal_height - 2)
 
         defaults = {
             "shell": {
@@ -920,7 +921,7 @@ class GoveeShell:
         elif setting == "auto":
             import shutil
             terminal_height = shutil.get_terminal_size().lines
-            page_size = max(10, terminal_height - 5)
+            page_size = max(10, terminal_height - 2)
         else:
             try:
                 page_size = int(setting)
