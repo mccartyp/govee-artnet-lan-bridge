@@ -450,7 +450,7 @@ class GoveeShell:
 
         # Show entering message
         enter_msg  =  "\033[1;36m╔═══════════════════════════════════════════════════════════╗\033[0m\n"
-        enter_msg += f"\033[1;36m║           Watch Mode - {target.upper():<35} ║\033[0m\n"
+        enter_msg += f"\033[1;36m║           Watch Mode - {target.upper():<34} ║\033[0m\n"
         enter_msg +=  "\033[1;36m╚═══════════════════════════════════════════════════════════╝\033[0m\n"
         enter_msg += f"\033[33mRefresh interval: {interval}s\033[0m\n"
         enter_msg += "\033[2mStarting watch...\033[0m\n\n"
