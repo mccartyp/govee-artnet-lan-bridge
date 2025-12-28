@@ -1210,7 +1210,14 @@ class GoveeShell:
         return line
 
     def do_connect(self, arg: str) -> None:
-        """Connect or reconnect to the bridge server."""
+        """
+        Connect or reconnect to the bridge server.
+        Usage: connect [SERVER_URL]
+        Examples:
+            connect                           # Reconnect to current server
+            connect http://localhost:8000     # Connect to specific server
+            connect http://192.168.1.100:8000 # Connect to remote server
+        """
         if arg:
             # Update server URL if provided
             self.config = ClientConfig(
@@ -1231,7 +1238,11 @@ class GoveeShell:
             self._append_output("[yellow]Disconnected[/]" + "\n")
 
     def do_status(self, arg: str) -> None:
-        """Show connection status and bridge status."""
+        """
+        Show connection status and bridge status.
+        Usage: status
+        Displays bridge operational statistics, device counts, and queue depth.
+        """
         if not self.client:
             self._append_output(f"[red]Not connected.[/] [dim]Server URL: {self.config.server_url}[/]" + "\n")
             return
@@ -1590,7 +1601,24 @@ class GoveeShell:
             self._append_output(f"[red]Error fetching devices: {exc}[/]\n")
 
     def do_devices(self, arg: str) -> None:
-        """Delegate to device handler."""
+        """
+        Device commands: list, list detailed, enable, disable, set-name, set-capabilities.
+        Usage: devices list [--id ID] [--ip IP] [--state STATE]              # Show simplified 2-line view
+               devices list detailed [--id ID] [--ip IP] [--state STATE]     # Show full device details
+               devices enable <device_id>
+               devices disable <device_id>
+               devices set-name <device_id> <name>                          # Set device name (use "" to clear)
+               devices set-capabilities <device_id> --brightness <bool> --color <bool> --white <bool> --color-temp <bool>
+        Examples:
+            devices list
+            devices list --id AA:BB:CC:DD:EE:FFC
+            devices list --ip 192.168.1.100
+            devices list --state active
+            devices list detailed --state offline
+            devices set-name AA:BB:CC:DD:EE:FF "Kitchen Light"
+            devices set-name AA:BB:CC:DD:EE:FF ""                            # Clear name
+            devices set-capabilities AA:BB:CC:DD:EE:FF --brightness true --color true --white false
+        """
         return self.device_handler.do_devices(arg)
 
     def _devices_original(self, arg: str) -> None:
@@ -1965,7 +1993,20 @@ class GoveeShell:
             self._append_output(f"[red]Error creating mapping: {exc}[/]\n")
 
     def do_mappings(self, arg: str) -> None:
-        """Delegate to mapping handler."""
+        """
+        Mapping commands: list, get, create, delete, channel-map.
+        Usage: mappings list
+               mappings get <id>
+               mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>
+               mappings create --device-id <id> [--universe <num>] --channel <num> --field <field>
+               mappings create --device-id <id> [--universe <num>] --channel <num> --length <num>
+               mappings delete <id>
+               mappings channel-map
+        Templates (multi-channel): rgb, rgbw, brightness_rgb, rgbwa, rgbaw, brgbwct
+        Fields (single-channel): power [all], brightness [caps], r/red [caps], g/green [caps], b/blue [caps], w/white [caps], ct/color_temp [caps]
+        Note: --universe defaults to 0; [caps] = requires device capability check
+        Use 'help mappings create', 'mappings create --help', or 'mappings create ?' for detailed creation help
+        """
         return self.mapping_handler.do_mappings(arg)
 
     def _mappings_original(self, arg: str) -> None:
@@ -2027,7 +2068,14 @@ class GoveeShell:
             self._handle_error(exc, "mappings")
 
     def do_channels(self, arg: str) -> None:
-        """Delegate to monitoring handler."""
+        """
+        Channel commands: list channels for one or more universes.
+        Usage: channels list [universe...]    # Default universe is 0
+        Examples:
+            channels list              # Show channels for universe 0
+            channels list 1            # Show channels for universe 1
+            channels list 0 1 2        # Show channels for universes 0, 1, and 2
+        """
         return self.monitoring_handler.do_channels(arg)
 
     def _channels_original(self, arg: str) -> None:
@@ -2220,7 +2268,21 @@ class GoveeShell:
             self._append_output(f"[red]Error fetching channels: {exc}[/]\n")
 
     def do_logs(self, arg: str) -> None:
-        """Delegate to monitoring handler."""
+        """
+        View logs from the bridge.
+        Usage: logs [--lines N] [--level LEVEL] [--logger NAME]
+               logs tail [--level LEVEL] [--logger NAME]
+               logs search PATTERN [--regex]
+        Examples:
+            logs
+            logs --lines 50
+            logs --level ERROR
+            logs --logger govee.discovery
+            logs tail
+            logs tail --level ERROR
+            logs search "device discovered"
+            logs search "error.*timeout" --regex
+        """
         return self.monitoring_handler.do_logs(arg)
 
     def _logs_original(self, arg: str) -> None:
@@ -2334,7 +2396,11 @@ class GoveeShell:
         asyncio.create_task(self._enter_log_tail_mode(level=level_filter, logger=logger_filter))
 
     def do_monitor(self, arg: str) -> None:
-        """Delegate to monitoring handler."""
+        """
+        Real-time monitoring commands.
+        Usage: monitor dashboard
+               monitor stats
+        """
         return self.monitoring_handler.do_monitor(arg)
 
     def _monitor_original(self, arg: str) -> None:
@@ -2442,7 +2508,10 @@ class GoveeShell:
             self._append_output(f"[red]Error fetching stats: {exc}[/]" + "\n")
 
     def do_output(self, arg: str) -> None:
-        """Delegate to config handler."""
+        """
+        Set output format: json, yaml, or table.
+        Usage: output json|yaml|table
+        """
         return self.config_handler.do_output(arg)
 
     def _output_original(self, arg: str) -> None:
@@ -2468,7 +2537,19 @@ class GoveeShell:
         self._append_output(f"[green]Output format set to: {new_format}[/]" + "\n")
 
     def do_bookmark(self, arg: str) -> None:
-        """Delegate to config handler."""
+        """
+        Manage bookmarks for devices and servers.
+        Usage: bookmark add <name> <value>
+               bookmark list
+               bookmark delete <name>
+               bookmark use <name>
+        Examples:
+            bookmark add myserver http://192.168.1.100:8000
+            bookmark add light1 ABC123DEF456
+            bookmark list
+            bookmark use myserver
+            bookmark delete light1
+        """
         return self.config_handler.do_bookmark(arg)
 
     def _bookmark_original(self, arg: str) -> None:
@@ -2539,7 +2620,17 @@ class GoveeShell:
             self._append_output("Usage: bookmark add|list|delete|use <name> [value]" + "\n")
 
     def do_alias(self, arg: str) -> None:
-        """Delegate to config handler."""
+        """
+        Manage command aliases (shortcuts).
+        Usage: alias add <name> <command>
+               alias list
+               alias delete <name>
+        Examples:
+            alias add dl "devices list"
+            alias add status-check "status"
+            alias list
+            alias delete dl
+        """
         return self.config_handler.do_alias(arg)
 
     def _alias_original(self, arg: str) -> None:
@@ -2595,7 +2686,14 @@ class GoveeShell:
             self._append_output("Usage: alias add|list|delete <name> [command]" + "\n")
 
     def do_cache(self, arg: str) -> None:
-        """Delegate to config handler."""
+        """
+        Manage response cache.
+        Usage: cache stats   - Show cache statistics
+               cache clear   - Clear all cached responses
+        Examples:
+            cache stats
+            cache clear
+        """
         return self.config_handler.do_cache(arg)
 
     def _cache_original(self, arg: str) -> None:
@@ -2639,7 +2737,29 @@ class GoveeShell:
             self._append_output("Usage: cache stats|clear" + "\n")
 
     def do_watch(self, arg: str) -> None:
-        """Delegate to config handler."""
+        """
+        Watch devices, mappings, logs, or dashboard with continuous updates.
+        Usage: watch <target> [--interval SECONDS]
+
+        Targets:
+            devices      - Watch device status
+            mappings     - Watch channel mappings
+            logs         - Watch recent logs
+            dashboard    - Watch dashboard summary
+
+        Options:
+            --interval SECONDS  Refresh interval (default: 5.0)
+
+        Examples:
+            watch devices              # Continuous watch with 5s refresh
+            watch mappings             # Continuous watch with 5s refresh
+            watch dashboard --interval 3    # Continuous with 3s refresh
+
+        Controls:
+            Press Esc or 'q' to exit watch mode
+            Press '+' to decrease interval (faster refresh)
+            Press '-' to increase interval (slower refresh)
+        """
         return self.config_handler.do_watch(arg)
 
     def _watch_original(self, arg: str) -> None:
@@ -2713,7 +2833,13 @@ class GoveeShell:
             self._handle_error(exc, f"watch {command}")
 
     def do_batch(self, arg: str) -> None:
-        """Delegate to config handler."""
+        """
+        Execute commands from a file.
+        Usage: batch <filename>
+        Examples:
+            batch setup.txt
+            batch /path/to/commands.txt
+        """
         return self.config_handler.do_batch(arg)
 
     def _batch_original(self, arg: str) -> None:
@@ -2760,7 +2886,18 @@ class GoveeShell:
             self._append_output(f"[red]Error executing batch: {exc}[/]" + "\n")
 
     def do_session(self, arg: str) -> None:
-        """Delegate to config handler."""
+        """
+        Save or restore shell session (server URL, output format).
+        Usage: session save <name>
+               session load <name>
+               session list
+               session delete <name>
+        Examples:
+            session save prod
+            session load prod
+            session list
+            session delete prod
+        """
         return self.config_handler.do_session(arg)
 
     def _session_original(self, arg: str) -> None:
