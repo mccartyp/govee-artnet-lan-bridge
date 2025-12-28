@@ -2518,7 +2518,7 @@ class GoveeShell:
             table.add_column("Channel", style="cyan", width=8, justify="right")
             table.add_column("Device ID", style="yellow", width=23)
             table.add_column("IP Address", style="green", width=15)
-            table.add_column("Name", style="blue", width=15)
+            table.add_column("Name", style="blue", width=30)
             table.add_column("Function", style="magenta", width=15)
             table.add_column("Mapping ID", style="blue", width=12, justify="right")
 
