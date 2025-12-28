@@ -140,17 +140,21 @@ See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete documentation an
 | `brightness_rgb` | 4 | Brightness, R, G, B | Master dimmer + RGB color |
 | `rgbwa` | 5 | R, G, B, W, Brightness | RGBW color + master dimmer |
 | `rgbaw` | 5 | Brightness, R, G, B, W | Master dimmer + RGBW color |
+| `brgbwct` | 6 | Brightness, R, G, B, W, CT | Full control with color temperature |
 
-### Discrete Field Mappings
+### Single Channel Mappings
 
-For single-channel control, use discrete field mappings instead of templates:
+For individual field control, use single channel mappings instead of templates:
 
-| Field | Description |
-|-------|-------------|
-| `power` | Power on/off (DMX >= 128 = on, < 128 = off) |
-| `brightness` | Brightness control (0-255) |
-| `r`, `g`, `b`, `w` | Individual color channels |
-| `ct` | Color temperature in Kelvin |
+| Field | Aliases | Description |
+|-------|---------|-------------|
+| `power` | - | Power on/off (DMX >= 128 = on, < 128 = off) |
+| `brightness` | - | Brightness control (0-255) |
+| `r` | `red` | Red channel only |
+| `g` | `green` | Green channel only |
+| `b` | `blue` | Blue channel only |
+| `w` | `white` | White channel only |
+| `ct` | `color_temp` | Color temperature in Kelvin |
 
 ```bash
 # Create a power control mapping
@@ -158,6 +162,9 @@ govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field p
 
 # Create a brightness control mapping
 govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness
+
+# Use field aliases for convenience
+govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --field red
 ```
 
 ## CLI Commands

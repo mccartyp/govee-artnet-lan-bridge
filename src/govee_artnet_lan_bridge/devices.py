@@ -238,6 +238,15 @@ def _coerce_metadata_for_db(metadata: Mapping[str, Any]) -> Dict[str, Any]:
 
 SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness", "ct", "power"}
 
+# Field aliases for user convenience
+FIELD_ALIASES: Dict[str, str] = {
+    "red": "r",
+    "green": "g",
+    "blue": "b",
+    "white": "w",
+    "color_temp": "ct",
+}
+
 
 @dataclass(frozen=True)
 class TemplateSegment:
@@ -267,8 +276,8 @@ _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("range", ("r", "g", "b", "w")),
     ),
-    # Full control template with brightness, color, and color temperature
-    "full": (
+    # Full control template with brightness, RGBW color, and color temperature
+    "brgbwct": (
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("range", ("r", "g", "b", "w")),
         TemplateSegment("discrete", ("ct",)),
@@ -317,6 +326,8 @@ def _normalize_field_name(field: Optional[str]) -> str:
     if field is None or not str(field).strip():
         raise ValueError("Field is required for discrete mappings")
     normalized = str(field).strip().lower()
+    # Apply field aliases
+    normalized = FIELD_ALIASES.get(normalized, normalized)
     if normalized not in SUPPORTED_FIELDS:
         raise ValueError(
             f"Unsupported field '{field}'. Supported fields: {', '.join(sorted(SUPPORTED_FIELDS))}."

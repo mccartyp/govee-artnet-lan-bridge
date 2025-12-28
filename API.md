@@ -191,15 +191,16 @@ Create a single mapping or multiple mappings using a template.
 - `brightness_rgb`: 4-channel brightness + RGB
 - `rgbwa`: 5-channel RGBW + brightness
 - `rgbaw`: 5-channel brightness + RGBW
-- `full`: 6-channel brightness + RGBW + color temperature
+- `brgbwct`: 6-channel brightness + RGBW + color temperature
 
-**Discrete Field Names** (for single-channel mappings):
+**Single Channel Field Names**:
 - `power`: Power on/off control (DMX >= 128 = on, < 128 = off)
 - `brightness`: Brightness control (0-255)
-- `r`, `g`, `b`, `w`: Individual color channels
-- `ct`: Color temperature in Kelvin
-
-**Note**: Type is auto-inferred - `discrete` if `field` is provided, `range` otherwise.
+- `r` (alias: `red`): Red channel only
+- `g` (alias: `green`): Green channel only
+- `b` (alias: `blue`): Blue channel only
+- `w` (alias: `white`): White channel only
+- `ct` (alias: `color_temp`): Color temperature in Kelvin
 
 **Response** (Individual Mapping): `201 Created`
 ```json
@@ -238,7 +239,7 @@ Create a single mapping or multiple mappings using a template.
 `400 Bad Request` - Validation errors:
 ```json
 {
-  "detail": "Unknown template 'rgbb'. Supported templates: brightness_rgb, full, rgb, rgbaw, rgbwa, rgbw."
+  "detail": "Unknown template 'rgbb'. Supported templates: brgbwct, brightness_rgb, rgb, rgbaw, rgbwa, rgbw."
 }
 ```
 

@@ -144,18 +144,21 @@ Templates provide pre-configured channel layouts for common lighting fixture typ
 | `brightness_rgb` | 4 | Brightness, R, G, B | Master dimmer + RGB color |
 | `rgbwa` | 5 | R, G, B, W, Brightness | RGBW color + master dimmer |
 | `rgbaw` | 5 | Brightness, R, G, B, W | Master dimmer + RGBW color |
-| `full` | 6 | Brightness, R, G, B, W, CT | Full control with color temperature |
+| `brgbwct` | 6 | Brightness, R, G, B, W, CT | Full control with color temperature |
 
-#### Discrete Field Mappings (Single-Channel Control)
+#### Single Channel Mappings
 
-For single-channel control, use discrete field mappings instead of templates:
+For individual field control, use single channel mappings instead of templates:
 
-| Field | Description |
-|-------|-------------|
-| `power` | Power on/off (DMX >= 128 = on, < 128 = off) |
-| `brightness` | Brightness control (0-255) |
-| `r`, `g`, `b`, `w` | Individual color channels |
-| `ct` | Color temperature in Kelvin |
+| Field | Aliases | Description |
+|-------|---------|-------------|
+| `power` | - | Power on/off (DMX >= 128 = on, < 128 = off) |
+| `brightness` | - | Brightness control (0-255) |
+| `r` | `red` | Red channel only |
+| `g` | `green` | Green channel only |
+| `b` | `blue` | Blue channel only |
+| `w` | `white` | White channel only |
+| `ct` | `color_temp` | Color temperature in Kelvin |
 
 **Example - Power and Brightness Control:**
 ```bash
@@ -170,6 +173,12 @@ govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 5 \
   --field brightness
+
+# Use field aliases for convenience
+govee-artnet mappings create \
+  --device-id "AA:BB:CC:DD:EE:FF" \
+  --channel 10 \
+  --field red
 ```
 
 #### Examples for Common Fixtures
@@ -365,9 +374,9 @@ Govee devices report their capabilities:
 | `brightness_rgb` | Yes | Yes | Devices with both brightness AND color |
 | `rgbwa` | Yes | Yes | Devices with both brightness AND color |
 | `rgbaw` | Yes | Yes | Devices with both brightness AND color |
-| `full` | Yes | Yes | Devices with brightness, color, and color temperature |
+| `brgbwct` | Yes | Yes | Devices with brightness, color, and color temperature |
 
-**Note**: For single-channel control (brightness only, power, etc.), use discrete field mappings instead of templates. All Govee devices support discrete `power` and `brightness` field mappings.
+**Note**: For individual field control (brightness only, power, color channels, etc.), use single channel mappings instead of templates. All Govee devices support `power` and `brightness` single channel mappings.
 
 #### Checking Device Capabilities
 
@@ -403,7 +412,7 @@ Discovery responses that include a `model_number` are matched against the bundle
 
 #### "Unknown template"
 ```
-Unknown template 'rgbb'. Supported templates: brightness_rgb, full, rgb, rgbaw, rgbwa, rgbw.
+Unknown template 'rgbb'. Supported templates: brgbwct, brightness_rgb, rgb, rgbaw, rgbwa, rgbw.
 ```
 
 **Solution**: Check your template name for typos. Use one of the six supported templates listed above.
@@ -456,7 +465,7 @@ Device does not support color control. Supported modes: ct
 
 **Cause**: You're trying to map color channels (R, G, B), but the device only supports color temperature (warm/cool white).
 
-**Solution**: Use discrete field mapping with `--field brightness` for brightness control only, or check if you selected the correct device.
+**Solution**: Use single channel mapping with `--field brightness` for brightness control only, or check if you selected the correct device.
 
 ---
 
