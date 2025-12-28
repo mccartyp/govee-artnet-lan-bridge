@@ -50,6 +50,7 @@ class LayoutBuilder:
                 focusable=False,  # Keep focus on input for typing
             ),
             wrap_lines=False,
+            always_hide_cursor=True,
         )
 
         self.shell.log_tail_window = Window(
@@ -59,6 +60,7 @@ class LayoutBuilder:
                 focusable=False,  # Keep focus on input for typing
             ),
             wrap_lines=False,
+            always_hide_cursor=True,
         )
 
         self.shell.watch_window = Window(
@@ -68,6 +70,7 @@ class LayoutBuilder:
                 focusable=False,  # Keep focus on input for typing
             ),
             wrap_lines=False,
+            always_hide_cursor=True,
         )
 
         # Build root container with all UI elements
