@@ -16,17 +16,22 @@ Key components:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shlex
 import signal
 import sys
 import time
+from collections import deque
+from datetime import datetime
+from enum import Enum
 from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 import httpx
+import websockets
 import yaml
 from prompt_toolkit import Application
 from prompt_toolkit.application import run_in_terminal
@@ -36,7 +41,7 @@ from prompt_toolkit.document import Document as PTDocument
 from prompt_toolkit.formatted_text import ANSI, FormattedText, to_formatted_text
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, Window
+from prompt_toolkit.layout import ConditionalContainer, FormattedTextControl, HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.lexers import Lexer, SimpleLexer
@@ -299,6 +304,317 @@ class ANSILexer(Lexer):
         return get_line
 
 
+class ConnectionState(Enum):
+    """WebSocket connection states for log tailing."""
+    DISCONNECTED = "disconnected"
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    RECONNECTING = "reconnecting"
+
+
+class LogTailController:
+    """
+    Controller for real-time log tailing via WebSocket.
+
+    Features:
+    - Async WebSocket connection management
+    - Automatic reconnection with exponential backoff
+    - Filter management (level, logger)
+    - Batched UI updates for performance
+    - Memory-limited buffer (last 500k chars)
+    - Follow-tail mode with manual scroll detection
+    """
+
+    # Performance tuning
+    MAX_BUFFER_CHARS = 500_000  # ~500KB of log text
+    BATCH_INTERVAL = 0.1  # 100ms batching interval
+    MAX_RECONNECT_DELAY = 10.0  # Max backoff delay
+
+    def __init__(self, app: Application, log_buffer: Buffer, server_url: str):
+        """
+        Initialize the log tail controller.
+
+        Args:
+            app: The prompt_toolkit Application instance
+            log_buffer: Buffer to append log lines to
+            server_url: Base HTTP server URL (will be converted to WebSocket)
+        """
+        self.app = app
+        self.log_buffer = log_buffer
+        self.server_url = server_url
+
+        # Connection state
+        self.state = ConnectionState.DISCONNECTED
+        self.websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self.ws_task: Optional[asyncio.Task] = None
+        self.batch_task: Optional[asyncio.Task] = None
+
+        # Filter state
+        self.level_filter: Optional[str] = None
+        self.logger_filter: Optional[str] = None
+
+        # Follow-tail mode (auto-scroll to newest)
+        self.follow_tail = True
+
+        # Pending log lines for batched updates
+        self._pending_lines: deque[str] = deque()
+        self._lock = asyncio.Lock()
+
+        # Reconnection state
+        self._reconnect_delay = 1.0
+        self._should_reconnect = True
+
+    @property
+    def is_active(self) -> bool:
+        """Check if log tailing is currently active."""
+        return self.ws_task is not None and not self.ws_task.done()
+
+    @property
+    def ws_url(self) -> str:
+        """Get the WebSocket URL for log streaming."""
+        url = self.server_url.replace("http://", "ws://").replace("https://", "wss://")
+        return f"{url}/logs/stream"
+
+    async def start(self, level: Optional[str] = None, logger: Optional[str] = None) -> None:
+        """
+        Start log tailing with optional filters.
+
+        Args:
+            level: Log level filter (e.g., "INFO", "ERROR")
+            logger: Logger name filter (e.g., "govee.discovery")
+        """
+        if self.is_active:
+            return
+
+        self.level_filter = level
+        self.logger_filter = logger
+        self._should_reconnect = True
+        self._reconnect_delay = 1.0
+
+        # Start WebSocket connection task
+        self.ws_task = asyncio.create_task(self._ws_loop())
+
+        # Start UI batch update task
+        self.batch_task = asyncio.create_task(self._batch_update_loop())
+
+    async def stop(self) -> None:
+        """Stop log tailing and close WebSocket connection."""
+        self._should_reconnect = False
+
+        # Cancel tasks
+        if self.ws_task and not self.ws_task.done():
+            self.ws_task.cancel()
+            try:
+                await self.ws_task
+            except asyncio.CancelledError:
+                pass
+
+        if self.batch_task and not self.batch_task.done():
+            self.batch_task.cancel()
+            try:
+                await self.batch_task
+            except asyncio.CancelledError:
+                pass
+
+        # Close WebSocket
+        if self.websocket:
+            await self.websocket.close()
+            self.websocket = None
+
+        self.state = ConnectionState.DISCONNECTED
+        self.ws_task = None
+        self.batch_task = None
+
+    async def set_filters(self, level: Optional[str] = None, logger: Optional[str] = None) -> None:
+        """
+        Update filters and send to server.
+
+        Args:
+            level: Log level filter (None to clear)
+            logger: Logger name filter (None to clear)
+        """
+        self.level_filter = level
+        self.logger_filter = logger
+
+        # Send filter update to WebSocket if connected
+        if self.websocket and self.state == ConnectionState.CONNECTED:
+            try:
+                filters = {}
+                if level:
+                    filters["level"] = level
+                if logger:
+                    filters["logger"] = logger
+
+                await self.websocket.send(json.dumps(filters))
+            except Exception:
+                pass  # Will reconnect if needed
+
+    async def clear_filters(self) -> None:
+        """Clear all filters."""
+        await self.set_filters(level=None, logger=None)
+
+    def append_log_line(self, line: str) -> None:
+        """
+        Append a log line to the pending queue for batched UI update.
+
+        Args:
+            line: Formatted log line to append
+        """
+        self._pending_lines.append(line)
+
+    def toggle_follow_tail(self) -> bool:
+        """
+        Toggle follow-tail mode.
+
+        Returns:
+            New follow_tail state
+        """
+        self.follow_tail = not self.follow_tail
+        if self.follow_tail:
+            # Jump to bottom
+            self.log_buffer.cursor_position = len(self.log_buffer.text)
+        return self.follow_tail
+
+    def enable_follow_tail(self) -> None:
+        """Enable follow-tail mode and jump to bottom."""
+        self.follow_tail = True
+        self.log_buffer.cursor_position = len(self.log_buffer.text)
+
+    async def _ws_loop(self) -> None:
+        """Main WebSocket connection loop with reconnection."""
+        while self._should_reconnect:
+            try:
+                self.state = ConnectionState.CONNECTING
+                self.app.invalidate()
+
+                # Connect to WebSocket
+                async with websockets.connect(
+                    self.ws_url,
+                    ping_interval=20,
+                    ping_timeout=10,
+                ) as websocket:
+                    self.websocket = websocket
+                    self.state = ConnectionState.CONNECTED
+                    self._reconnect_delay = 1.0  # Reset backoff on successful connect
+                    self.app.invalidate()
+
+                    # Send initial filters if set
+                    if self.level_filter or self.logger_filter:
+                        filters = {}
+                        if self.level_filter:
+                            filters["level"] = self.level_filter
+                        if self.logger_filter:
+                            filters["logger"] = self.logger_filter
+                        await websocket.send(json.dumps(filters))
+
+                    # Receive and process log messages
+                    async for message in websocket:
+                        try:
+                            data = json.loads(message)
+
+                            # Skip ping messages
+                            if data.get("type") == "ping":
+                                continue
+
+                            # Format log entry
+                            timestamp = data.get("timestamp", "")
+                            level = data.get("level", "INFO")
+                            logger_name = data.get("logger", "")
+                            message_text = data.get("message", "")
+
+                            # Format with colors (ANSI codes)
+                            # Timestamp: dim white
+                            # Level: color-coded
+                            # Logger: cyan
+                            # Message: default
+                            level_colors = {
+                                "DEBUG": "\033[36m",    # Cyan
+                                "INFO": "\033[32m",     # Green
+                                "WARNING": "\033[33m",  # Yellow
+                                "ERROR": "\033[31m",    # Red
+                                "CRITICAL": "\033[1;31m",  # Bold red
+                            }
+                            level_color = level_colors.get(level, "\033[37m")
+                            reset = "\033[0m"
+                            dim = "\033[2m"
+                            cyan = "\033[36m"
+
+                            formatted_line = (
+                                f"{dim}{timestamp}{reset} "
+                                f"{level_color}{level:<8}{reset} "
+                                f"{cyan}{logger_name}{reset}: "
+                                f"{message_text}\n"
+                            )
+
+                            self.append_log_line(formatted_line)
+
+                        except json.JSONDecodeError:
+                            continue
+                        except Exception as exc:
+                            # Log parsing errors shouldn't crash the loop
+                            self.append_log_line(f"\033[31mError parsing log: {exc}\033[0m\n")
+
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                # Connection failed, set state and reconnect with backoff
+                if self._should_reconnect:
+                    self.state = ConnectionState.RECONNECTING
+                    self.websocket = None
+                    self.app.invalidate()
+
+                    # Exponential backoff: 1s -> 2s -> 4s -> 8s -> 10s (max)
+                    await asyncio.sleep(self._reconnect_delay)
+                    self._reconnect_delay = min(self._reconnect_delay * 2, self.MAX_RECONNECT_DELAY)
+                else:
+                    break
+
+        self.state = ConnectionState.DISCONNECTED
+        self.websocket = None
+        self.app.invalidate()
+
+    async def _batch_update_loop(self) -> None:
+        """Batch UI updates every BATCH_INTERVAL to reduce redraw frequency."""
+        try:
+            while True:
+                await asyncio.sleep(self.BATCH_INTERVAL)
+
+                if self._pending_lines:
+                    async with self._lock:
+                        # Collect all pending lines
+                        lines_to_add = "".join(self._pending_lines)
+                        self._pending_lines.clear()
+
+                    # Append to buffer
+                    if lines_to_add:
+                        # Get current buffer text
+                        current_text = self.log_buffer.text
+                        new_text = current_text + lines_to_add
+
+                        # Trim buffer if exceeding max size
+                        if len(new_text) > self.MAX_BUFFER_CHARS:
+                            # Keep only the last MAX_BUFFER_CHARS characters
+                            # Try to cut at a newline boundary
+                            trim_point = len(new_text) - self.MAX_BUFFER_CHARS
+                            newline_pos = new_text.find('\n', trim_point)
+                            if newline_pos != -1:
+                                new_text = new_text[newline_pos + 1:]
+                            else:
+                                new_text = new_text[trim_point:]
+
+                        # Update buffer
+                        self.log_buffer.set_document(
+                            Document(text=new_text, cursor_position=len(new_text) if self.follow_tail else self.log_buffer.cursor_position),
+                            bypass_readonly=True
+                        )
+
+                        # Invalidate UI
+                        self.app.invalidate()
+
+        except asyncio.CancelledError:
+            pass
+
+
 class GoveeShell:
     """Interactive shell for the Govee ArtNet bridge using prompt_toolkit."""
 
@@ -412,6 +728,18 @@ class GoveeShell:
         # Follow-tail mode: auto-scroll to bottom when new output is added
         self.follow_tail = True
 
+        # Create log tail buffer for real-time log streaming
+        self.log_tail_buffer = Buffer(
+            read_only=True,
+            multiline=True,
+        )
+
+        # Log tail mode state
+        self.in_log_tail_mode = False
+
+        # Log tail controller (will be initialized after app is created)
+        self.log_tail_controller: Optional[LogTailController] = None
+
         # Set up multi-level autocomplete with command structure
         completer_dict = {
             'connect': None,
@@ -448,7 +776,18 @@ class GoveeShell:
                 'channel-map': None
             },
             'channels': {'list': None},
-            'logs': {'stats': None},
+            'logs': {
+                'stats': None,
+                'tail': {
+                    '--level': None,
+                    '--logger': None,
+                },
+                'search': {
+                    '--regex': None,
+                    '--case-sensitive': None,
+                    '--lines': None,
+                },
+            },
             'monitor': {'status': None, 'dashboard': None},
             'output': {'json': None, 'table': None, 'yaml': None},
             'bookmark': {'add': None, 'list': None, 'delete': None, 'use': None},
@@ -527,28 +866,88 @@ class GoveeShell:
                 self.follow_tail = True
             event.app.invalidate()
 
+        # Log tail mode keybindings
+        @kb.add('escape', filter=lambda: self.in_log_tail_mode)
+        def _(event):
+            """Handle Escape in log tail mode - exit to normal view."""
+            asyncio.create_task(self._exit_log_tail_mode())
+
+        @kb.add('q', filter=lambda: self.in_log_tail_mode)
+        def _(event):
+            """Handle 'q' in log tail mode - exit to normal view."""
+            asyncio.create_task(self._exit_log_tail_mode())
+
+        @kb.add('end', filter=lambda: self.in_log_tail_mode)
+        def _(event):
+            """Handle End in log tail mode - jump to bottom and enable follow-tail."""
+            if self.log_tail_controller:
+                self.log_tail_controller.enable_follow_tail()
+                event.app.invalidate()
+
+        @kb.add('f', filter=lambda: self.in_log_tail_mode)
+        def _(event):
+            """Handle 'f' in log tail mode - open filter prompt."""
+            # For now, show a message (we can implement a filter input dialog later)
+            self.log_tail_buffer.insert_text(
+                "\033[33m[Filter UI not yet implemented - use 'logs tail --level LEVEL --logger LOGGER' to set filters]\033[0m\n"
+            )
+            event.app.invalidate()
+
         # Create layout with output pane, separator, prompt + input field, and toolbar
         from prompt_toolkit.layout import WindowAlign
+        from prompt_toolkit.filters import Condition
+
+        # Create conditional containers for switching between normal and log tail views
+        self.normal_output_window = Window(
+            content=BufferControl(
+                buffer=self.output_buffer,
+                lexer=ANSILexer(),
+                focusable=False,  # Keep focus on input for typing
+            ),
+            wrap_lines=False,
+        )
+
+        self.log_tail_window = Window(
+            content=BufferControl(
+                buffer=self.log_tail_buffer,
+                lexer=ANSILexer(),
+                focusable=False,  # Keep focus on input for typing
+            ),
+            wrap_lines=False,
+        )
+
         self.root_container = HSplit([
-            # Output pane - scrollable window with ANSI-formatted text
-            # Uses BufferControl with ANSILexer for cursor-based auto-scroll
-            # Not focusable to keep input active; PageUp/PageDown scroll without changing focus
-            Window(
-                content=BufferControl(
-                    buffer=self.output_buffer,
-                    lexer=ANSILexer(),
-                    focusable=False,  # Keep focus on input for typing
-                ),
-                wrap_lines=False,
+            # Conditionally show normal output or log tail based on mode
+            ConditionalContainer(
+                content=self.normal_output_window,
+                filter=Condition(lambda: not self.in_log_tail_mode),
+            ),
+            ConditionalContainer(
+                content=self.log_tail_window,
+                filter=Condition(lambda: self.in_log_tail_mode),
             ),
             Window(height=1, char='─'),
-            Window(
-                content=BufferControl(
-                    buffer=self.input_buffer,
-                    input_processors=[],
+            # Hide input in log tail mode, show in normal mode
+            ConditionalContainer(
+                content=Window(
+                    content=BufferControl(
+                        buffer=self.input_buffer,
+                        input_processors=[],
+                    ),
+                    height=1,
+                    get_line_prefix=lambda line_number, wrap_count: f"{self.prompt}",
                 ),
-                height=1,
-                get_line_prefix=lambda line_number, wrap_count: f"{self.prompt}",
+                filter=Condition(lambda: not self.in_log_tail_mode),
+            ),
+            # Show log tail prompt in log tail mode
+            ConditionalContainer(
+                content=Window(
+                    height=1,
+                    content=FormattedTextControl(
+                        text=lambda: "[Log Tail Mode - Press Esc/q to exit, End to jump to bottom, f for filters]"
+                    ),
+                ),
+                filter=Condition(lambda: self.in_log_tail_mode),
             ),
             Window(height=1, char='─'),
             Window(
@@ -567,6 +966,13 @@ class GoveeShell:
             style=TOOLBAR_STYLE,
             full_screen=True,
             mouse_support=True,
+        )
+
+        # Initialize log tail controller now that app is created
+        self.log_tail_controller = LogTailController(
+            app=self.app,
+            log_buffer=self.log_tail_buffer,
+            server_url=config.server_url,
         )
 
         # Set up terminal resize handler for pagination (prompt_toolkit handles layout resize)
@@ -712,6 +1118,57 @@ class GoveeShell:
 
         # Trigger redraw
         self.app.invalidate()
+
+    async def _enter_log_tail_mode(self, level: Optional[str] = None, logger: Optional[str] = None) -> None:
+        """
+        Enter log tail mode and start streaming logs.
+
+        Args:
+            level: Optional log level filter
+            logger: Optional logger name filter
+        """
+        if self.in_log_tail_mode:
+            return
+
+        # Clear log tail buffer
+        self.log_tail_buffer.set_document(Document(""), bypass_readonly=True)
+
+        # Show entering message
+        enter_msg = "\033[1;36m╔═══════════════════════════════════════════════════════════╗\033[0m\n"
+        enter_msg += "\033[1;36m║           Log Tail Mode - Real-time Log Stream           ║\033[0m\n"
+        enter_msg += "\033[1;36m╚═══════════════════════════════════════════════════════════╝\033[0m\n"
+        if level:
+            enter_msg += f"\033[33mLevel filter: {level}\033[0m\n"
+        if logger:
+            enter_msg += f"\033[33mLogger filter: {logger}\033[0m\n"
+        enter_msg += "\033[2mConnecting to log stream...\033[0m\n\n"
+
+        self.log_tail_buffer.set_document(
+            Document(text=enter_msg, cursor_position=len(enter_msg)),
+            bypass_readonly=True
+        )
+
+        # Switch to log tail mode
+        self.in_log_tail_mode = True
+        self.app.invalidate()
+
+        # Start log tail controller
+        await self.log_tail_controller.start(level=level, logger=logger)
+
+    async def _exit_log_tail_mode(self) -> None:
+        """Exit log tail mode and return to normal shell view."""
+        if not self.in_log_tail_mode:
+            return
+
+        # Stop log tail controller
+        await self.log_tail_controller.stop()
+
+        # Switch back to normal mode
+        self.in_log_tail_mode = False
+        self.app.invalidate()
+
+        # Show exit message in normal output
+        self._append_output("\n[dim]Exited log tail mode[/]\n")
 
     def _accept_input(self, buffer: Buffer) -> bool:
         """
@@ -920,26 +1377,66 @@ class GoveeShell:
         parts.extend(fit_line(line1, width))
         parts.append((S("toolbar"), "\n"))  # newline must also be under bottom-toolbar
 
-        # Line 2: Health + server + updated
-        health = self.toolbar_status["health_status"]
-        if health == "healthy":
-            h_style, h_icon = S("status-healthy"), "✓"
-        elif health == "degraded":
-            h_style, h_icon = S("status-degraded"), "⚠"
+        # Line 2: Health + server + updated (or log tail status if in log tail mode)
+        line2: list[tuple[str, str]] = []
+
+        if self.in_log_tail_mode and self.log_tail_controller:
+            # Show log tail status instead
+            state = self.log_tail_controller.state
+            if state == ConnectionState.CONNECTED:
+                state_style, state_icon = S("status-connected"), "● "
+                state_text = "Connected"
+            elif state == ConnectionState.CONNECTING:
+                state_style, state_icon = S("toolbar-info"), "○ "
+                state_text = "Connecting..."
+            elif state == ConnectionState.RECONNECTING:
+                state_style, state_icon = S("status-degraded"), "◐ "
+                state_text = "Reconnecting..."
+            else:
+                state_style, state_icon = S("status-disconnected"), "○ "
+                state_text = "Disconnected"
+
+            line2.append((S("toolbar-info"), "Log Tail: "))
+            line2.append((state_style, f"{state_icon}{state_text}"))
+
+            # Show active filters
+            if self.log_tail_controller.level_filter or self.log_tail_controller.logger_filter:
+                line2.append((S("toolbar-info"), " │ Filters: "))
+                if self.log_tail_controller.level_filter:
+                    line2.append((S("toolbar-info"), f"Level={self.log_tail_controller.level_filter}"))
+                if self.log_tail_controller.logger_filter:
+                    if self.log_tail_controller.level_filter:
+                        line2.append((S("toolbar-info"), ", "))
+                    line2.append((S("toolbar-info"), f"Logger={self.log_tail_controller.logger_filter}"))
+            else:
+                line2.append((S("toolbar-info"), " │ Filters: None"))
+
+            # Show follow-tail status
+            follow_status = "ON" if self.log_tail_controller.follow_tail else "OFF"
+            follow_style = S("status-healthy") if self.log_tail_controller.follow_tail else S("status-degraded")
+            line2.append((S("toolbar-info"), " │ Follow: "))
+            line2.append((follow_style, follow_status))
         else:
-            h_style, h_icon = S("toolbar-info"), "?"
+            # Normal status line
+            health = self.toolbar_status["health_status"]
+            if health == "healthy":
+                h_style, h_icon = S("status-healthy"), "✓"
+            elif health == "degraded":
+                h_style, h_icon = S("status-degraded"), "⚠"
+            else:
+                h_style, h_icon = S("toolbar-info"), "?"
 
-        last_update = self.toolbar_status["last_update"]
-        age_txt = f"{int(time.time() - last_update)}s ago" if last_update else "n/a"
+            last_update = self.toolbar_status["last_update"]
+            age_txt = f"{int(time.time() - last_update)}s ago" if last_update else "n/a"
 
-        line2: list[tuple[str, str]] = [
-            (S("toolbar-info"), "Health: "),
-            (h_style, f"{h_icon} {health}"),
-            (S("toolbar-info"), " │ Server: "),
-            (S("toolbar-info"), self.config.server_url),
-            (S("toolbar-info"), " │ Updated: "),
-            (S("toolbar-info"), age_txt),
-        ]
+            line2 = [
+                (S("toolbar-info"), "Health: "),
+                (h_style, f"{h_icon} {health}"),
+                (S("toolbar-info"), " │ Server: "),
+                (S("toolbar-info"), self.config.server_url),
+                (S("toolbar-info"), " │ Updated: "),
+                (S("toolbar-info"), age_txt),
+            ]
 
         parts.extend(fit_line(line2, width))
         return parts
@@ -2166,14 +2663,6 @@ class GoveeShell:
         Args:
             args: Command arguments (filters)
         """
-        # Disable tail in interactive shell to prevent blocking
-        self._append_output("[yellow]Note: 'logs tail' is not supported in interactive shell mode to prevent UI blocking.[/]\n")
-        self._append_output("[yellow]Alternatives:[/]\n")
-        self._append_output("  • Use 'logs' or 'logs search' for one-time log viewing\n")
-        self._append_output("  • Use 'monitor dashboard' for live system monitoring\n")
-        self._append_output("  • Run CLI in non-interactive mode for continuous tail: govee-artnet logs tail\n")
-        return
-
         # Parse filters
         level_filter = None
         logger_filter = None
@@ -2188,54 +2677,8 @@ class GoveeShell:
                 i += 1
             i += 1
 
-        # Build WebSocket URL
-        ws_url = self.config.server_url.replace("http://", "ws://").replace("https://", "wss://")
-        ws_url += "/logs/stream"
-
-        self._append_output("[cyan]Streaming logs (Press Ctrl+C to stop)...[/]" + "\n")
-        if level_filter:
-            self._append_output(f"[dim]  Level filter: {level_filter}[/]" + "\n")
-        if logger_filter:
-            self._append_output(f"[dim]  Logger filter: {logger_filter}[/]" + "\n")
-        self._append_output("\n")
-
-        try:
-            with ws_client.connect(ws_url) as websocket:
-                # Send filters if set
-                if level_filter or logger_filter:
-                    filters = {}
-                    if level_filter:
-                        filters["level"] = level_filter
-                    if logger_filter:
-                        filters["logger"] = logger_filter
-                    websocket.send(json.dumps(filters))
-
-                # Stream logs
-                while True:
-                    try:
-                        message = websocket.recv(timeout=WS_RECV_TIMEOUT)
-                        data = json.loads(message)
-
-                        # Skip ping messages
-                        if data.get("type") == "ping":
-                            continue
-
-                        # Format and print log entry
-                        timestamp = data.get("timestamp", "")
-                        level = data.get("level", "INFO")
-                        logger_name = data.get("logger", "")
-                        message_text = data.get("message", "")
-
-                        self._append_output(f"[{timestamp}] {level:7} | {logger_name:25} | {message_text}\n")
-
-                    except TimeoutError:
-                        # No message received, continue
-                        continue
-
-        except KeyboardInterrupt:
-            self._append_output("\n[yellow]Stopped tailing logs[/]\n")
-        except Exception as exc:
-            self._append_output(f"[red]Error streaming logs: {exc}[/]\n")
+        # Enter log tail mode (async)
+        asyncio.create_task(self._enter_log_tail_mode(level=level_filter, logger=logger_filter))
 
     def do_monitor(self, arg: str) -> None:
         """
@@ -3053,9 +3496,9 @@ class GoveeShell:
         """Hook method executed once when cmdloop() is about to return."""
         pass
 
-    def cmdloop(self, intro: Optional[str] = None) -> None:
+    async def cmdloop(self, intro: Optional[str] = None) -> None:
         """
-        Run the Application event loop.
+        Run the Application event loop (async version).
 
         Args:
             intro: Introduction message (optional)
@@ -3074,13 +3517,14 @@ class GoveeShell:
             self._append_output("  • Press [bold]Ctrl+T[/] to toggle follow-tail mode\n")
             self._append_output("  • Try [bold]alias[/] to create shortcuts\n")
             self._append_output("  • Use [bold]bookmark[/] to save device IDs\n")
+            self._append_output("  • Try [bold]logs tail[/] for real-time log streaming\n")
             self._append_output("  • Press [bold]Ctrl+D[/] or type [bold]exit[/] to quit\n")
             self._append_output("  • Press [bold]Ctrl+L[/] to clear the screen\n")
         elif intro:
             self._append_output(f"[bold cyan]{intro}[/]\n\n")
 
-        # Run the application
-        self.app.run()
+        # Run the application (async version)
+        await self.app.run_async()
 
         # Cleanup
         self.postloop()
@@ -3095,7 +3539,7 @@ def run_shell(config: ClientConfig) -> None:
     """
     try:
         shell = GoveeShell(config)
-        shell.cmdloop()
+        asyncio.run(shell.cmdloop())
     except KeyboardInterrupt:
         print("\nInterrupted. Goodbye!", file=sys.stderr)
     except Exception as exc:
