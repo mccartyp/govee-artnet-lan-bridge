@@ -3520,6 +3520,17 @@ class GoveeShell:
             self._append_output("  • Try [bold]logs tail[/] for real-time log streaming\n")
             self._append_output("  • Press [bold]Ctrl+D[/] or type [bold]exit[/] to quit\n")
             self._append_output("  • Press [bold]Ctrl+L[/] to clear the screen\n")
+            self._append_output("\n[cyan]Quick Start:[/]\n")
+            self._append_output("  1. [bold]devices list[/] - View all discovered Govee devices\n")
+            self._append_output("     [dim]Shows device ID, IP, state, and capabilities[/]\n")
+            self._append_output("  2. [bold]channels list[/] [universe] - Show ArtNet channel assignments\n")
+            self._append_output("     [dim]Default universe is 0. Example: channels list 1[/]\n")
+            self._append_output("  3. [bold]mappings list[/] - View current channel-to-device mappings\n")
+            self._append_output("     [dim]Shows which channels control which device fields[/]\n")
+            self._append_output("  4. [bold]mappings create[/] - Create new channel mappings\n")
+            self._append_output("     [dim]Use --template (rgb, rgbw, brightness_rgb, etc.)[/]\n")
+            self._append_output("     [dim]Example: mappings create --device-id AA:BB:CC --template rgb --start-channel 1[/]\n")
+            self._append_output("     [dim]Type 'mappings create --help' for detailed options[/]\n")
         elif intro:
             self._append_output(f"[bold cyan]{intro}[/]\n\n")
 
