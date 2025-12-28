@@ -72,6 +72,27 @@ def _deserialize_fields(value: Any) -> Tuple[str, ...]:
     return tuple()
 
 
+def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Wrap a device state payload in the Govee LAN API message format.
+
+    Transforms:
+        {"color": {"r": 154, "g": 0, "b": 0}}
+    Into:
+        {"msg": {"cmd": "devControl", "data": {"color": {"r": 154, "g": 0, "b": 0}}}}
+    """
+    # If already wrapped, return as-is
+    if "msg" in payload:
+        return payload
+
+    # Wrap in Govee LAN API format
+    return {
+        "msg": {
+            "cmd": "devControl",
+            "data": dict(payload)
+        }
+    }
+
+
 def _coerce_mode_for_mapping(capabilities: Any, length: int) -> str:
     default_mode = "rgbw" if length >= 4 else "rgb" if length >= 3 else "brightness"
     if isinstance(capabilities, Mapping):
@@ -1811,7 +1832,9 @@ class DeviceStore:
         await self.db.run(lambda conn: self._enqueue_state(conn, update))
 
     def _enqueue_state(self, conn: sqlite3.Connection, update: DeviceStateUpdate) -> None:
-        serialized = _serialize_capabilities(update.payload) or "null"
+        # Wrap payload in Govee LAN API format
+        wrapped_payload = wrap_govee_command(update.payload)
+        serialized = _serialize_capabilities(wrapped_payload) or "null"
         conn.execute(
             """
             INSERT INTO state (device_id, payload, context_id)

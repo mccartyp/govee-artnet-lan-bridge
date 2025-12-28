@@ -254,10 +254,11 @@ async def test_command_endpoint_enqueues_sanitized_payload(tmp_path) -> None:
     state = await store.next_state("cmd-device")
     assert state is not None
     queued = json.loads(state.payload)
-    assert queued["brightness"] == 10
-    assert queued["color"] == {"r": 51, "g": 102, "b": 153}
+    assert queued["msg"]["cmd"] == "devControl"
+    assert queued["msg"]["data"]["brightness"] == 10
+    assert queued["msg"]["data"]["color"] == {"r": 51, "g": 102, "b": 153}
     expected_kelvin = int(round(2000 + (6500 - 2000) * (128 / 255)))
-    assert queued["color_temp"] == expected_kelvin
+    assert queued["msg"]["data"]["color_temp"] == expected_kelvin
 
 
 @pytest.mark.asyncio
