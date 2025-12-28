@@ -1419,7 +1419,7 @@ class GoveeShell:
         else:
             # Normal status line
             health = self.toolbar_status["health_status"]
-            if health == "healthy":
+            if health == "ok":
                 h_style, h_icon = S("status-healthy"), "✓"
             elif health == "degraded":
                 h_style, h_icon = S("status-degraded"), "⚠"
