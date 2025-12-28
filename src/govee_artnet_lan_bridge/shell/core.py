@@ -68,6 +68,9 @@ from .command_handlers.config import ConfigCommandHandler
 from .layout_builder import LayoutBuilder
 from .keybindings import KeyBindingManager
 from .toolbar import ToolbarManager
+from .help_formatter import HelpFormatter
+from .autocomplete_config import get_completer_dict
+from .shell_utils import load_json, save_json
 
 
 # Shell version
@@ -105,6 +108,9 @@ class GoveeShell:
 
         # Initialize toolbar manager
         self.toolbar_manager = ToolbarManager(self)
+
+        # Initialize help formatter
+        self.help_formatter = HelpFormatter(self)
 
         # Set up command history and data directory
         self.data_dir = Path.home() / ".govee_artnet"
@@ -147,8 +153,8 @@ class GoveeShell:
             )
 
         # Load bookmarks and aliases
-        self.bookmarks = self._load_json(self.bookmarks_file, {})
-        self.aliases = self._load_json(self.aliases_file, {})
+        self.bookmarks = load_json(self.bookmarks_file, {})
+        self.aliases = load_json(self.aliases_file, {})
 
         # Command dispatch table
         self.commands: dict[str, Callable[[str], Optional[bool]]] = {
@@ -211,74 +217,7 @@ class GoveeShell:
         self.watch_controller: Optional[WatchController] = None
 
         # Set up multi-level autocomplete with command structure
-        completer_dict = {
-            'connect': None,
-            'disconnect': None,
-            'status': None,
-            'health': {'detailed': None},
-            'devices': {
-                'list': {
-                    'detailed': None,
-                    '--id': None,
-                    '--ip': None,
-                    '--state': {'active': None, 'disabled': None, 'offline': None}
-                },
-                'enable': None,
-                'disable': None,
-                'set-name': None
-            },
-            'mappings': {
-                'list': None,
-                'get': None,
-                'create': {
-                    '--device-id': None,
-                    '--universe': None,
-                    '--template': {'rgb': None, 'rgbw': None, 'brightness_rgb': None, 'rgbwa': None, 'rgbaw': None, 'brgbwct': None},
-                    '--start-channel': None,
-                    '--channel': None,
-                    '--length': None,
-                    '--type': {'range': None, 'discrete': None},
-                    '--field': {'power': None, 'brightness': None, 'r': None, 'red': None, 'g': None, 'green': None, 'b': None, 'blue': None, 'w': None, 'white': None, 'ct': None, 'color_temp': None},
-                    '--allow-overlap': None,
-                    '--help': None,
-                },
-                'delete': None,
-                'channel-map': None
-            },
-            'channels': {'list': None},
-            'logs': {
-                'stats': None,
-                'tail': {
-                    '--level': None,
-                    '--logger': None,
-                },
-                'search': {
-                    '--regex': None,
-                    '--case-sensitive': None,
-                    '--lines': None,
-                },
-            },
-            'monitor': {'status': None, 'dashboard': None},
-            'output': {'json': None, 'table': None, 'yaml': None},
-            'bookmark': {'add': None, 'list': None, 'delete': None, 'use': None},
-            'alias': {'add': None, 'list': None, 'delete': None, 'clear': None},
-            'watch': {
-                'devices': {'--interval': None},
-                'mappings': {'--interval': None},
-                'logs': {'--interval': None},
-                'dashboard': {'--interval': None},
-            },
-            'batch': {'load': None},
-            'session': {'save': None, 'list': None, 'delete': None},
-            'help': None,
-            '?': None,
-            'version': None,
-            'tips': None,
-            'clear': None,
-            'exit': None,
-            'quit': None,
-        }
-        completer = TrailingSpaceCompleter(completer_dict)
+        completer = TrailingSpaceCompleter(get_completer_dict())
 
         # Create input buffer with history and autocomplete
         self.input_buffer = Buffer(
@@ -323,24 +262,6 @@ class GoveeShell:
         self.config_handler = ConfigCommandHandler(self)
 
         self._connect()
-
-    def _load_json(self, file_path: Path, default: Any) -> Any:
-        """Load JSON data from file with fallback to default."""
-        try:
-            if file_path.exists():
-                with open(file_path, "r") as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return default
-
-    def _save_json(self, file_path: Path, data: Any) -> None:
-        """Save JSON data to file."""
-        try:
-            with open(file_path, "w") as f:
-                json.dump(data, f, indent=2)
-        except Exception as exc:
-            self._append_output(f"[red]Error saving to {file_path}: {exc}[/]" + "\n")
 
     def _resolve_bookmark(self, value: str) -> str:
         """
@@ -739,63 +660,6 @@ class GoveeShell:
                 del self.cache.cache[key]
             self.cache.stats["size"] = len(self.cache.cache)
 
-    def _format_command_help(self, command: str, docstring: str) -> str:
-        """
-        Format command help with colors and styling using rich.
-
-        Args:
-            command: The command name
-            docstring: The command's docstring
-
-        Returns:
-            Formatted help text with ANSI color codes
-        """
-        from io import StringIO
-        buffer = StringIO()
-        temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
-
-        # Print header
-        temp_console.print()
-        temp_console.print("─" * 80, style="dim")
-        temp_console.print(f"Help for command: {command}", style="bold cyan")
-        temp_console.print("─" * 80, style="dim")
-        temp_console.print()
-
-        # Parse and format the docstring
-        lines = docstring.strip().split("\n")
-        in_usage = False
-        in_examples = False
-
-        for line in lines:
-            stripped = line.strip()
-
-            # Check for section headers
-            if stripped.startswith("Usage:"):
-                in_usage = True
-                in_examples = False
-                temp_console.print(stripped, style="bold green")
-            elif stripped.startswith("Examples:"):
-                in_usage = False
-                in_examples = True
-                temp_console.print()
-                temp_console.print(stripped, style="bold green")
-            elif not stripped:
-                # Blank line
-                temp_console.print()
-                in_usage = False
-                in_examples = False
-            elif in_usage:
-                # Usage lines - highlight command syntax
-                temp_console.print(f"  {stripped}", style="yellow")
-            elif in_examples:
-                # Example lines - highlight examples
-                temp_console.print(f"  {stripped}", style="cyan")
-            else:
-                # Description text
-                temp_console.print(stripped, style="white")
-
-        temp_console.print()
-        return buffer.getvalue()
 
     def precmd(self, line: str) -> str:
         """Preprocess commands to expand aliases."""
@@ -1131,194 +995,11 @@ class GoveeShell:
             # Handle subcommands like "help mappings create"
             parts = arg.split(maxsplit=1)
             main_command = parts[0]
-
-            # Check for subcommand help (e.g., "help mappings create")
-            if len(parts) > 1:
-                subcommand = parts[1]
-                # Provide detailed help for specific subcommands
-                if main_command == "mappings" and subcommand == "create":
-                    self._append_output("[cyan]Mappings Create Help[/]\n")
-                    self._append_output("\n[bold]Template-based (recommended):[/]\n")
-                    self._append_output("  mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>\n")
-                    self._append_output("\n[bold]Available templates:[/]\n")
-                    self._append_output("  • rgb             - 3 channels: Red, Green, Blue\n")
-                    self._append_output("  • rgbw            - 4 channels: Red, Green, Blue, White\n")
-                    self._append_output("  • brightness_rgb  - 4 channels: Brightness, Red, Green, Blue\n")
-                    self._append_output("  • master_only     - 1 channel: Brightness\n")
-                    self._append_output("  • rgbwa           - 5 channels: Red, Green, Blue, White, Brightness\n")
-                    self._append_output("  • rgbaw           - 5 channels: Brightness, Red, Green, Blue, White\n")
-                    self._append_output("  • full            - 6 channels: Brightness, Red, Green, Blue, White, Color Temp\n")
-                    self._append_output("\n[bold]Manual configuration for single fields:[/]\n")
-                    self._append_output("  mappings create --device-id <id> --universe <num> --channel <num> --type discrete --field <field>\n")
-                    self._append_output("\n[bold]Options:[/]\n")
-                    self._append_output("  --device-id <id>        Device identifier (required)\n")
-                    self._append_output("  --universe <num>        ArtNet universe (default: 0)\n")
-                    self._append_output("  --template <name>       Use a template for multi-channel mapping\n")
-                    self._append_output("  --start-channel <num>   Starting Artnet channel for template\n")
-                    self._append_output("  --channel <num>         Artnet channel for manual mapping\n")
-                    self._append_output("  --length <num>          Number of channels (for manual range)\n")
-                    self._append_output("  --type <type>           Mapping type: range or discrete\n")
-                    self._append_output("  --field <field>         Field name (r, g, b, w, brightness, ct)\n")
-                    self._append_output("  --allow-overlap         Allow overlapping channel ranges\n")
-                    return
-                else:
-                    # For other subcommands, try to show the main command help
-                    self._append_output(f"[yellow]No specific help for '{main_command} {subcommand}'[/]\n")
-                    self._append_output(f"[dim]Showing help for '{main_command}' instead...[/]\n\n")
-                    # Fall through to show main command help
-
-            # Show help for specific command
-            handler = self.commands.get(main_command)
-            if handler:
-                # Get the docstring from the handler
-                docstring = handler.__doc__
-                if docstring:
-                    # Format with colors and styling (returns ANSI-formatted text)
-                    help_text = self._format_command_help(main_command, docstring)
-                    # Append directly to buffer (already ANSI-formatted)
-                    current_text = self.output_buffer.text
-                    new_text = current_text + help_text
-                    if not help_text.endswith('\n'):
-                        new_text += '\n'
-                    # Respect follow-tail mode
-                    cursor_pos = len(new_text) if self.follow_tail else min(self.output_buffer.cursor_position, len(new_text))
-                    self.output_buffer.set_document(
-                        Document(text=new_text, cursor_position=cursor_pos),
-                        bypass_readonly=True
-                    )
-                    self.app.invalidate()
-                else:
-                    # Rich markup, use _append_output
-                    self._append_output(f"\n[yellow]No help available for command '{main_command}'[/]\n")
-            else:
-                self._append_output(f"[red]Unknown command: {main_command}[/]" + "\n")
-                self._append_output("[dim]Type 'help' to see all available commands.[/]" + "\n")
-            return
-
-        # Show enhanced help with examples using rich
-        # Capture output to a string buffer for pagination
-        buffer = StringIO()
-        temp_console = Console(file=buffer, force_terminal=True, width=self.console.width)
-
-        temp_console.print("═" * self.console.width)
-        temp_console.print("Govee ArtNet Bridge Shell - Command Reference", style="bold cyan", justify="center")
-        temp_console.print("═" * self.console.width)
-
-        # Create help table
-        help_table = Table(show_header=True, header_style="bold magenta", show_lines=True, box=box.ROUNDED)
-        help_table.add_column("Command", style="cyan", width=15)
-        help_table.add_column("Description", style="white", width=30)
-        help_table.add_column("Example", style="yellow", width=35)
-
-        # Add command rows
-        help_table.add_row(
-            "connect",
-            "Connect to the bridge server",
-            "connect http://localhost:8000"
-        )
-        help_table.add_row(
-            "status",
-            "Show bridge status",
-            "status"
-        )
-        help_table.add_row(
-            "health",
-            "Check bridge health",
-            "health\nhealth detailed"
-        )
-        help_table.add_row(
-            "devices",
-            "Manage devices",
-            "devices list\ndevices list --state active\ndevices list detailed --id AA:BB\ndevices enable <id>\ndevices disable <id>\ndevices set-name <id> \"Name\""
-        )
-        help_table.add_row(
-            "mappings",
-            "Manage ArtNet mappings",
-            "mappings list\nmappings get <id>\nmappings create --help\nmappings delete <id>"
-        )
-        help_table.add_row(
-            "channels",
-            "View Artnet channel assignments",
-            "channels list\nchannels list 1"
-        )
-        help_table.add_row(
-            "logs",
-            "View and tail logs",
-            "logs\nlogs --level ERROR\nlogs tail\nlogs search \"error\""
-        )
-        help_table.add_row(
-            "monitor",
-            "Real-time monitoring",
-            "monitor dashboard\nmonitor stats"
-        )
-        help_table.add_row(
-            "bookmark",
-            "Save device IDs and URLs",
-            "bookmark add light1 ABC123\nbookmark list\nbookmark use light1"
-        )
-        help_table.add_row(
-            "alias",
-            "Create command shortcuts",
-            "alias add dl \"devices list\"\nalias list"
-        )
-        help_table.add_row(
-            "watch",
-            "Refresh data views",
-            "watch devices\nwatch mappings\nwatch dashboard"
-        )
-        help_table.add_row(
-            "batch",
-            "Execute commands from file",
-            "batch setup.txt"
-        )
-        help_table.add_row(
-            "session",
-            "Save/restore shell state",
-            "session save prod\nsession load prod"
-        )
-        help_table.add_row(
-            "output",
-            "Set output format",
-            "output table\noutput json\noutput yaml"
-        )
-        help_table.add_row(
-            "version",
-            "Show shell version",
-            "version"
-        )
-        help_table.add_row(
-            "tips",
-            "Show helpful tips",
-            "tips"
-        )
-        help_table.add_row(
-            "clear",
-            "Clear the screen",
-            "clear"
-        )
-        help_table.add_row(
-            "exit/quit",
-            "Exit the shell",
-            "exit"
-        )
-
-        temp_console.print(help_table)
-        temp_console.print("Type 'help <command>' for detailed help on a specific command.", style="dim")
-        temp_console.print("═" * self.console.width)
-
-        # Append to output buffer (already ANSI-formatted)
-        output = buffer.getvalue()
-        current_text = self.output_buffer.text
-        new_text = current_text + output
-        if not output.endswith('\n'):
-            new_text += '\n'
-        # Respect follow-tail mode
-        cursor_pos = len(new_text) if self.follow_tail else min(self.output_buffer.cursor_position, len(new_text))
-        self.output_buffer.set_document(
-            Document(text=new_text, cursor_position=cursor_pos),
-            bypass_readonly=True
-        )
-        self.app.invalidate()
+            subcommand = parts[1] if len(parts) > 1 else None
+            self.help_formatter.show_command_help(main_command, subcommand)
+        else:
+            # Show full help table
+            self.help_formatter.show_full_help()
 
     def do_version(self, arg: str) -> None:
         """Show shell version information."""
