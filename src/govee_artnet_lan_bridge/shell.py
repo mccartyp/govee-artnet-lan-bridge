@@ -41,6 +41,7 @@ from prompt_toolkit.document import Document as PTDocument
 from prompt_toolkit.formatted_text import ANSI, FormattedText, to_formatted_text
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.layout import ConditionalContainer, FormattedTextControl, HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl
 from prompt_toolkit.layout.dimension import Dimension
@@ -867,24 +868,24 @@ class GoveeShell:
             event.app.invalidate()
 
         # Log tail mode keybindings
-        @kb.add('escape', filter=lambda: self.in_log_tail_mode)
+        @kb.add('escape', filter=Condition(lambda: self.in_log_tail_mode))
         def _(event):
             """Handle Escape in log tail mode - exit to normal view."""
             asyncio.create_task(self._exit_log_tail_mode())
 
-        @kb.add('q', filter=lambda: self.in_log_tail_mode)
+        @kb.add('q', filter=Condition(lambda: self.in_log_tail_mode))
         def _(event):
             """Handle 'q' in log tail mode - exit to normal view."""
             asyncio.create_task(self._exit_log_tail_mode())
 
-        @kb.add('end', filter=lambda: self.in_log_tail_mode)
+        @kb.add('end', filter=Condition(lambda: self.in_log_tail_mode))
         def _(event):
             """Handle End in log tail mode - jump to bottom and enable follow-tail."""
             if self.log_tail_controller:
                 self.log_tail_controller.enable_follow_tail()
                 event.app.invalidate()
 
-        @kb.add('f', filter=lambda: self.in_log_tail_mode)
+        @kb.add('f', filter=Condition(lambda: self.in_log_tail_mode))
         def _(event):
             """Handle 'f' in log tail mode - open filter prompt."""
             # For now, show a message (we can implement a filter input dialog later)
@@ -895,7 +896,6 @@ class GoveeShell:
 
         # Create layout with output pane, separator, prompt + input field, and toolbar
         from prompt_toolkit.layout import WindowAlign
-        from prompt_toolkit.filters import Condition
 
         # Create conditional containers for switching between normal and log tail views
         self.normal_output_window = Window(
