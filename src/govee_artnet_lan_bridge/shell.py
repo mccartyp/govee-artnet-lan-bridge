@@ -45,6 +45,7 @@ from prompt_toolkit.widgets import TextArea
 from prompt_toolkit.document import Document
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 from rich import box
 
 from .cli import (
@@ -425,7 +426,8 @@ class GoveeShell:
                     '--state': {'active': None, 'disabled': None, 'offline': None}
                 },
                 'enable': None,
-                'disable': None
+                'disable': None,
+                'set-name': None
             },
             'mappings': {
                 'list': None,
@@ -1198,7 +1200,7 @@ class GoveeShell:
             # Component status table
             subsystems = health_data.get("subsystems", {})
             if subsystems:
-                table = Table(title="Component Status", show_header=True, header_style="bold cyan", box=box.ROUNDED)
+                table = Table(title=Text("Component Status", justify="center"), show_header=True, header_style="bold cyan", box=box.ROUNDED)
                 table.add_column("Component", style="cyan", width=20)
                 table.add_column("Status", style="white", width=15, justify="center")
                 table.add_column("Details", style="dim", width=40)
@@ -1329,9 +1331,10 @@ class GoveeShell:
                 return
 
             # Create simplified table (reordered columns, removed Enabled/Configured, added Last Seen)
-            table = Table(title="Devices", show_header=True, header_style="bold cyan", box=box.ROUNDED)
+            table = Table(title=Text("Devices", justify="center"), show_header=True, header_style="bold cyan", box=box.ROUNDED)
             table.add_column("Device ID", style="cyan", width=23, no_wrap=True)
             table.add_column("IP Address", style="green", width=15)
+            table.add_column("Name", style="blue", width=20)
             table.add_column("Model", style="yellow", width=15)
             table.add_column("State", style="white", width=20)
             table.add_column("Last Seen", style="magenta", width=18)
@@ -1341,6 +1344,8 @@ class GoveeShell:
                 device_id = device.get("id", "N/A")[:23]  # Truncate long IDs
                 model = device.get("model_number", "Unknown")
                 ip_address = device.get("ip", "N/A")
+                name = device.get("name", "")
+                name_display = name if name else "[dim]-[/]"
 
                 # Determine state(s)
                 states = []
@@ -1367,6 +1372,7 @@ class GoveeShell:
                 table.add_row(
                     device_id,
                     ip_address,
+                    name_display,
                     model,
                     state_str,
                     last_seen_age
@@ -1432,6 +1438,7 @@ class GoveeShell:
                 key_fields = [
                     ("Device ID", "id"),
                     ("IP", "ip"),
+                    ("Name", "name"),
                     ("Model", "model_number"),
                     ("Type", "device_type"),
                     ("Description", "description"),
@@ -1495,17 +1502,20 @@ class GoveeShell:
 
     def do_devices(self, arg: str) -> None:
         """
-        Device commands: list, list detailed, enable, disable.
+        Device commands: list, list detailed, enable, disable, set-name.
         Usage: devices list [--id ID] [--ip IP] [--state STATE]              # Show simplified 2-line view
                devices list detailed [--id ID] [--ip IP] [--state STATE]     # Show full device details
                devices enable <device_id>
                devices disable <device_id>
+               devices set-name <device_id> <name>                          # Set device name (use "" to clear)
         Examples:
             devices list
             devices list --id AA:BB:CC
             devices list --ip 192.168.1.100
             devices list --state active
             devices list detailed --state offline
+            devices set-name AA:BB:CC:DD:EE:FF "Kitchen Light"
+            devices set-name AA:BB:CC:DD:EE:FF ""                            # Clear name
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -1563,9 +1573,26 @@ class GoveeShell:
                 self._capture_api_output(_device_set_enabled, self.client, device_id, False, self.config)
                 # Invalidate devices cache after mutation
                 self._invalidate_cache("/devices")
+            elif command == "set-name" and len(args) >= 3:
+                device_id = args[1]
+                name = args[2]
+                # Empty string clears the name (set to NULL)
+                if name == "":
+                    name = None
+                # Call API to update device name
+                payload = {"name": name}
+                response = self.client.patch(f"/devices/{device_id}", json=payload)
+                if response.status_code == 200:
+                    self._invalidate_cache("/devices")
+                    if name:
+                        self._append_output(f"[green]Device name set to '{name}'[/]\n")
+                    else:
+                        self._append_output(f"[green]Device name cleared[/]\n")
+                else:
+                    self._append_output(f"[red]Failed to set device name: {response.status_code}[/]\n")
             else:
                 self._append_output(f"[red]Unknown or incomplete command: devices {arg}[/]" + "\n")
-                self._append_output("[yellow]Try: devices list, devices enable <id>, devices disable <id>[/]" + "\n")
+                self._append_output("[yellow]Try: devices list, devices enable <id>, devices disable <id>, devices set-name <id> <name>[/]" + "\n")
         except Exception as exc:
             self._handle_error(exc, "devices")
 
@@ -1579,10 +1606,16 @@ class GoveeShell:
                 self._append_output("[yellow]No mappings found[/]\n")
                 return
 
+            # Fetch devices to get names
+            devices_response = self.client.get("/devices")
+            devices = _handle_response(devices_response)
+            device_lookup = {d["id"]: d for d in devices} if devices else {}
+
             # Create table with unicode borders
-            table = Table(title="ArtNet Mappings", show_header=True, header_style="bold cyan", box=box.ROUNDED)
+            table = Table(title=Text("ArtNet Mappings", justify="center"), show_header=True, header_style="bold cyan", box=box.ROUNDED)
             table.add_column("Mapping ID", style="cyan", width=12)
             table.add_column("Device ID", style="yellow", width=23)
+            table.add_column("Name", style="blue", width=15)
             table.add_column("Universe", style="green", width=8, justify="right")
             table.add_column("Channel", style="magenta", width=8, justify="right")
             table.add_column("Length", style="blue", width=6, justify="right")
@@ -1598,9 +1631,16 @@ class GoveeShell:
                 else:
                     fields_str = "N/A"
 
+                # Look up device name
+                device_id = mapping.get("device_id", "N/A")
+                device = device_lookup.get(device_id, {})
+                device_name = device.get("name", "")
+                name_display = device_name if device_name else "[dim]-[/]"
+
                 table.add_row(
                     str(mapping.get("id", "N/A")),
-                    str(mapping.get("device_id", "N/A"))[:23],
+                    str(device_id)[:23],
+                    name_display,
                     str(mapping.get("universe", "N/A")),
                     str(mapping.get("channel", "N/A")),
                     str(mapping.get("length", "N/A")),
@@ -1799,6 +1839,7 @@ class GoveeShell:
                mappings channel-map
         Templates: rgb, rgbw, brightness_rgb, master_only, rgbwa, rgbaw, full
         Note: --universe defaults to 0 if omitted
+        Use 'help mappings create', 'mappings create --help', or 'mappings create ?' for detailed creation help
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -1823,6 +1864,10 @@ class GoveeShell:
                 mapping_id = args[1]
                 self._capture_api_output(_api_get_by_id, self.client, "/mappings", mapping_id, self.config)
             elif command == "create":
+                # Handle help aliases: mappings create --help, mappings create ?
+                if len(args) >= 2 and args[1] in ("--help", "?"):
+                    self.do_help("mappings create")
+                    return
                 self._create_mapping(args[1:])
             elif command == "delete" and len(args) >= 2:
                 mapping_id = args[1]
@@ -1884,7 +1929,7 @@ class GoveeShell:
             self._handle_error(exc, "channels")
 
     def _show_channels_list(self, universes: list[int] = None) -> None:
-        """Show DMX channels for the specified universe(s).
+        """Show Artnet channels for the specified universe(s).
 
         Args:
             universes: List of ArtNet universe numbers (default [0])
@@ -1967,7 +2012,7 @@ class GoveeShell:
             # Create table with unicode borders
             universes_str = ", ".join(str(u) for u in sorted(universes))
             table = Table(
-                title=f"DMX Channels - Universe {universes_str}",
+                title=Text(f"Artnet Channels - Universe {universes_str}", justify="center"),
                 show_header=True,
                 header_style="bold cyan",
                 box=box.ROUNDED
@@ -1976,6 +2021,7 @@ class GoveeShell:
             table.add_column("Channel", style="cyan", width=8, justify="right")
             table.add_column("Device ID", style="yellow", width=23)
             table.add_column("IP Address", style="green", width=15)
+            table.add_column("Name", style="blue", width=15)
             table.add_column("Function", style="magenta", width=15)
             table.add_column("Mapping ID", style="blue", width=12, justify="right")
 
@@ -1983,9 +2029,11 @@ class GoveeShell:
             for (universe, channel_num) in sorted(channel_map.keys()):
                 device_id, function, mapping_id = channel_map[(universe, channel_num)]
 
-                # Look up IP address dynamically from fresh device data
+                # Look up IP address and name dynamically from fresh device data
                 device = device_lookup.get(device_id, {})
                 device_ip = device.get("ip", "N/A")
+                device_name = device.get("name", "")
+                name_display = device_name if device_name else "[dim]-[/]"
 
                 # Apply color coding to functions
                 if "Red" in function:
@@ -2006,6 +2054,7 @@ class GoveeShell:
                     str(channel_num),
                     device_id[:23],
                     device_ip,
+                    name_display,
                     function_style,
                     str(mapping_id)
                 )
@@ -2243,7 +2292,7 @@ class GoveeShell:
             self._append_output("\n")
 
             # Devices table
-            devices_table = Table(title="Devices", show_header=True, header_style="bold magenta", box=box.ROUNDED)
+            devices_table = Table(title=Text("Devices", justify="center"), show_header=True, header_style="bold magenta", box=box.ROUNDED)
             devices_table.add_column("Type", style="cyan")
             devices_table.add_column("Count", justify="right", style="yellow")
 
@@ -2267,7 +2316,7 @@ class GoveeShell:
             # Subsystems table
             subsystems = health_data.get("subsystems", {})
             if subsystems:
-                subsystems_table = Table(title="Subsystems", show_header=True, header_style="bold magenta", box=box.ROUNDED)
+                subsystems_table = Table(title=Text("Subsystems", justify="center"), show_header=True, header_style="bold magenta", box=box.ROUNDED)
                 subsystems_table.add_column("Name", style="cyan")
                 subsystems_table.add_column("Status", style="green")
 
@@ -2347,7 +2396,7 @@ class GoveeShell:
                 self._append_output("[dim]No bookmarks saved[/]" + "\n")
                 return
 
-            table = Table(title="Bookmarks", show_header=True, header_style="bold magenta", box=box.ROUNDED)
+            table = Table(title=Text("Bookmarks", justify="center"), show_header=True, header_style="bold magenta", box=box.ROUNDED)
             table.add_column("Name", style="cyan")
             table.add_column("Value", style="yellow")
 
@@ -2412,7 +2461,7 @@ class GoveeShell:
                 self._append_output("[dim]No aliases defined[/]" + "\n")
                 return
 
-            table = Table(title="Aliases", show_header=True, header_style="bold magenta", box=box.ROUNDED)
+            table = Table(title=Text("Aliases", justify="center"), show_header=True, header_style="bold magenta", box=box.ROUNDED)
             table.add_column("Alias", style="cyan")
             table.add_column("Command", style="yellow")
 
@@ -2454,7 +2503,7 @@ class GoveeShell:
             total_requests = stats["hits"] + stats["misses"]
             hit_rate = (stats["hits"] / total_requests * 100) if total_requests > 0 else 0
 
-            table = Table(title="Cache Statistics", show_header=True, header_style="bold magenta", box=box.ROUNDED)
+            table = Table(title=Text("Cache Statistics", justify="center"), show_header=True, header_style="bold magenta", box=box.ROUNDED)
             table.add_column("Metric", style="cyan")
             table.add_column("Value", style="yellow")
 
@@ -2626,7 +2675,7 @@ class GoveeShell:
                 self._append_output("[dim]No sessions saved[/]" + "\n")
                 return
 
-            table = Table(title="Sessions", show_header=True, header_style="bold magenta", box=box.ROUNDED)
+            table = Table(title=Text("Sessions", justify="center"), show_header=True, header_style="bold magenta", box=box.ROUNDED)
             table.add_column("Name", style="cyan")
             table.add_column("Server URL", style="yellow")
             table.add_column("Output Format", style="green")
@@ -2677,8 +2726,8 @@ class GoveeShell:
                     self._append_output("  --device-id <id>        Device identifier (required)\n")
                     self._append_output("  --universe <num>        ArtNet universe (default: 0)\n")
                     self._append_output("  --template <name>       Use a template for multi-channel mapping\n")
-                    self._append_output("  --start-channel <num>   Starting DMX channel for template\n")
-                    self._append_output("  --channel <num>         DMX channel for manual mapping\n")
+                    self._append_output("  --start-channel <num>   Starting Artnet channel for template\n")
+                    self._append_output("  --channel <num>         Artnet channel for manual mapping\n")
                     self._append_output("  --length <num>          Number of channels (for manual range)\n")
                     self._append_output("  --type <type>           Mapping type: range or discrete\n")
                     self._append_output("  --field <field>         Field name (r, g, b, w, brightness, ct)\n")
@@ -2752,7 +2801,7 @@ class GoveeShell:
         help_table.add_row(
             "devices",
             "Manage devices",
-            "devices list\ndevices list --state active\ndevices list detailed --id AA:BB\ndevices enable <id>\ndevices disable <id>"
+            "devices list\ndevices list --state active\ndevices list detailed --id AA:BB\ndevices enable <id>\ndevices disable <id>\ndevices set-name <id> \"Name\""
         )
         help_table.add_row(
             "mappings",
@@ -2761,7 +2810,7 @@ class GoveeShell:
         )
         help_table.add_row(
             "channels",
-            "View DMX channel assignments",
+            "View Artnet channel assignments",
             "channels list\nchannels list 1"
         )
         help_table.add_row(

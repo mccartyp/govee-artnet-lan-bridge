@@ -349,6 +349,14 @@ MIGRATIONS: List[Tuple[int, Migration]] = [
         ),
     ),
     (9, _migration_device_catalog_metadata),
+    (
+        10,
+        lambda conn: conn.executescript(
+            """
+            ALTER TABLE devices ADD COLUMN name TEXT;
+            """
+        ),
+    ),
 ]
 
 
