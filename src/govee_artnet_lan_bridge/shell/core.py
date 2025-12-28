@@ -398,8 +398,8 @@ class GoveeShell:
         self.log_tail_buffer.set_document(Document(""), bypass_readonly=True)
 
         # Show entering message
-        enter_msg = "\033[1;36m╔═══════════════════════════════════════════════════════════╗\033[0m\n"
-        enter_msg += "\033[1;36m║           Log Tail Mode - Real-time Log Stream           ║\033[0m\n"
+        enter_msg  = "\033[1;36m╔═══════════════════════════════════════════════════════════╗\033[0m\n"
+        enter_msg += "\033[1;36m║           Log Tail Mode - Real-time Log Stream            ║\033[0m\n"
         enter_msg += "\033[1;36m╚═══════════════════════════════════════════════════════════╝\033[0m\n"
         if level:
             enter_msg += f"\033[33mLevel filter: {level}\033[0m\n"
@@ -449,9 +449,9 @@ class GoveeShell:
         self.watch_buffer.set_document(Document(""), bypass_readonly=True)
 
         # Show entering message
-        enter_msg = "\033[1;36m╔═══════════════════════════════════════════════════════════╗\033[0m\n"
+        enter_msg  =  "\033[1;36m╔═══════════════════════════════════════════════════════════╗\033[0m\n"
         enter_msg += f"\033[1;36m║           Watch Mode - {target.upper():<35} ║\033[0m\n"
-        enter_msg += "\033[1;36m╚═══════════════════════════════════════════════════════════╝\033[0m\n"
+        enter_msg +=  "\033[1;36m╚═══════════════════════════════════════════════════════════╝\033[0m\n"
         enter_msg += f"\033[33mRefresh interval: {interval}s\033[0m\n"
         enter_msg += "\033[2mStarting watch...\033[0m\n\n"
 
