@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import shlex
-from typing import Optional
+import string
+from typing import Any, MutableMapping, Optional
 
 from rich import box
 from rich.table import Table
@@ -18,13 +19,14 @@ class DeviceCommandHandler(CommandHandler):
 
     def do_devices(self, arg: str) -> None:
         """
-        Device commands: list, list detailed, enable, disable, set-name, set-capabilities.
+        Device commands: list, list detailed, enable, disable, set-name, set-capabilities, command.
         Usage: devices list [--id ID] [--ip IP] [--state STATE]              # Show simplified 2-line view
                devices list detailed [--id ID] [--ip IP] [--state STATE]     # Show full device details
                devices enable <device_id>
                devices disable <device_id>
                devices set-name <device_id> <name>                          # Set device name (use "" to clear)
                devices set-capabilities <device_id> --brightness <bool> --color <bool> --white <bool> --color-temp <bool>
+               devices command <device_id> [--on|--off] [--brightness N] [--color HEX] [--ct N]
         Examples:
             devices list
             devices list --id AA:BB:CC:DD:EE:FFC
@@ -34,6 +36,10 @@ class DeviceCommandHandler(CommandHandler):
             devices set-name AA:BB:CC:DD:EE:FF "Kitchen Light"
             devices set-name AA:BB:CC:DD:EE:FF ""                            # Clear name
             devices set-capabilities AA:BB:CC:DD:EE:FF --brightness true --color true --white false
+            devices command AA:BB:CC:DD:EE:FF --on --brightness 200 --color #FF00FF
+            devices command AA:BB:CC:DD:EE:FF --off
+            devices command AA:BB:CC:DD:EE:FF --color ff8800 --brightness 128
+            devices command AA:BB:CC:DD:EE:FF --ct 128
         """
         if not self.client:
             self.shell._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -145,9 +151,100 @@ class DeviceCommandHandler(CommandHandler):
                     self.shell._append_output(f"[green]Device capabilities updated: {caps_list}[/]\n")
                 else:
                     self.shell._append_output(f"[red]Failed to update device capabilities: {response.status_code}[/]\n")
+            elif command == "command" and len(args) >= 2:
+                device_id = args[1]
+
+                # Parse command flags
+                power_on = False
+                power_off = False
+                brightness = None
+                color = None
+                ct = None
+
+                i = 2
+                while i < len(args):
+                    if args[i] == "--on":
+                        power_on = True
+                        i += 1
+                    elif args[i] == "--off":
+                        power_off = True
+                        i += 1
+                    elif args[i] == "--brightness" and i + 1 < len(args):
+                        try:
+                            brightness = int(args[i + 1])
+                        except ValueError:
+                            self.shell._append_output(f"[red]Invalid brightness value: {args[i + 1]}[/]\n")
+                            return
+                        i += 2
+                    elif args[i] == "--color" and i + 1 < len(args):
+                        color = args[i + 1]
+                        i += 2
+                    elif args[i] in ("--ct", "--kelvin") and i + 1 < len(args):
+                        try:
+                            ct = int(args[i + 1])
+                        except ValueError:
+                            self.shell._append_output(f"[red]Invalid color temperature value: {args[i + 1]}[/]\n")
+                            return
+                        i += 2
+                    else:
+                        self.shell._append_output(f"[red]Unknown flag: {args[i]}[/]\n")
+                        return
+
+                # Validate input
+                if power_on and power_off:
+                    self.shell._append_output("[red]Choose either --on or --off, not both[/]\n")
+                    return
+
+                if not any([power_on, power_off, brightness is not None, color, ct is not None]):
+                    self.shell._append_output("[red]At least one action is required (--on, --off, --brightness, --color, --ct)[/]\n")
+                    return
+
+                # Validate brightness range
+                if brightness is not None:
+                    if brightness < 0 or brightness > 255:
+                        self.shell._append_output("[red]Brightness must be between 0 and 255[/]\n")
+                        return
+
+                # Validate color temperature range
+                if ct is not None:
+                    if ct < 0 or ct > 255:
+                        self.shell._append_output("[red]Color temperature must be between 0 and 255[/]\n")
+                        return
+
+                # Normalize color hex
+                if color:
+                    color = self._normalize_color_hex(color)
+                    if color is None:
+                        self.shell._append_output("[red]Color must be a hex value like ff3366, #ff3366, or #F0F[/]\n")
+                        return
+
+                # Build payload
+                payload: MutableMapping[str, Any] = {}
+                if power_on:
+                    payload["on"] = True
+                if power_off:
+                    payload["off"] = True
+                if brightness is not None:
+                    payload["brightness"] = brightness
+                if color:
+                    payload["color"] = color
+                if ct is not None:
+                    payload["kelvin"] = ct
+
+                # Send command to API
+                response = self.client.post(f"/devices/{device_id}/command", json=payload)
+                if response.status_code == 200:
+                    self.shell._append_output(f"[green]Command sent successfully to {device_id}[/]\n")
+                else:
+                    try:
+                        error_data = response.json()
+                        error_msg = error_data.get("detail", f"HTTP {response.status_code}")
+                        self.shell._append_output(f"[red]Failed to send command: {error_msg}[/]\n")
+                    except Exception:
+                        self.shell._append_output(f"[red]Failed to send command: HTTP {response.status_code}[/]\n")
             else:
                 self.shell._append_output(f"[red]Unknown or incomplete command: devices {arg}[/]" + "\n")
-                self.shell._append_output("[yellow]Try: devices list, devices enable <id>, devices disable <id>, devices set-name <id> <name>[/]" + "\n")
+                self.shell._append_output("[yellow]Try: devices list, devices enable <id>, devices disable <id>, devices set-name <id> <name>, devices command <id> [flags][/]" + "\n")
         except Exception as exc:
             self.shell._handle_error(exc, "devices")
 
@@ -403,3 +500,22 @@ class DeviceCommandHandler(CommandHandler):
 
         except Exception as exc:
             self.shell._append_output(f"[red]Error fetching devices: {exc}[/]\n")
+
+    def _normalize_color_hex(self, value: str) -> Optional[str]:
+        """Normalize a color hex string.
+
+        Args:
+            value: Hex color string (e.g., "ff3366", "#ff3366", "F0F")
+
+        Returns:
+            Normalized hex string (lowercase, without #), or None if invalid
+        """
+        normalized = value.strip()
+        if normalized.startswith("#"):
+            normalized = normalized[1:]
+        if len(normalized) == 3:
+            # Expand shorthand (e.g., "F0F" -> "FF00FF")
+            normalized = "".join(ch * 2 for ch in normalized)
+        if len(normalized) != 6 or any(ch not in string.hexdigits for ch in normalized):
+            return None
+        return normalized.lower()
