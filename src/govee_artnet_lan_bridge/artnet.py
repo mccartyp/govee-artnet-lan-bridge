@@ -257,7 +257,7 @@ class UniverseMapping:
             if slice_data is None:
                 if random.random() <= self._log_sample_rate:
                     self.logger.debug(
-                        "DMX payload too short for mapping",
+                        "ArtNet payload too short for mapping",
                         extra={
                             "device_id": mapping.record.device_id,
                             "universe": mapping.record.universe,
@@ -270,6 +270,20 @@ class UniverseMapping:
             payload = _payload_from_slice(mapping, slice_data)
             if payload is None:
                 continue
+            if random.random() <= self._log_sample_rate:
+                self.logger.debug(
+                    "Mapped ArtNet data to device payload",
+                    extra={
+                        "device_id": mapping.record.device_id,
+                        "universe": mapping.record.universe,
+                        "channel": mapping.record.channel,
+                        "length": mapping.record.length,
+                        "artnet_values": list(slice_data),
+                        "payload": payload,
+                        "mapping_mode": mapping.spec.mode,
+                        "context_id": context_id,
+                    },
+                )
             device_id = mapping.record.device_id
             if device_id not in aggregated:
                 aggregated[device_id] = {}
@@ -426,7 +440,12 @@ class ArtNetService:
                 if random.random() <= self._log_sample_rate:
                     self.logger.debug(
                         "Ignoring ArtNet packet for unconfigured universe",
-                        extra={"universe": packet.universe, "from": addr},
+                        extra={
+                            "universe": packet.universe,
+                            "sequence": packet.sequence,
+                            "data_length": packet.length,
+                            "from": addr,
+                        },
                     )
                 status = "unmapped"
                 return
@@ -434,6 +453,30 @@ class ArtNetService:
             updates = mapping.apply(packet.data, context_id=context_id)
             if not updates:
                 status = "no_updates"
+                if random.random() <= self._log_sample_rate:
+                    self.logger.debug(
+                        "ArtNet packet generated no device updates",
+                        extra={
+                            "universe": packet.universe,
+                            "sequence": packet.sequence,
+                            "data_length": packet.length,
+                            "from": addr,
+                            "context_id": context_id,
+                        },
+                    )
+            else:
+                if random.random() <= self._log_sample_rate:
+                    self.logger.debug(
+                        "ArtNet packet received",
+                        extra={
+                            "universe": packet.universe,
+                            "sequence": packet.sequence,
+                            "data_length": packet.length,
+                            "updates_count": len(updates),
+                            "from": addr,
+                            "context_id": context_id,
+                        },
+                    )
             for update in updates:
                 self._schedule_update(update)
         except Exception:
@@ -445,7 +488,26 @@ class ArtNetService:
     def _schedule_update(self, update: DeviceStateUpdate) -> None:
         previous = self._last_payloads.get(update.device_id)
         if previous is not None and previous == update.payload:
+            if random.random() <= self._log_sample_rate:
+                self.logger.debug(
+                    "Skipping duplicate device update",
+                    extra={
+                        "device_id": update.device_id,
+                        "payload": update.payload,
+                        "context_id": update.context_id,
+                    },
+                )
             return
+        if random.random() <= self._log_sample_rate:
+            self.logger.debug(
+                "Scheduling device update",
+                extra={
+                    "device_id": update.device_id,
+                    "payload": update.payload,
+                    "previous_payload": previous,
+                    "context_id": update.context_id,
+                },
+            )
         self._last_payloads[update.device_id] = update.payload
         self._pending_updates[update.device_id] = update
         record_artnet_update(update.device_id)
@@ -462,7 +524,11 @@ class ArtNetService:
                 await self.store.enqueue_state(update)
                 self.logger.debug(
                     "Enqueued device update",
-                    extra={"device_id": device_id},
+                    extra={
+                        "device_id": device_id,
+                        "payload": update.payload,
+                        "context_id": update.context_id,
+                    },
                 )
         finally:
             self._debounce_tasks.pop(device_id, None)
