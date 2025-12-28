@@ -455,6 +455,7 @@ class DeviceRow:
 
     id: str
     ip: Optional[str]
+    name: Optional[str]
     model_number: Optional[str]
     device_type: Optional[str]
     length_meters: Optional[float]
@@ -539,6 +540,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                name,
                 model,
                 model_number,
                 device_type,
@@ -579,6 +581,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                name,
                 model,
                 model_number,
                 device_type,
@@ -624,6 +627,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                name,
                 model,
                 model_number,
                 device_type,
@@ -664,6 +668,7 @@ class DeviceStore:
         device_id: str,
         *,
         ip: Optional[str] = None,
+        name: Optional[str] = None,
         model_number: Optional[str] = None,
         device_type: Optional[str] = None,
         length_meters: Optional[float] = None,
@@ -680,6 +685,7 @@ class DeviceStore:
                 conn,
                 device_id,
                 ip,
+                name,
                 model_number,
                 device_type,
                 length_meters,
@@ -698,6 +704,7 @@ class DeviceStore:
         conn: sqlite3.Connection,
         device_id: str,
         ip: Optional[str],
+        name: Optional[str],
         model_number: Optional[str],
         device_type: Optional[str],
         length_meters: Optional[float],
@@ -746,6 +753,7 @@ class DeviceStore:
             UPDATE devices
             SET
                 ip = COALESCE(?, ip),
+                name = COALESCE(?, name),
                 model = COALESCE(?, model),
                 model_number = COALESCE(?, model_number, model),
                 device_type = COALESCE(?, device_type),
@@ -761,6 +769,7 @@ class DeviceStore:
             """,
             (
                 ip,
+                name,
                 model_value,
                 model_value,
                 db_metadata.get("device_type"),
@@ -781,6 +790,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                name,
                 model,
                 model_number,
                 device_type,
@@ -2262,6 +2272,7 @@ class DeviceStore:
         return DeviceRow(
             id=row["id"],
             ip=row["ip"],
+            name=row["name"] if "name" in row.keys() else None,
             model_number=model_number,
             device_type=metadata.get("device_type"),
             length_meters=metadata.get("length_meters"),

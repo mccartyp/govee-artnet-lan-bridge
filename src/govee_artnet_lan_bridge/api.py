@@ -74,6 +74,7 @@ class DeviceUpdate(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
     ip: Optional[str] = None
+    name: Optional[str] = None
     model_number: Optional[str] = Field(
         default=None, validation_alias=AliasChoices("model_number", "model")
     )
@@ -418,6 +419,7 @@ def create_app(
         updated = await store.update_device(
             device_id,
             ip=payload.ip,
+            name=payload.name,
             model_number=payload.model_number,
             device_type=payload.device_type,
             length_meters=payload.length_meters,
