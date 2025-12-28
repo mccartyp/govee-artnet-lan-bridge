@@ -954,7 +954,7 @@ class GoveeShell:
                 content=FormattedTextControl(
                     text=self._get_bottom_toolbar,
                 ),
-                height=2,
+                height=3,
                 style="class:bottom-toolbar",
             ),
         ])
