@@ -28,7 +28,21 @@ def get_completer_dict() -> dict:
             },
             'enable': None,
             'disable': None,
-            'set-name': None
+            'set-name': None,
+            'set-capabilities': {
+                '--brightness': None,
+                '--color': None,
+                '--white': None,
+                '--color-temp': None
+            },
+            'command': {
+                '--on': None,
+                '--off': None,
+                '--brightness': None,
+                '--color': None,
+                '--ct': None,
+                '--kelvin': None
+            }
         },
         'mappings': {
             'list': None,

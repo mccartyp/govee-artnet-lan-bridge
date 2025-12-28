@@ -603,7 +603,25 @@ The `devices command` helper accepts the following actions:
 - `--on` / `--off`: convenience toggles (sends the Govee LAN `turn` command without forcing brightness)
 - `--brightness <0-255>`: raw brightness level
 - `--color <hex>`: RGB hex string (`ff3366`, `#00ccff`, or three-digit shorthand like `0cf`)
-- `--kelvin <0-255>`: 0-255 slider scaled to the device's supported color-temperature range (defaults to 2000-9000K when the range is unknown)
+- `--kelvin <0-255>` or `--ct <0-255>`: 0-255 slider scaled to the device's supported color-temperature range (defaults to 2000-9000K when the range is unknown)
+
+#### Shell Mode Device Commands
+
+The same `devices command` functionality is available in the interactive shell:
+
+```bash
+# In shell mode
+govee> devices command AA:BB:CC:DD:EE:FF --on --brightness 200 --color #FF00FF
+govee> devices command AA:BB:CC:DD:EE:FF --off
+govee> devices command AA:BB:CC:DD:EE:FF --color ff8800 --brightness 128
+govee> devices command AA:BB:CC:DD:EE:FF --ct 128
+
+# Use bookmarks for convenience
+govee> bookmark add kitchen "AA:BB:CC:DD:EE:FF"
+govee> devices command @kitchen --on --color #00FF00
+```
+
+See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete documentation on shell features, bookmarks, and autocomplete.
 
 Manual configuration files can also define the same metadata used by discovery/catalog lookups. Example `config.toml` snippet:
 

@@ -137,6 +137,39 @@ govee> devices list --ip 192.168.1.100        # Filter by IP address
 govee> devices list detailed --state offline  # Detailed view with filters
 govee> devices enable <device_id>             # Enable a device
 govee> devices disable <device_id>            # Disable a device
+govee> devices set-name <device_id> "Name"    # Set device name
+govee> devices set-capabilities <device_id> --brightness true --color true  # Set capabilities
+govee> devices command <device_id> [options]  # Send control commands
+```
+
+#### Device Control Commands
+
+Send control commands to devices directly from the shell:
+
+```bash
+# Turn device on/off
+govee> devices command AA:BB:CC:DD:EE:FF --on
+govee> devices command AA:BB:CC:DD:EE:FF --off
+
+# Set brightness (0-255)
+govee> devices command AA:BB:CC:DD:EE:FF --brightness 200
+
+# Set RGB color (hex format)
+govee> devices command AA:BB:CC:DD:EE:FF --color #FF00FF
+govee> devices command AA:BB:CC:DD:EE:FF --color ff8800
+govee> devices command AA:BB:CC:DD:EE:FF --color F0F    # Shorthand expands to FF00FF
+
+# Set color temperature (0-255)
+govee> devices command AA:BB:CC:DD:EE:FF --ct 128
+govee> devices command AA:BB:CC:DD:EE:FF --kelvin 200  # Same as --ct
+
+# Combine multiple commands
+govee> devices command AA:BB:CC:DD:EE:FF --on --brightness 200 --color #FF00FF
+govee> devices command AA:BB:CC:DD:EE:FF --color ff8800 --brightness 128
+
+# Use bookmarks for convenience
+govee> bookmark add kitchen "AA:BB:CC:DD:EE:FF"
+govee> devices command @kitchen --on --color #00FF00
 ```
 
 ### Mapping Management
