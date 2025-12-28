@@ -428,8 +428,8 @@ class WatchController:
                 # Add timestamp header
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 output += f"\033[1;36m╔═══════════════════════════════════════════════════════════╗\033[0m\n"
-                output += f"\033[1;36m║  Watch Mode - {self.watch_target.upper():<44} ║\033[0m\n"
-                output += f"\033[1;36m║  Refreshed at {timestamp:<42} ║\033[0m\n"
+                output += f"\033[1;36m║  Watch Mode - {self.watch_target.upper():<43} ║\033[0m\n"
+                output += f"\033[1;36m║  Refreshed at {timestamp:<43} ║\033[0m\n"
                 output += f"\033[1;36m╚═══════════════════════════════════════════════════════════╝\033[0m\n\n"
 
                 # Execute the watch command and capture output
