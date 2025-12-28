@@ -156,7 +156,7 @@ For individual field control, use single channel mappings instead of templates:
 | `w` | `white` | White channel only | `color` |
 | `ct` | `color_temp` | Color temperature in Kelvin | `color_temperature` |
 
-**Note**: Device capabilities are validated when creating mappings. Not all Govee devices support all features (e.g., plug-type devices typically don't support brightness control). Use `govee-artnet devices list` to check device capabilities.
+**Note**: Device capabilities are validated when creating mappings. Not all Govee devices support all features (e.g., plug-type devices only support power control). Use `govee-artnet devices list` to check device capabilities.
 
 ```bash
 # Create a power control mapping (works on all devices)
