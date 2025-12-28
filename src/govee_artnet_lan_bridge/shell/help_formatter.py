@@ -242,7 +242,6 @@ class HelpFormatter:
 
         temp_console.print(help_table)
         temp_console.print("Type 'help <command>' for detailed help on a specific command.", style="dim")
-        temp_console.print("═" * self.shell.console.width)
 
         # Append to output buffer (already ANSI-formatted)
         output = buffer.getvalue()
