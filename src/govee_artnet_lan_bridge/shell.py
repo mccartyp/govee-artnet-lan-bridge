@@ -1145,6 +1145,11 @@ class GoveeShell:
             self._append_output(f"[red]Not connected.[/] [dim]Server URL: {self.config.server_url}[/]" + "\n")
             return
 
+        # Handle help aliases: status --help, status ?
+        if arg.strip() in ("--help", "?"):
+            self.do_help("status")
+            return
+
         try:
             self._capture_api_output(_api_get, self.client, "/status", self.config)
         except Exception as exc:
@@ -1158,6 +1163,11 @@ class GoveeShell:
         """
         if not self.client:
             self._append_output("Not connected. Use 'connect' first.\n")
+            return
+
+        # Handle help aliases: health --help, health ?
+        if arg.strip() in ("--help", "?"):
+            self.do_help("health")
             return
 
         args = shlex.split(arg) if arg else []
@@ -1320,7 +1330,7 @@ class GoveeShell:
 
             # Create simplified table (reordered columns, removed Enabled/Configured, added Last Seen)
             table = Table(title="Devices", show_header=True, header_style="bold cyan", box=box.ROUNDED)
-            table.add_column("ID", style="cyan", width=23, no_wrap=True)
+            table.add_column("Device ID", style="cyan", width=23, no_wrap=True)
             table.add_column("IP Address", style="green", width=15)
             table.add_column("Model", style="yellow", width=15)
             table.add_column("State", style="white", width=20)
@@ -1420,7 +1430,7 @@ class GoveeShell:
 
                 # Key fields to display in order with colors
                 key_fields = [
-                    ("ID", "id"),
+                    ("Device ID", "id"),
                     ("IP", "ip"),
                     ("Model", "model_number"),
                     ("Type", "device_type"),
@@ -1501,6 +1511,11 @@ class GoveeShell:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
             return
 
+        # Handle help aliases: devices --help, devices ?
+        if arg.strip() in ("--help", "?"):
+            self.do_help("devices")
+            return
+
         args = shlex.split(arg)
         if not args:
             self._append_output("[yellow]Usage: devices <command> [args...][/]" + "\n")
@@ -1566,7 +1581,7 @@ class GoveeShell:
 
             # Create table with unicode borders
             table = Table(title="ArtNet Mappings", show_header=True, header_style="bold cyan", box=box.ROUNDED)
-            table.add_column("ID", style="cyan", width=8)
+            table.add_column("Mapping ID", style="cyan", width=12)
             table.add_column("Device ID", style="yellow", width=23)
             table.add_column("Universe", style="green", width=8, justify="right")
             table.add_column("Channel", style="magenta", width=8, justify="right")
@@ -1789,6 +1804,11 @@ class GoveeShell:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
             return
 
+        # Handle help aliases: mappings --help, mappings ?
+        if arg.strip() in ("--help", "?"):
+            self.do_help("mappings")
+            return
+
         args = shlex.split(arg)
         if not args:
             self._append_output("[yellow]Usage: mappings <command> [args...][/]" + "\n")
@@ -1830,6 +1850,11 @@ class GoveeShell:
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
+            return
+
+        # Handle help aliases: channels --help, channels ?
+        if arg.strip() in ("--help", "?"):
+            self.do_help("channels")
             return
 
         args = shlex.split(arg)
@@ -1952,6 +1977,7 @@ class GoveeShell:
             table.add_column("Device ID", style="yellow", width=23)
             table.add_column("IP Address", style="green", width=15)
             table.add_column("Function", style="magenta", width=15)
+            table.add_column("Mapping ID", style="blue", width=12, justify="right")
 
             # Add rows for populated channels (sorted by universe, then channel number)
             for (universe, channel_num) in sorted(channel_map.keys()):
@@ -1980,7 +2006,8 @@ class GoveeShell:
                     str(channel_num),
                     device_id[:23],
                     device_ip,
-                    function_style
+                    function_style,
+                    str(mapping_id)
                 )
 
             self._append_output(table)
@@ -2015,6 +2042,11 @@ class GoveeShell:
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
+            return
+
+        # Handle help aliases: logs --help, logs ?
+        if arg.strip() in ("--help", "?"):
+            self.do_help("logs")
             return
 
         args = shlex.split(arg)
@@ -2164,6 +2196,11 @@ class GoveeShell:
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
+            return
+
+        # Handle help aliases: monitor --help, monitor ?
+        if arg.strip() in ("--help", "?"):
+            self.do_help("monitor")
             return
 
         args = shlex.split(arg)
@@ -2614,14 +2651,53 @@ class GoveeShell:
     def do_help(self, arg: str) -> None:
         """Show help for commands with examples."""
         if arg:
+            # Handle subcommands like "help mappings create"
+            parts = arg.split(maxsplit=1)
+            main_command = parts[0]
+
+            # Check for subcommand help (e.g., "help mappings create")
+            if len(parts) > 1:
+                subcommand = parts[1]
+                # Provide detailed help for specific subcommands
+                if main_command == "mappings" and subcommand == "create":
+                    self._append_output("[cyan]Mappings Create Help[/]\n")
+                    self._append_output("\n[bold]Template-based (recommended):[/]\n")
+                    self._append_output("  mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>\n")
+                    self._append_output("\n[bold]Available templates:[/]\n")
+                    self._append_output("  • rgb             - 3 channels: Red, Green, Blue\n")
+                    self._append_output("  • rgbw            - 4 channels: Red, Green, Blue, White\n")
+                    self._append_output("  • brightness_rgb  - 4 channels: Brightness, Red, Green, Blue\n")
+                    self._append_output("  • master_only     - 1 channel: Brightness\n")
+                    self._append_output("  • rgbwa           - 5 channels: Red, Green, Blue, White, Brightness\n")
+                    self._append_output("  • rgbaw           - 5 channels: Brightness, Red, Green, Blue, White\n")
+                    self._append_output("  • full            - 6 channels: Brightness, Red, Green, Blue, White, Color Temp\n")
+                    self._append_output("\n[bold]Manual configuration for single fields:[/]\n")
+                    self._append_output("  mappings create --device-id <id> --universe <num> --channel <num> --type discrete --field <field>\n")
+                    self._append_output("\n[bold]Options:[/]\n")
+                    self._append_output("  --device-id <id>        Device identifier (required)\n")
+                    self._append_output("  --universe <num>        ArtNet universe (default: 0)\n")
+                    self._append_output("  --template <name>       Use a template for multi-channel mapping\n")
+                    self._append_output("  --start-channel <num>   Starting DMX channel for template\n")
+                    self._append_output("  --channel <num>         DMX channel for manual mapping\n")
+                    self._append_output("  --length <num>          Number of channels (for manual range)\n")
+                    self._append_output("  --type <type>           Mapping type: range or discrete\n")
+                    self._append_output("  --field <field>         Field name (r, g, b, w, brightness, ct)\n")
+                    self._append_output("  --allow-overlap         Allow overlapping channel ranges\n")
+                    return
+                else:
+                    # For other subcommands, try to show the main command help
+                    self._append_output(f"[yellow]No specific help for '{main_command} {subcommand}'[/]\n")
+                    self._append_output(f"[dim]Showing help for '{main_command}' instead...[/]\n\n")
+                    # Fall through to show main command help
+
             # Show help for specific command
-            handler = self.commands.get(arg)
+            handler = self.commands.get(main_command)
             if handler:
                 # Get the docstring from the handler
                 docstring = handler.__doc__
                 if docstring:
                     # Format with colors and styling (returns ANSI-formatted text)
-                    help_text = self._format_command_help(arg, docstring)
+                    help_text = self._format_command_help(main_command, docstring)
                     # Append directly to buffer (already ANSI-formatted)
                     current_text = self.output_buffer.text
                     new_text = current_text + help_text
@@ -2636,9 +2712,9 @@ class GoveeShell:
                     self.app.invalidate()
                 else:
                     # Rich markup, use _append_output
-                    self._append_output(f"\n[yellow]No help available for command '{arg}'[/]\n")
+                    self._append_output(f"\n[yellow]No help available for command '{main_command}'[/]\n")
             else:
-                self._append_output(f"[red]Unknown command: {arg}[/]" + "\n")
+                self._append_output(f"[red]Unknown command: {main_command}[/]" + "\n")
                 self._append_output("[dim]Type 'help' to see all available commands.[/]" + "\n")
             return
 
