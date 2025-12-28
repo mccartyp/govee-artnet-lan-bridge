@@ -167,7 +167,7 @@ class HelpFormatter:
         help_table.add_row(
             "devices",
             "Manage devices",
-            "devices list\ndevices list --state active\ndevices list detailed --id AA:BB\ndevices enable <id>\ndevices disable <id>\ndevices set-name <id> \"Name\""
+            "devices list\ndevices list --state active\ndevices list detailed --id AA:BB\ndevices enable <id>\ndevices disable <id>\ndevices set-name <id> \"Name\"\ndevices command <id> --on\ndevices command <id> --brightness 200"
         )
         help_table.add_row(
             "mappings",

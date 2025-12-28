@@ -233,7 +233,7 @@ class DeviceCommandHandler(CommandHandler):
 
                 # Send command to API
                 response = self.client.post(f"/devices/{device_id}/command", json=payload)
-                if response.status_code == 200:
+                if 200 <= response.status_code < 300:
                     self.shell._append_output(f"[green]Command sent successfully to {device_id}[/]\n")
                 else:
                     try:
