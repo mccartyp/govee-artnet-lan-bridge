@@ -27,12 +27,8 @@ from prompt_toolkit import Application
 from prompt_toolkit.application import run_in_terminal
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.document import Document, Document as PTDocument
-from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import ANSI, FormattedText, to_formatted_text
 from prompt_toolkit.history import FileHistory
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import ConditionalContainer, FormattedTextControl, HSplit, Layout, Window, WindowAlign
-from prompt_toolkit.layout.controls import BufferControl
 from rich import box
 from rich.console import Console
 from rich.table import Table
@@ -68,6 +64,9 @@ from .command_handlers.devices import DeviceCommandHandler
 from .command_handlers.mappings import MappingCommandHandler
 from .command_handlers.monitoring import MonitoringCommandHandler
 from .command_handlers.config import ConfigCommandHandler
+
+from .layout_builder import LayoutBuilder
+from .keybindings import KeyBindingManager
 
 
 # Shell version
@@ -296,207 +295,12 @@ class GoveeShell:
         )
 
         # Set up key bindings
-        kb = KeyBindings()
-
-        @kb.add('c-c')
-        def _(event):
-            """Handle Ctrl+C - clear input or show message."""
-            if self.input_buffer.text:
-                self.input_buffer.reset()
-            else:
-                self._append_output("\n[yellow]Use 'exit' or Ctrl+D to quit.[/]\n")
-
-        @kb.add('c-d')
-        def _(event):
-            """Handle Ctrl+D - exit shell."""
-            event.app.exit(result=True)
-
-        @kb.add('c-l')
-        def _(event):
-            """Handle Ctrl+L - clear screen."""
-            self.output_buffer.set_document(Document(""), bypass_readonly=True)
-            event.app.invalidate()
-
-        @kb.add('c-t')
-        def _(event):
-            """Handle Ctrl+T - toggle follow-tail mode."""
-            self.follow_tail = not self.follow_tail
-            status = "enabled" if self.follow_tail else "disabled"
-            self._append_output(f"\n[dim]Follow-tail {status}[/]\n")
-
-        @kb.add('pageup')
-        def _(event):
-            """Handle Page Up - scroll output and disable follow-tail."""
-            # Disable follow-tail when manually scrolling
-            self.follow_tail = False
-            # Scroll output buffer up by one page
-            rows = event.app.output.get_size().rows - 4  # Account for input and toolbar
-            new_pos = max(0, self.output_buffer.cursor_position - rows * 80)  # Approximate line length
-            self.output_buffer.cursor_position = new_pos
-            event.app.invalidate()
-
-        @kb.add('pagedown')
-        def _(event):
-            """Handle Page Down - scroll output down."""
-            # Scroll output buffer down by one page
-            rows = event.app.output.get_size().rows - 4  # Account for input and toolbar
-            new_pos = min(len(self.output_buffer.text), self.output_buffer.cursor_position + rows * 80)
-            self.output_buffer.cursor_position = new_pos
-            # If we're at the bottom, re-enable follow-tail
-            if self.output_buffer.cursor_position >= len(self.output_buffer.text) - 10:
-                self.follow_tail = True
-            event.app.invalidate()
-
-        # Log tail mode keybindings
-        @kb.add('escape', filter=Condition(lambda: self.in_log_tail_mode))
-        def _(event):
-            """Handle Escape in log tail mode - exit to normal view."""
-            asyncio.create_task(self._exit_log_tail_mode())
-
-        @kb.add('q', filter=Condition(lambda: self.in_log_tail_mode))
-        def _(event):
-            """Handle 'q' in log tail mode - exit to normal view."""
-            asyncio.create_task(self._exit_log_tail_mode())
-
-        @kb.add('end', filter=Condition(lambda: self.in_log_tail_mode))
-        def _(event):
-            """Handle End in log tail mode - jump to bottom and enable follow-tail."""
-            if self.log_tail_controller:
-                self.log_tail_controller.enable_follow_tail()
-                event.app.invalidate()
-
-        @kb.add('f', filter=Condition(lambda: self.in_log_tail_mode))
-        def _(event):
-            """Handle 'f' in log tail mode - open filter prompt."""
-            # For now, show a message (we can implement a filter input dialog later)
-            self.log_tail_buffer.insert_text(
-                "\033[33m[Filter UI not yet implemented - use 'logs tail --level LEVEL --logger LOGGER' to set filters]\033[0m\n"
-            )
-            event.app.invalidate()
-
-        # Watch mode keybindings
-        @kb.add('escape', filter=Condition(lambda: self.in_watch_mode))
-        def _(event):
-            """Handle Escape in watch mode - exit to normal view."""
-            asyncio.create_task(self._exit_watch_mode())
-
-        @kb.add('q', filter=Condition(lambda: self.in_watch_mode))
-        def _(event):
-            """Handle 'q' in watch mode - exit to normal view."""
-            asyncio.create_task(self._exit_watch_mode())
-
-        @kb.add('+', filter=Condition(lambda: self.in_watch_mode))
-        def _(event):
-            """Handle '+' in watch mode - decrease refresh interval (faster)."""
-            if self.watch_controller:
-                new_interval = max(0.5, self.watch_controller.refresh_interval - 0.5)
-                self.watch_controller.set_interval(new_interval)
-                event.app.invalidate()
-
-        @kb.add('-', filter=Condition(lambda: self.in_watch_mode))
-        def _(event):
-            """Handle '-' in watch mode - increase refresh interval (slower)."""
-            if self.watch_controller:
-                new_interval = self.watch_controller.refresh_interval + 0.5
-                self.watch_controller.set_interval(new_interval)
-                event.app.invalidate()
+        keybinding_manager = KeyBindingManager(self)
+        kb = keybinding_manager.create_key_bindings()
 
         # Create layout with output pane, separator, prompt + input field, and toolbar
-        from prompt_toolkit.layout import WindowAlign
-
-        # Create conditional containers for switching between normal and log tail views
-        self.normal_output_window = Window(
-            content=BufferControl(
-                buffer=self.output_buffer,
-                lexer=ANSILexer(),
-                focusable=False,  # Keep focus on input for typing
-            ),
-            wrap_lines=False,
-        )
-
-        self.log_tail_window = Window(
-            content=BufferControl(
-                buffer=self.log_tail_buffer,
-                lexer=ANSILexer(),
-                focusable=False,  # Keep focus on input for typing
-            ),
-            wrap_lines=False,
-        )
-
-        self.watch_window = Window(
-            content=BufferControl(
-                buffer=self.watch_buffer,
-                lexer=ANSILexer(),
-                focusable=False,  # Keep focus on input for typing
-            ),
-            wrap_lines=False,
-        )
-
-        self.root_container = HSplit([
-            # Conditionally show normal output, log tail, or watch based on mode
-            ConditionalContainer(
-                content=self.normal_output_window,
-                filter=Condition(lambda: not self.in_log_tail_mode and not self.in_watch_mode),
-            ),
-            ConditionalContainer(
-                content=self.log_tail_window,
-                filter=Condition(lambda: self.in_log_tail_mode),
-            ),
-            ConditionalContainer(
-                content=self.watch_window,
-                filter=Condition(lambda: self.in_watch_mode),
-            ),
-            Window(height=1, char='─'),
-            # Hide input in log tail or watch mode, show in normal mode
-            ConditionalContainer(
-                content=Window(
-                    content=BufferControl(
-                        buffer=self.input_buffer,
-                        input_processors=[],
-                    ),
-                    height=1,
-                    get_line_prefix=lambda line_number, wrap_count: f"{self.prompt}",
-                ),
-                filter=Condition(lambda: not self.in_log_tail_mode and not self.in_watch_mode),
-            ),
-            # Show log tail prompt in log tail mode
-            ConditionalContainer(
-                content=Window(
-                    height=1,
-                    content=FormattedTextControl(
-                        text=lambda: "[Log Tail Mode - Press Esc/q to exit, End to jump to bottom, f for filters]"
-                    ),
-                ),
-                filter=Condition(lambda: self.in_log_tail_mode),
-            ),
-            # Show watch prompt in watch mode
-            ConditionalContainer(
-                content=Window(
-                    height=1,
-                    content=FormattedTextControl(
-                        text=lambda: f"[Watch Mode - {self.watch_controller.watch_target if self.watch_controller and self.watch_controller.watch_target else 'N/A'} - Press Esc/q to exit, +/- to adjust interval]"
-                    ),
-                ),
-                filter=Condition(lambda: self.in_watch_mode),
-            ),
-            Window(height=1, char='─'),
-            Window(
-                content=FormattedTextControl(
-                    text=self._get_bottom_toolbar,
-                ),
-                height=3,
-                style="class:bottom-toolbar",
-            ),
-        ])
-
-        # Create Application
-        self.app: Application = Application(
-            layout=Layout(self.root_container),
-            key_bindings=kb,
-            style=TOOLBAR_STYLE,
-            full_screen=True,
-            mouse_support=True,
-        )
+        layout_builder = LayoutBuilder(self)
+        self.app: Application = layout_builder.build_layout_and_app(kb)
 
         # Initialize log tail controller now that app is created
         self.log_tail_controller = LogTailController(
