@@ -371,6 +371,9 @@ class GoveeShell:
         # Otherwise, keep cursor at current position to allow manual scrolling
         if self.follow_tail:
             cursor_position = len(new_text)
+            # If text ends with newline, move cursor back to avoid empty line at bottom
+            if new_text and new_text.endswith('\n'):
+                cursor_position = max(0, len(new_text) - 1)
         else:
             # Keep cursor at its current position
             cursor_position = min(self.output_buffer.cursor_position, len(new_text))
