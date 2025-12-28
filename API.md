@@ -199,7 +199,7 @@ Create a single mapping or multiple mappings using a template.
 - `r` (alias: `red`): Red channel only - **Requires `color` capability**
 - `g` (alias: `green`): Green channel only - **Requires `color` capability**
 - `b` (alias: `blue`): Blue channel only - **Requires `color` capability**
-- `w` (alias: `white`): White channel only - **Requires `color` capability**
+- `w` (alias: `white`): White channel only - **Requires `white` capability**
 - `ct` (alias: `color_temp`): Color temperature in Kelvin - **Requires `color_temperature` capability**
 
 **Note**: Device capabilities are validated when creating mappings. Use `GET /devices` to check device capabilities.

@@ -1999,12 +1999,13 @@ class GoveeShell:
 
     def do_devices(self, arg: str) -> None:
         """
-        Device commands: list, list detailed, enable, disable, set-name.
+        Device commands: list, list detailed, enable, disable, set-name, set-capabilities.
         Usage: devices list [--id ID] [--ip IP] [--state STATE]              # Show simplified 2-line view
                devices list detailed [--id ID] [--ip IP] [--state STATE]     # Show full device details
                devices enable <device_id>
                devices disable <device_id>
                devices set-name <device_id> <name>                          # Set device name (use "" to clear)
+               devices set-capabilities <device_id> --brightness <bool> --color <bool> --white <bool> --color-temp <bool>
         Examples:
             devices list
             devices list --id AA:BB:CC:DD:EE:FFC
@@ -2013,6 +2014,7 @@ class GoveeShell:
             devices list detailed --state offline
             devices set-name AA:BB:CC:DD:EE:FF "Kitchen Light"
             devices set-name AA:BB:CC:DD:EE:FF ""                            # Clear name
+            devices set-capabilities AA:BB:CC:DD:EE:FF --brightness true --color true --white false
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -2087,6 +2089,43 @@ class GoveeShell:
                         self._append_output(f"[green]Device name cleared[/]\n")
                 else:
                     self._append_output(f"[red]Failed to set device name: {response.status_code}[/]\n")
+            elif command == "set-capabilities" and len(args) >= 2:
+                device_id = args[1]
+
+                # Parse capability flags
+                capabilities = {}
+                i = 2
+                while i < len(args):
+                    if args[i] == "--brightness" and i + 1 < len(args):
+                        capabilities["brightness"] = args[i + 1].lower() in ("true", "1", "yes")
+                        i += 2
+                    elif args[i] == "--color" and i + 1 < len(args):
+                        capabilities["color"] = args[i + 1].lower() in ("true", "1", "yes")
+                        i += 2
+                    elif args[i] == "--white" and i + 1 < len(args):
+                        capabilities["white"] = args[i + 1].lower() in ("true", "1", "yes")
+                        i += 2
+                    elif args[i] == "--color-temp" and i + 1 < len(args):
+                        capabilities["color_temp"] = args[i + 1].lower() in ("true", "1", "yes")
+                        i += 2
+                    else:
+                        self._append_output(f"[red]Unknown flag: {args[i]}[/]\n")
+                        return
+
+                if not capabilities:
+                    self._append_output("[red]Error: At least one capability flag must be provided[/]\n")
+                    self._append_output("[yellow]Available flags: --brightness, --color, --white, --color-temp[/]\n")
+                    return
+
+                # Call API to update device capabilities
+                payload = {"capabilities": capabilities}
+                response = self.client.patch(f"/devices/{device_id}", json=payload)
+                if response.status_code == 200:
+                    self._invalidate_cache("/devices")
+                    caps_list = ", ".join([f"{k}={v}" for k, v in capabilities.items()])
+                    self._append_output(f"[green]Device capabilities updated: {caps_list}[/]\n")
+                else:
+                    self._append_output(f"[red]Failed to update device capabilities: {response.status_code}[/]\n")
             else:
                 self._append_output(f"[red]Unknown or incomplete command: devices {arg}[/]" + "\n")
                 self._append_output("[yellow]Try: devices list, devices enable <id>, devices disable <id>, devices set-name <id> <name>[/]" + "\n")
@@ -2192,7 +2231,7 @@ class GoveeShell:
                 self._append_output("  • r (or red)         - Red channel only [requires color capability]\n")
                 self._append_output("  • g (or green)       - Green channel only [requires color capability]\n")
                 self._append_output("  • b (or blue)        - Blue channel only [requires color capability]\n")
-                self._append_output("  • w (or white)       - White channel only [requires color capability]\n")
+                self._append_output("  • w (or white)       - White channel only [requires white capability]\n")
                 self._append_output("  • ct (or color_temp) - Color temperature in Kelvin [requires color_temp capability]\n")
                 self._append_output("\n[bold]Notes:[/]\n")
                 self._append_output("  • Universe defaults to 0 if omitted\n")

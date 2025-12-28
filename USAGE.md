@@ -157,20 +157,22 @@ For individual field control, use single channel mappings instead of templates:
 | `r` | `red` | Red channel only | `color` |
 | `g` | `green` | Green channel only | `color` |
 | `b` | `blue` | Blue channel only | `color` |
-| `w` | `white` | White channel only | `color` |
+| `w` | `white` | White channel only | `white` |
 | `ct` | `color_temp` | Color temperature in Kelvin | `color_temperature` |
 
 **Capability Summary:**
 - **None** - Works on all Govee devices (plugs, lights, bulbs, switches)
 - **`brightness`** - Dimmable devices only (lights, bulbs) - NOT plugs or switches
 - **`color`** - Color-capable devices (RGB lights, RGBW strips)
+- **`white`** - White channel capable devices (RGBW strips, tunable white lights) - NOT RGB-only devices
 - **`color_temperature`** - Color temperature devices (tunable white, RGBWW lights)
 
 **Important**: Device capabilities are validated when creating mappings. Not all Govee devices support all features:
 - **All devices** support `power` control (on/off)
 - **Brightness-capable devices** (lights, bulbs) support `brightness` field
 - **Non-dimmable devices** (plugs, switches) do NOT support `brightness` field
-- **Color-capable devices** support `r`, `g`, `b`, `w` fields
+- **Color-capable devices** support `r`, `g`, `b` fields
+- **White channel devices** support `w` field
 - **Color temperature devices** support `ct` field
 
 Use `govee-artnet devices list` to check which capabilities your device supports.

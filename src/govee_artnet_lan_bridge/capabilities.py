@@ -50,6 +50,7 @@ def _capabilities_missing(capabilities: Any) -> bool:
         meaningful_keys = {
             "brightness",
             "color",
+            "white",
             "color_temperature",
             "color_modes",
             "color_temp_range",
@@ -317,6 +318,7 @@ class NormalizedCapabilities:
     metadata: MutableMapping[str, Any]
     color_modes: Tuple[str, ...]
     supports_brightness: bool
+    supports_white: bool
     color_temp_range: Optional[Tuple[int, int]]
     effects: Tuple[str, ...]
     raw: MutableMapping[str, Any]
@@ -343,6 +345,8 @@ class NormalizedCapabilities:
         modes = set(self.color_modes)
         if self.supports_brightness:
             modes.add("brightness")
+        if self.supports_white:
+            modes.add("white")
         return tuple(sorted(modes))
 
     def as_mapping(self) -> MutableMapping[str, Any]:
@@ -351,10 +355,12 @@ class NormalizedCapabilities:
         data.pop("supports_brightness", None)
         data.pop("supports_color", None)
         data.pop("supports_color_temperature", None)
+        data.pop("supports_white", None)
         data["color_modes"] = list(self.color_modes)
         data["brightness"] = self.supports_brightness
         data["color"] = self.supports_color
         data["color_temperature"] = self.supports_color_temperature
+        data["white"] = self.supports_white
         if self.color_temp_range:
             data["color_temp_range"] = list(self.color_temp_range)
         if self.effects:
@@ -369,6 +375,8 @@ class NormalizedCapabilities:
         modes = list(self.color_modes)
         if self.supports_brightness:
             modes.append("brightness")
+        if self.supports_white:
+            modes.append("white")
         summary = ", ".join(sorted(set(modes))) if modes else "none"
         if self.supports_effects:
             summary = f"{summary}; effects ({', '.join(self.effects)})"
@@ -392,10 +400,15 @@ def normalize_capabilities(
     supports_brightness = _coerce_bool(
         base.get("brightness", base.get("supports_brightness")), default=True
     )
+    supports_white = _coerce_bool(
+        base.get("white", base.get("supports_white")), default=True
+    )
     base["brightness"] = supports_brightness
+    base["white"] = supports_white
     base.pop("supports_brightness", None)
     base.pop("supports_color", None)
     base.pop("supports_color_temperature", None)
+    base.pop("supports_white", None)
     color_temp_range = _normalize_color_temp_range(capabilities)
     effects = tuple(sorted(_normalize_effects(capabilities)))
     supports_color = "color" in color_modes
@@ -412,6 +425,7 @@ def normalize_capabilities(
         metadata=normalized_metadata,
         color_modes=color_modes,
         supports_brightness=supports_brightness,
+        supports_white=supports_white,
         color_temp_range=color_temp_range,
         effects=effects,
         raw=base,

@@ -338,10 +338,15 @@ def _normalize_field_name(field: Optional[str]) -> str:
 def _validate_field_support(field: str, capabilities: NormalizedCapabilities) -> None:
     if field == "brightness" and not capabilities.supports_brightness:
         raise ValueError("Device does not support brightness control.")
-    if field in {"r", "g", "b", "w"} and not capabilities.supports_color:
+    if field in {"r", "g", "b"} and not capabilities.supports_color:
         supported = ", ".join(capabilities.supported_modes) or "none"
         raise ValueError(
             f"Device does not support color control. Supported modes: {supported}."
+        )
+    if field == "w" and not capabilities.supports_white:
+        supported = ", ".join(capabilities.supported_modes) or "none"
+        raise ValueError(
+            f"Device does not support white channel control. Supported modes: {supported}."
         )
     if field == "ct" and not capabilities.supports_color_temperature:
         supported = ", ".join(capabilities.supported_modes) or "none"
