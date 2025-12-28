@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import httpx
-import toml
 import websockets
 import yaml
 from prompt_toolkit import Application
