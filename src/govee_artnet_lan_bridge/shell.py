@@ -2187,17 +2187,19 @@ class GoveeShell:
                 self._append_output("\n[bold]Multi-channel range mappings:[/]\n")
                 self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --length <num>\n")
                 self._append_output("\n[bold]Available fields (for single channel mappings):[/]\n")
-                self._append_output("  • power              - Power on/off (DMX >= 128 = on, < 128 = off)\n")
-                self._append_output("  • brightness         - Brightness control (0-255)\n")
-                self._append_output("  • r (or red)         - Red channel only\n")
-                self._append_output("  • g (or green)       - Green channel only\n")
-                self._append_output("  • b (or blue)        - Blue channel only\n")
-                self._append_output("  • w (or white)       - White channel only\n")
-                self._append_output("  • ct (or color_temp) - Color temperature in Kelvin\n")
+                self._append_output("  • power              - Power on/off (DMX >= 128 = on, < 128 = off) [all devices]\n")
+                self._append_output("  • brightness         - Brightness control (0-255) [requires brightness capability]\n")
+                self._append_output("  • r (or red)         - Red channel only [requires color capability]\n")
+                self._append_output("  • g (or green)       - Green channel only [requires color capability]\n")
+                self._append_output("  • b (or blue)        - Blue channel only [requires color capability]\n")
+                self._append_output("  • w (or white)       - White channel only [requires color capability]\n")
+                self._append_output("  • ct (or color_temp) - Color temperature in Kelvin [requires color_temp capability]\n")
                 self._append_output("\n[bold]Notes:[/]\n")
                 self._append_output("  • Universe defaults to 0 if omitted\n")
                 self._append_output("  • Templates are for multi-channel mappings only\n")
                 self._append_output("  • Use single channel mappings for individual field control\n")
+                self._append_output("  • Device capabilities are validated - mappings will fail if unsupported\n")
+                self._append_output("  • Use 'devices list' to check device capabilities\n")
                 self._append_output("\n[bold]Examples:[/]\n")
                 self._append_output("  # Template-based multi-channel mapping\n")
                 self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --template rgb --start-channel 1\n")
@@ -2338,8 +2340,8 @@ class GoveeShell:
                mappings delete <id>
                mappings channel-map
         Templates (multi-channel): rgb, rgbw, brightness_rgb, rgbwa, rgbaw, brgbwct
-        Fields (single-channel): power, brightness, r/red, g/green, b/blue, w/white, ct/color_temp
-        Note: --universe defaults to 0 if omitted
+        Fields (single-channel): power [all], brightness [caps], r/red [caps], g/green [caps], b/blue [caps], w/white [caps], ct/color_temp [caps]
+        Note: --universe defaults to 0; [caps] = requires device capability check
         Use 'help mappings create', 'mappings create --help', or 'mappings create ?' for detailed creation help
         """
         if not self.client:

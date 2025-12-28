@@ -146,24 +146,26 @@ See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete documentation an
 
 For individual field control, use single channel mappings instead of templates:
 
-| Field | Aliases | Description |
-|-------|---------|-------------|
-| `power` | - | Power on/off (DMX >= 128 = on, < 128 = off) |
-| `brightness` | - | Brightness control (0-255) |
-| `r` | `red` | Red channel only |
-| `g` | `green` | Green channel only |
-| `b` | `blue` | Blue channel only |
-| `w` | `white` | White channel only |
-| `ct` | `color_temp` | Color temperature in Kelvin |
+| Field | Aliases | Description | Capability Required |
+|-------|---------|-------------|---------------------|
+| `power` | - | Power on/off (DMX >= 128 = on, < 128 = off) | None (all devices) |
+| `brightness` | - | Brightness control (0-255) | `brightness` |
+| `r` | `red` | Red channel only | `color` |
+| `g` | `green` | Green channel only | `color` |
+| `b` | `blue` | Blue channel only | `color` |
+| `w` | `white` | White channel only | `color` |
+| `ct` | `color_temp` | Color temperature in Kelvin | `color_temperature` |
+
+**Note**: Device capabilities are validated when creating mappings. Not all Govee devices support all features (e.g., plug-type devices typically don't support brightness control). Use `govee-artnet devices list` to check device capabilities.
 
 ```bash
-# Create a power control mapping
+# Create a power control mapping (works on all devices)
 govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power
 
-# Create a brightness control mapping
+# Create a brightness control mapping (requires brightness capability)
 govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness
 
-# Use field aliases for convenience
+# Use field aliases for convenience (requires color capability)
 govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --field red
 ```
 

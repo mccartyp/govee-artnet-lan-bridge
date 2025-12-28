@@ -150,31 +150,40 @@ Templates provide pre-configured channel layouts for common lighting fixture typ
 
 For individual field control, use single channel mappings instead of templates:
 
-| Field | Aliases | Description |
-|-------|---------|-------------|
-| `power` | - | Power on/off (DMX >= 128 = on, < 128 = off) |
-| `brightness` | - | Brightness control (0-255) |
-| `r` | `red` | Red channel only |
-| `g` | `green` | Green channel only |
-| `b` | `blue` | Blue channel only |
-| `w` | `white` | White channel only |
-| `ct` | `color_temp` | Color temperature in Kelvin |
+| Field | Aliases | Description | Capability Required |
+|-------|---------|-------------|---------------------|
+| `power` | - | Power on/off (DMX >= 128 = on, < 128 = off) | None (all devices) |
+| `brightness` | - | Brightness control (0-255) | `brightness` |
+| `r` | `red` | Red channel only | `color` |
+| `g` | `green` | Green channel only | `color` |
+| `b` | `blue` | Blue channel only | `color` |
+| `w` | `white` | White channel only | `color` |
+| `ct` | `color_temp` | Color temperature in Kelvin | `color_temperature` |
+
+**Important**: Device capabilities are validated when creating mappings. Not all Govee devices support all features:
+- **All devices** support `power` control (on/off)
+- **Brightness-capable devices** (lights, bulbs) support `brightness` field
+- **Non-dimmable devices** (plugs, switches) do NOT support `brightness` field
+- **Color-capable devices** support `r`, `g`, `b`, `w` fields
+- **Color temperature devices** support `ct` field
+
+Use `govee-artnet devices list` to check which capabilities your device supports.
 
 **Example - Power and Brightness Control:**
 ```bash
-# Power control on channel 1
+# Power control on channel 1 (works on ALL devices, including plugs)
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 1 \
   --field power
 
-# Brightness control on channel 5
+# Brightness control on channel 5 (only works if device supports brightness)
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 5 \
   --field brightness
 
-# Use field aliases for convenience
+# Use field aliases for convenience (only works if device supports color)
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 10 \
@@ -227,7 +236,7 @@ This creates mappings for:
 - Channel 7: Green
 - Channel 8: Blue
 
-**Simple Brightness-Only Light (discrete field mapping)**
+**Simple Brightness-Only Light (single channel mapping)**
 ```bash
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
@@ -236,8 +245,10 @@ govee-artnet mappings create \
   --field brightness
 ```
 
-This creates a discrete mapping for:
+This creates a single channel mapping for:
 - Channel 100: Brightness (0-255)
+
+**Note**: This only works if the device has the `brightness` capability. Check with `govee-artnet devices list`.
 
 **Advanced RGBW + Master Brightness (5-channel)**
 ```bash
@@ -376,7 +387,7 @@ Govee devices report their capabilities:
 | `rgbaw` | Yes | Yes | Devices with both brightness AND color |
 | `brgbwct` | Yes | Yes | Devices with brightness, color, and color temperature |
 
-**Note**: For individual field control (brightness only, power, color channels, etc.), use single channel mappings instead of templates. All Govee devices support `power` and `brightness` single channel mappings.
+**Note**: For individual field control (brightness only, power, color channels, etc.), use single channel mappings instead of templates. All Govee devices support `power` mappings, but `brightness`, color, and color temperature mappings require the corresponding device capabilities.
 
 #### Checking Device Capabilities
 
@@ -405,6 +416,19 @@ Example output:
   }
 }
 ```
+
+#### Common Device Types and Their Capabilities
+
+| Device Type | Power | Brightness | Color | Color Temp | Examples |
+|-------------|-------|------------|-------|------------|----------|
+| **Smart Plugs** | ✓ | ✗ | ✗ | ✗ | H5080, H5081 |
+| **Dimmable Bulbs** | ✓ | ✓ | ✗ | ✗ | Simple dimmable bulbs |
+| **White Bulbs** | ✓ | ✓ | ✗ | ✓ | Tunable white bulbs |
+| **RGB Lights** | ✓ | ✓ | ✓ | ✗ | RGB strips, bulbs |
+| **RGBIC Lights** | ✓ | ✓ | ✓ | ✗ | Multi-segment RGB strips |
+| **RGBWW Lights** | ✓ | ✓ | ✓ | ✓ | Full-featured lights |
+
+**Important**: Always check your specific device's capabilities with `govee-artnet devices list` before creating mappings.
 
 Discovery responses that include a `model_number` are matched against the bundled capability catalog. When a device does not report full capabilities, the bridge fills in `device_type`, `length_meters`, and segment metadata from the catalog so channel templates can be validated without manual editing. Manual devices can provide the same fields to override or augment catalog values.
 
@@ -466,6 +490,29 @@ Device does not support color control. Supported modes: ct
 **Cause**: You're trying to map color channels (R, G, B), but the device only supports color temperature (warm/cool white).
 
 **Solution**: Use single channel mapping with `--field brightness` for brightness control only, or check if you selected the correct device.
+
+---
+
+#### "Device does not support brightness control"
+```
+Device does not support brightness control.
+```
+
+**Cause**: You're trying to create a brightness mapping on a device that doesn't have the `brightness` capability (e.g., a smart plug).
+
+**Solution**:
+1. Check device capabilities: `govee-artnet devices list`
+2. For non-dimmable devices (like plugs), use `--field power` instead for on/off control
+3. Verify you selected the correct device ID
+
+**Example - Controlling a smart plug:**
+```bash
+# This will FAIL on a plug (no brightness capability)
+govee-artnet mappings create --device-id H5080_PLUG --channel 1 --field brightness
+
+# This will WORK on a plug (power is supported by all devices)
+govee-artnet mappings create --device-id H5080_PLUG --channel 1 --field power
+```
 
 ---
 

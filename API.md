@@ -194,13 +194,15 @@ Create a single mapping or multiple mappings using a template.
 - `brgbwct`: 6-channel brightness + RGBW + color temperature
 
 **Single Channel Field Names**:
-- `power`: Power on/off control (DMX >= 128 = on, < 128 = off)
-- `brightness`: Brightness control (0-255)
-- `r` (alias: `red`): Red channel only
-- `g` (alias: `green`): Green channel only
-- `b` (alias: `blue`): Blue channel only
-- `w` (alias: `white`): White channel only
-- `ct` (alias: `color_temp`): Color temperature in Kelvin
+- `power`: Power on/off control (DMX >= 128 = on, < 128 = off) - **All devices**
+- `brightness`: Brightness control (0-255) - **Requires `brightness` capability**
+- `r` (alias: `red`): Red channel only - **Requires `color` capability**
+- `g` (alias: `green`): Green channel only - **Requires `color` capability**
+- `b` (alias: `blue`): Blue channel only - **Requires `color` capability**
+- `w` (alias: `white`): White channel only - **Requires `color` capability**
+- `ct` (alias: `color_temp`): Color temperature in Kelvin - **Requires `color_temperature` capability**
+
+**Note**: Device capabilities are validated when creating mappings. Use `GET /devices` to check device capabilities.
 
 **Response** (Individual Mapping): `201 Created`
 ```json
