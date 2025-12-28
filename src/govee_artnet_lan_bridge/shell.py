@@ -616,6 +616,151 @@ class LogTailController:
             pass
 
 
+class WatchController:
+    """
+    Controller for periodic watch updates with overlay window.
+
+    Features:
+    - Periodic refresh of watch targets (devices, mappings, dashboard, logs)
+    - Clear and redraw overlay window at each refresh
+    - Configurable refresh interval
+    - Support for multiple watch targets
+    """
+
+    # Default refresh interval
+    DEFAULT_REFRESH_INTERVAL = 2.0  # 2 seconds
+
+    def __init__(self, app: Application, watch_buffer: Buffer, shell: 'GoveeShell'):
+        """
+        Initialize the watch controller.
+
+        Args:
+            app: The prompt_toolkit Application instance
+            watch_buffer: Buffer to display watch output
+            shell: Reference to GoveeShell instance for executing commands
+        """
+        self.app = app
+        self.watch_buffer = watch_buffer
+        self.shell = shell
+
+        # Watch state
+        self.watch_target: Optional[str] = None
+        self.refresh_interval = self.DEFAULT_REFRESH_INTERVAL
+        self.watch_task: Optional[asyncio.Task] = None
+        self._should_watch = False
+
+    @property
+    def is_active(self) -> bool:
+        """Check if watch is currently active."""
+        return self.watch_task is not None and not self.watch_task.done()
+
+    async def start(self, target: str, interval: float = 2.0) -> None:
+        """
+        Start watching a target with periodic refreshes.
+
+        Args:
+            target: Watch target (devices, mappings, dashboard, logs)
+            interval: Refresh interval in seconds
+        """
+        if self.is_active:
+            return
+
+        self.watch_target = target
+        self.refresh_interval = interval
+        self._should_watch = True
+
+        # Start watch loop task
+        self.watch_task = asyncio.create_task(self._watch_loop())
+
+    async def stop(self) -> None:
+        """Stop watching and cancel the watch loop."""
+        self._should_watch = False
+
+        # Cancel task
+        if self.watch_task and not self.watch_task.done():
+            self.watch_task.cancel()
+            try:
+                await self.watch_task
+            except asyncio.CancelledError:
+                pass
+
+        self.watch_task = None
+        self.watch_target = None
+
+    def set_interval(self, interval: float) -> None:
+        """
+        Update the refresh interval.
+
+        Args:
+            interval: New refresh interval in seconds
+        """
+        self.refresh_interval = max(0.5, interval)  # Minimum 0.5s to prevent hammering
+
+    async def _watch_loop(self) -> None:
+        """Main watch loop - periodically refresh the watch target."""
+        try:
+            while self._should_watch:
+                # Clear the watch buffer before refresh
+                self.watch_buffer.set_document(Document(""), bypass_readonly=True)
+
+                # Capture output for this refresh cycle
+                output = ""
+
+                # Add timestamp header
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                output += f"\033[1;36m╔═══════════════════════════════════════════════════════════╗\033[0m\n"
+                output += f"\033[1;36m║  Watch Mode - {self.watch_target.upper():<44} ║\033[0m\n"
+                output += f"\033[1;36m║  Refreshed at {timestamp:<42} ║\033[0m\n"
+                output += f"\033[1;36m╚═══════════════════════════════════════════════════════════╝\033[0m\n\n"
+
+                # Execute the watch command and capture output
+                try:
+                    # Save current output buffer position
+                    old_output = self.shell.output_buffer.text
+
+                    # Execute command based on target
+                    if self.watch_target == "devices":
+                        self.shell._show_devices_simple()
+                    elif self.watch_target == "mappings":
+                        self.shell._show_mappings_list()
+                    elif self.watch_target == "logs":
+                        self.shell.do_logs("")
+                    elif self.watch_target == "dashboard":
+                        self.shell._monitor_dashboard()
+
+                    # Capture new output added to output buffer
+                    new_output = self.shell.output_buffer.text
+                    if len(new_output) > len(old_output):
+                        # Extract only the new content
+                        command_output = new_output[len(old_output):]
+                        output += command_output
+
+                        # Reset output buffer to old content (since we're showing it in watch window)
+                        self.shell.output_buffer.set_document(
+                            Document(text=old_output),
+                            bypass_readonly=True
+                        )
+
+                except Exception as exc:
+                    output += f"\033[31mError executing watch command: {exc}\033[0m\n"
+
+                # Update watch buffer with new content
+                self.watch_buffer.set_document(
+                    Document(text=output, cursor_position=0),
+                    bypass_readonly=True
+                )
+
+                # Invalidate UI to trigger redraw
+                self.app.invalidate()
+
+                # Wait for next refresh
+                await asyncio.sleep(self.refresh_interval)
+
+        except asyncio.CancelledError:
+            pass
+
+
 class GoveeShell:
     """Interactive shell for the Govee ArtNet bridge using prompt_toolkit."""
 
@@ -741,6 +886,18 @@ class GoveeShell:
         # Log tail controller (will be initialized after app is created)
         self.log_tail_controller: Optional[LogTailController] = None
 
+        # Create watch buffer for periodic watch updates
+        self.watch_buffer = Buffer(
+            read_only=True,
+            multiline=True,
+        )
+
+        # Watch mode state
+        self.in_watch_mode = False
+
+        # Watch controller (will be initialized after app is created)
+        self.watch_controller: Optional[WatchController] = None
+
         # Set up multi-level autocomplete with command structure
         completer_dict = {
             'connect': None,
@@ -793,7 +950,12 @@ class GoveeShell:
             'output': {'json': None, 'table': None, 'yaml': None},
             'bookmark': {'add': None, 'list': None, 'delete': None, 'use': None},
             'alias': {'add': None, 'list': None, 'delete': None, 'clear': None},
-            'watch': {'devices': None, 'mappings': None, 'logs': None, 'dashboard': None},
+            'watch': {
+                'devices': {'-c': None, '--continuous': None, '--interval': None},
+                'mappings': {'-c': None, '--continuous': None, '--interval': None},
+                'logs': {'-c': None, '--continuous': None, '--interval': None},
+                'dashboard': {'-c': None, '--continuous': None, '--interval': None},
+            },
             'batch': {'load': None},
             'session': {'save': None, 'list': None, 'delete': None},
             'help': None,
@@ -894,6 +1056,33 @@ class GoveeShell:
             )
             event.app.invalidate()
 
+        # Watch mode keybindings
+        @kb.add('escape', filter=Condition(lambda: self.in_watch_mode))
+        def _(event):
+            """Handle Escape in watch mode - exit to normal view."""
+            asyncio.create_task(self._exit_watch_mode())
+
+        @kb.add('q', filter=Condition(lambda: self.in_watch_mode))
+        def _(event):
+            """Handle 'q' in watch mode - exit to normal view."""
+            asyncio.create_task(self._exit_watch_mode())
+
+        @kb.add('+', filter=Condition(lambda: self.in_watch_mode))
+        def _(event):
+            """Handle '+' in watch mode - decrease refresh interval (faster)."""
+            if self.watch_controller:
+                new_interval = max(0.5, self.watch_controller.refresh_interval - 0.5)
+                self.watch_controller.set_interval(new_interval)
+                event.app.invalidate()
+
+        @kb.add('-', filter=Condition(lambda: self.in_watch_mode))
+        def _(event):
+            """Handle '-' in watch mode - increase refresh interval (slower)."""
+            if self.watch_controller:
+                new_interval = self.watch_controller.refresh_interval + 0.5
+                self.watch_controller.set_interval(new_interval)
+                event.app.invalidate()
+
         # Create layout with output pane, separator, prompt + input field, and toolbar
         from prompt_toolkit.layout import WindowAlign
 
@@ -916,18 +1105,31 @@ class GoveeShell:
             wrap_lines=False,
         )
 
+        self.watch_window = Window(
+            content=BufferControl(
+                buffer=self.watch_buffer,
+                lexer=ANSILexer(),
+                focusable=False,  # Keep focus on input for typing
+            ),
+            wrap_lines=False,
+        )
+
         self.root_container = HSplit([
-            # Conditionally show normal output or log tail based on mode
+            # Conditionally show normal output, log tail, or watch based on mode
             ConditionalContainer(
                 content=self.normal_output_window,
-                filter=Condition(lambda: not self.in_log_tail_mode),
+                filter=Condition(lambda: not self.in_log_tail_mode and not self.in_watch_mode),
             ),
             ConditionalContainer(
                 content=self.log_tail_window,
                 filter=Condition(lambda: self.in_log_tail_mode),
             ),
+            ConditionalContainer(
+                content=self.watch_window,
+                filter=Condition(lambda: self.in_watch_mode),
+            ),
             Window(height=1, char='─'),
-            # Hide input in log tail mode, show in normal mode
+            # Hide input in log tail or watch mode, show in normal mode
             ConditionalContainer(
                 content=Window(
                     content=BufferControl(
@@ -937,7 +1139,7 @@ class GoveeShell:
                     height=1,
                     get_line_prefix=lambda line_number, wrap_count: f"{self.prompt}",
                 ),
-                filter=Condition(lambda: not self.in_log_tail_mode),
+                filter=Condition(lambda: not self.in_log_tail_mode and not self.in_watch_mode),
             ),
             # Show log tail prompt in log tail mode
             ConditionalContainer(
@@ -948,6 +1150,16 @@ class GoveeShell:
                     ),
                 ),
                 filter=Condition(lambda: self.in_log_tail_mode),
+            ),
+            # Show watch prompt in watch mode
+            ConditionalContainer(
+                content=Window(
+                    height=1,
+                    content=FormattedTextControl(
+                        text=lambda: f"[Watch Mode - {self.watch_controller.watch_target if self.watch_controller and self.watch_controller.watch_target else 'N/A'} - Press Esc/q to exit, +/- to adjust interval]"
+                    ),
+                ),
+                filter=Condition(lambda: self.in_watch_mode),
             ),
             Window(height=1, char='─'),
             Window(
@@ -973,6 +1185,13 @@ class GoveeShell:
             app=self.app,
             log_buffer=self.log_tail_buffer,
             server_url=config.server_url,
+        )
+
+        # Initialize watch controller now that app is created
+        self.watch_controller = WatchController(
+            app=self.app,
+            watch_buffer=self.watch_buffer,
+            shell=self,
         )
 
         # Set up terminal resize handler for pagination (prompt_toolkit handles layout resize)
@@ -1169,6 +1388,54 @@ class GoveeShell:
 
         # Show exit message in normal output
         self._append_output("\n[dim]Exited log tail mode[/]\n")
+
+    async def _enter_watch_mode(self, target: str, interval: float = 2.0) -> None:
+        """
+        Enter watch mode and start periodic refreshes.
+
+        Args:
+            target: Watch target (devices, mappings, dashboard, logs)
+            interval: Refresh interval in seconds
+        """
+        if self.in_watch_mode:
+            return
+
+        # Clear watch buffer
+        self.watch_buffer.set_document(Document(""), bypass_readonly=True)
+
+        # Show entering message
+        enter_msg = "\033[1;36m╔═══════════════════════════════════════════════════════════╗\033[0m\n"
+        enter_msg += f"\033[1;36m║           Watch Mode - {target.upper():<35} ║\033[0m\n"
+        enter_msg += "\033[1;36m╚═══════════════════════════════════════════════════════════╝\033[0m\n"
+        enter_msg += f"\033[33mRefresh interval: {interval}s\033[0m\n"
+        enter_msg += "\033[2mStarting watch...\033[0m\n\n"
+
+        self.watch_buffer.set_document(
+            Document(text=enter_msg, cursor_position=len(enter_msg)),
+            bypass_readonly=True
+        )
+
+        # Switch to watch mode
+        self.in_watch_mode = True
+        self.app.invalidate()
+
+        # Start watch controller
+        await self.watch_controller.start(target=target, interval=interval)
+
+    async def _exit_watch_mode(self) -> None:
+        """Exit watch mode and return to normal shell view."""
+        if not self.in_watch_mode:
+            return
+
+        # Stop watch controller
+        await self.watch_controller.stop()
+
+        # Switch back to normal mode
+        self.in_watch_mode = False
+        self.app.invalidate()
+
+        # Show exit message in normal output
+        self._append_output("\n[dim]Exited watch mode[/]\n")
 
     def _accept_input(self, buffer: Buffer) -> bool:
         """
@@ -3012,19 +3279,29 @@ class GoveeShell:
 
     def do_watch(self, arg: str) -> None:
         """
-        Watch devices, mappings, logs, or dashboard (single refresh).
-        Usage: watch devices
-               watch mappings
-               watch logs
-               watch dashboard
-        Examples:
-            watch devices        # Refresh devices once
-            watch mappings       # Refresh mappings once
-            watch dashboard      # Show dashboard
+        Watch devices, mappings, logs, or dashboard with optional continuous mode.
+        Usage: watch <target> [-c|--continuous] [--interval SECONDS]
 
-        Note: In interactive shell mode, continuous watch is not supported to prevent UI blocking.
-              Use 'monitor dashboard' for real-time updates, or run the command manually as needed.
-              For continuous monitoring, use the CLI in non-interactive mode.
+        Targets:
+            devices      - Watch device status
+            mappings     - Watch channel mappings
+            logs         - Watch recent logs
+            dashboard    - Watch dashboard summary
+
+        Options:
+            -c, --continuous    Enter continuous watch mode with overlay window
+            --interval SECONDS  Refresh interval for continuous mode (default: 2.0)
+
+        Examples:
+            watch devices                      # Single refresh of devices
+            watch devices -c                   # Continuous watch mode (2s refresh)
+            watch mappings --continuous        # Continuous watch mode
+            watch dashboard -c --interval 5    # Continuous with 5s refresh
+
+        Continuous Mode:
+            Press Esc or 'q' to exit
+            Press '+' to decrease interval (faster refresh)
+            Press '-' to increase interval (slower refresh)
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -3032,31 +3309,63 @@ class GoveeShell:
 
         args = shlex.split(arg)
         if not args:
-            self._append_output("[yellow]Usage: watch devices|mappings|logs|dashboard[/]" + "\n")
+            self._append_output("[yellow]Usage: watch <target> [-c|--continuous] [--interval SECONDS][/]" + "\n")
+            self._append_output("[yellow]Valid targets: devices, mappings, logs, dashboard[/]\n")
             return
 
+        # Parse arguments
         command = args[0]
+        continuous = False
+        interval = 2.0
+
+        i = 1
+        while i < len(args):
+            if args[i] in ["-c", "--continuous"]:
+                continuous = True
+            elif args[i] == "--interval":
+                if i + 1 < len(args):
+                    try:
+                        interval = float(args[i + 1])
+                        if interval < 0.5:
+                            self._append_output("[yellow]Minimum interval is 0.5 seconds[/]\n")
+                            interval = 0.5
+                        i += 1  # Skip next arg
+                    except ValueError:
+                        self._append_output(f"[red]Invalid interval value: {args[i + 1]}[/]\n")
+                        return
+                else:
+                    self._append_output("[red]--interval requires a value[/]\n")
+                    return
+            i += 1
+
+        # Validate target
+        valid_targets = ["devices", "mappings", "logs", "dashboard"]
+        if command not in valid_targets:
+            self._append_output(f"[red]Unknown watch target: {command}[/]\n")
+            self._append_output(f"[yellow]Valid targets: {', '.join(valid_targets)}[/]\n")
+            return
 
         try:
-            # Add timestamp header
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self._append_output(f"\n[bold cyan]─── Refreshed at {timestamp} ───[/]\n")
-
-            # Execute command based on target
-            if command == "devices":
-                self._show_devices_simple()
-            elif command == "mappings":
-                self._show_mappings_list()
-            elif command == "logs":
-                self.do_logs("")
-            elif command == "dashboard":
-                self._monitor_dashboard()
+            if continuous:
+                # Enter continuous watch mode with overlay window
+                asyncio.create_task(self._enter_watch_mode(target=command, interval=interval))
             else:
-                self._append_output(f"[red]Unknown watch target: {command}[/]\n")
-                self._append_output("[yellow]Valid targets: devices, mappings, logs, dashboard[/]\n")
+                # Single refresh (original behavior)
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self._append_output(f"\n[bold cyan]─── Refreshed at {timestamp} ───[/]\n")
 
-            self._append_output(f"\n[dim]Tip: Run the command again to refresh, or use 'monitor dashboard' for live updates[/]\n")
+                # Execute command based on target
+                if command == "devices":
+                    self._show_devices_simple()
+                elif command == "mappings":
+                    self._show_mappings_list()
+                elif command == "logs":
+                    self.do_logs("")
+                elif command == "dashboard":
+                    self._monitor_dashboard()
+
+                self._append_output(f"\n[dim]Tip: Use 'watch {command} -c' for continuous mode, or run the command again to refresh[/]\n")
 
         except Exception as exc:
             self._handle_error(exc, f"watch {command}")
