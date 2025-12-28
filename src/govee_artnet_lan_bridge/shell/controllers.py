@@ -439,13 +439,13 @@ class WatchController:
 
                     # Execute command based on target
                     if self.watch_target == "devices":
-                        self.shell._show_devices_simple()
+                        self.shell.device_handler._show_devices_simple()
                     elif self.watch_target == "mappings":
-                        self.shell._show_mappings_list()
+                        self.shell.mapping_handler._show_mappings_list()
                     elif self.watch_target == "logs":
                         self.shell.do_logs("")
                     elif self.watch_target == "dashboard":
-                        self.shell._monitor_dashboard()
+                        self.shell.monitoring_handler._monitor_dashboard()
 
                     # Capture new output added to output buffer
                     new_output = self.shell.output_buffer.text
