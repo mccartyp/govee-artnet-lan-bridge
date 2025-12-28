@@ -2007,7 +2007,7 @@ class GoveeShell:
                devices set-name <device_id> <name>                          # Set device name (use "" to clear)
         Examples:
             devices list
-            devices list --id AA:BB:CC
+            devices list --id AA:BB:CC:DD:EE:FFC
             devices list --ip 192.168.1.100
             devices list --state active
             devices list detailed --state offline
@@ -3529,7 +3529,7 @@ class GoveeShell:
             self._append_output("     [dim]Shows which channels control which device fields[/]\n")
             self._append_output("  4. [bold]mappings create[/] - Create new channel mappings\n")
             self._append_output("     [dim]Use --template (rgb, rgbw, brightness_rgb, etc.)[/]\n")
-            self._append_output("     [dim]Example: mappings create --device-id AA:BB:CC --template rgb --start-channel 1[/]\n")
+            self._append_output("     [dim]Example: mappings create --device-id AA:BB:CC:DD:EE:FF --template rgb --start-channel 1[/]\n")
             self._append_output("     [dim]Type 'mappings create --help' for detailed options[/]\n")
         elif intro:
             self._append_output(f"[bold cyan]{intro}[/]\n\n")
