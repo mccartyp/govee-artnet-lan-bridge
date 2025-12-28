@@ -156,6 +156,12 @@ For individual field control, use single channel mappings instead of templates:
 | `w` | `white` | White channel only | `color` |
 | `ct` | `color_temp` | Color temperature in Kelvin | `color_temperature` |
 
+**Capability Summary:**
+- **None** - Works on all Govee devices (plugs, lights, bulbs, switches)
+- **`brightness`** - Dimmable devices only (lights, bulbs) - NOT plugs or switches
+- **`color`** - Color-capable devices (RGB lights, RGBW strips)
+- **`color_temperature`** - Color temperature devices (tunable white, RGBWW lights)
+
 **Note**: Device capabilities are validated when creating mappings. Not all Govee devices support all features (e.g., plug-type devices only support power control). Use `govee-artnet devices list` to check device capabilities.
 
 ```bash
