@@ -135,16 +135,42 @@ The bridge maps ArtNet DMX channels to Govee device controls. Each device can be
 
 Templates provide pre-configured channel layouts for common lighting fixture types. They automatically create all necessary mappings in the correct order.
 
-#### Available Templates
+#### Available Templates (Multi-Channel Mappings)
 
 | Template | Channels | Layout | Use Case |
 |----------|----------|--------|----------|
 | `rgb` | 3 | R, G, B | Standard RGB fixtures |
 | `rgbw` | 4 | R, G, B, W | RGB + dedicated white channel |
 | `brightness_rgb` | 4 | Brightness, R, G, B | Master dimmer + RGB color |
-| `master_only` | 1 | Brightness | Simple dimmer/brightness control |
 | `rgbwa` | 5 | R, G, B, W, Brightness | RGBW color + master dimmer |
 | `rgbaw` | 5 | Brightness, R, G, B, W | Master dimmer + RGBW color |
+| `full` | 6 | Brightness, R, G, B, W, CT | Full control with color temperature |
+
+#### Discrete Field Mappings (Single-Channel Control)
+
+For single-channel control, use discrete field mappings instead of templates:
+
+| Field | Description |
+|-------|-------------|
+| `power` | Power on/off (DMX >= 128 = on, < 128 = off) |
+| `brightness` | Brightness control (0-255) |
+| `r`, `g`, `b`, `w` | Individual color channels |
+| `ct` | Color temperature in Kelvin |
+
+**Example - Power and Brightness Control:**
+```bash
+# Power control on channel 1
+govee-artnet mappings create \
+  --device-id "AA:BB:CC:DD:EE:FF" \
+  --channel 1 \
+  --field power
+
+# Brightness control on channel 5
+govee-artnet mappings create \
+  --device-id "AA:BB:CC:DD:EE:FF" \
+  --channel 5 \
+  --field brightness
+```
 
 #### Examples for Common Fixtures
 
@@ -192,17 +218,17 @@ This creates mappings for:
 - Channel 7: Green
 - Channel 8: Blue
 
-**Simple Brightness-Only Light (1-channel dimmer)**
+**Simple Brightness-Only Light (discrete field mapping)**
 ```bash
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
-  --start-channel 100 \
-  --template master_only
+  --channel 100 \
+  --field brightness
 ```
 
-This creates a mapping for:
-- Channel 100: Brightness
+This creates a discrete mapping for:
+- Channel 100: Brightness (0-255)
 
 **Advanced RGBW + Master Brightness (5-channel)**
 ```bash
@@ -337,9 +363,11 @@ Govee devices report their capabilities:
 | `rgb` | No | Yes | Any RGB-capable device |
 | `rgbw` | No | Yes | Any RGB-capable device |
 | `brightness_rgb` | Yes | Yes | Devices with both brightness AND color |
-| `master_only` | Yes | No | Any device with brightness control |
 | `rgbwa` | Yes | Yes | Devices with both brightness AND color |
 | `rgbaw` | Yes | Yes | Devices with both brightness AND color |
+| `full` | Yes | Yes | Devices with brightness, color, and color temperature |
+
+**Note**: For single-channel control (brightness only, power, etc.), use discrete field mappings instead of templates. All Govee devices support discrete `power` and `brightness` field mappings.
 
 #### Checking Device Capabilities
 
@@ -375,10 +403,10 @@ Discovery responses that include a `model_number` are matched against the bundle
 
 #### "Unknown template"
 ```
-Unknown template 'rgbb'. Supported templates: brightness_rgb, full, master_only, rgb, rgbaw, rgbwa, rgbw.
+Unknown template 'rgbb'. Supported templates: brightness_rgb, full, rgb, rgbaw, rgbwa, rgbw.
 ```
 
-**Solution**: Check your template name for typos. Use one of the seven supported templates listed above.
+**Solution**: Check your template name for typos. Use one of the six supported templates listed above.
 
 ---
 
@@ -428,7 +456,7 @@ Device does not support color control. Supported modes: ct
 
 **Cause**: You're trying to map color channels (R, G, B), but the device only supports color temperature (warm/cool white).
 
-**Solution**: Use `master_only` template for brightness control only, or check if you selected the correct device.
+**Solution**: Use discrete field mapping with `--field brightness` for brightness control only, or check if you selected the correct device.
 
 ---
 
@@ -603,12 +631,12 @@ govee-artnet mappings create \
   --start-channel 1 \
   --template rgbaw
 
-# Bedroom: Simple brightness-only bulb (1 channel)
+# Bedroom: Simple brightness-only bulb (discrete field mapping)
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:20" \
   --universe 1 \
-  --start-channel 10 \
-  --template master_only
+  --channel 10 \
+  --field brightness
 
 # Kitchen: RGBW strip (4 channels)
 govee-artnet mappings create \

@@ -185,13 +185,21 @@ Create a single mapping or multiple mappings using a template.
 \* Either `channel` or `start_channel` is required
 \*\* Required when `mapping_type` is "discrete"
 
-**Template Names**:
+**Template Names** (for multi-channel mappings):
 - `rgb`: 3-channel RGB
 - `rgbw`: 4-channel RGBW
 - `brightness_rgb`: 4-channel brightness + RGB
-- `master_only`: 1-channel brightness
 - `rgbwa`: 5-channel RGBW + brightness
 - `rgbaw`: 5-channel brightness + RGBW
+- `full`: 6-channel brightness + RGBW + color temperature
+
+**Discrete Field Names** (for single-channel mappings):
+- `power`: Power on/off control (DMX >= 128 = on, < 128 = off)
+- `brightness`: Brightness control (0-255)
+- `r`, `g`, `b`, `w`: Individual color channels
+- `ct`: Color temperature in Kelvin
+
+**Note**: Type is auto-inferred - `discrete` if `field` is provided, `range` otherwise.
 
 **Response** (Individual Mapping): `201 Created`
 ```json
@@ -230,7 +238,7 @@ Create a single mapping or multiple mappings using a template.
 `400 Bad Request` - Validation errors:
 ```json
 {
-  "detail": "Unknown template 'rgbb'. Supported templates: brightness_rgb, master_only, rgb, rgbaw, rgbwa, rgbw."
+  "detail": "Unknown template 'rgbb'. Supported templates: brightness_rgb, full, rgb, rgbaw, rgbwa, rgbw."
 }
 ```
 
@@ -469,14 +477,24 @@ curl -X POST http://127.0.0.1:8000/mappings \
     "template": "rgbw"
   }'
 
-# Device 3: Brightness only at channel 20
+# Device 3: Brightness only at channel 20 (discrete field mapping)
 curl -X POST http://127.0.0.1:8000/mappings \
   -H "Content-Type: application/json" \
   -d '{
     "device_id": "AA:BB:CC:DD:EE:03",
     "universe": 0,
-    "start_channel": 20,
-    "template": "master_only"
+    "channel": 20,
+    "field": "brightness"
+  }'
+
+# Device 4: Power control at channel 25 (discrete field mapping)
+curl -X POST http://127.0.0.1:8000/mappings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "AA:BB:CC:DD:EE:04",
+    "universe": 0,
+    "channel": 25,
+    "field": "power"
   }'
 
 # View the complete channel map

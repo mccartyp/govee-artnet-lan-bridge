@@ -236,7 +236,7 @@ def _coerce_metadata_for_db(metadata: Mapping[str, Any]) -> Dict[str, Any]:
     return db_values
 
 
-SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness", "ct"}
+SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness", "ct", "power"}
 
 
 @dataclass(frozen=True)
@@ -258,7 +258,6 @@ _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("range", ("r", "g", "b")),
     ),
-    "master_only": (TemplateSegment("discrete", ("brightness",)),),
     # Ambience fixtures often expose a master brightness alongside RGBW channels.
     "rgbwa": (
         TemplateSegment("range", ("r", "g", "b", "w")),
@@ -338,6 +337,9 @@ def _validate_field_support(field: str, capabilities: NormalizedCapabilities) ->
         raise ValueError(
             f"Device does not support color temperature control. Supported modes: {supported}."
         )
+    # Power control is assumed to be supported by all Govee devices
+    if field == "power":
+        pass  # No validation needed - all devices support on/off
 
 
 def _mapping_fields_for_length(

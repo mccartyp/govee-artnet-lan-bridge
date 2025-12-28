@@ -764,12 +764,12 @@ class GoveeShell:
                 'create': {
                     '--device-id': None,
                     '--universe': None,
-                    '--template': {'rgb': None, 'rgbw': None, 'brightness_rgb': None, 'master_only': None, 'rgbwa': None, 'rgbaw': None, 'full': None},
+                    '--template': {'rgb': None, 'rgbw': None, 'brightness_rgb': None, 'rgbwa': None, 'rgbaw': None, 'full': None},
                     '--start-channel': None,
                     '--channel': None,
                     '--length': None,
                     '--type': {'range': None, 'discrete': None},
-                    '--field': {'r': None, 'g': None, 'b': None, 'w': None, 'brightness': None, 'ct': None},
+                    '--field': {'power': None, 'brightness': None, 'r': None, 'g': None, 'b': None, 'w': None, 'ct': None},
                     '--allow-overlap': None,
                     '--help': None,
                 },
@@ -2173,40 +2173,42 @@ class GoveeShell:
             arg = args[i]
             if arg == "--help":
                 self._append_output("[cyan]Mappings Create Help[/]\n")
-                self._append_output("\n[bold]Template-based (recommended):[/]\n")
+                self._append_output("\n[bold]Template-based (recommended for multi-channel mappings):[/]\n")
                 self._append_output("  mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>\n")
                 self._append_output("\n[bold]Available templates:[/]\n")
                 self._append_output("  • rgb             - 3 channels: Red, Green, Blue\n")
                 self._append_output("  • rgbw            - 4 channels: Red, Green, Blue, White\n")
                 self._append_output("  • brightness_rgb  - 4 channels: Brightness, Red, Green, Blue\n")
-                self._append_output("  • master_only     - 1 channel: Brightness\n")
                 self._append_output("  • rgbwa           - 5 channels: Red, Green, Blue, White, Brightness\n")
                 self._append_output("  • rgbaw           - 5 channels: Brightness, Red, Green, Blue, White\n")
                 self._append_output("  • full            - 6 channels: Brightness, Red, Green, Blue, White, Color Temp\n")
-                self._append_output("\n[bold]Manual configuration for single fields:[/]\n")
-                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --type <type> --field <field>\n")
-                self._append_output("\n[bold]Manual configuration for multi-channel fields:[/]\n")
-                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --length <num> --type <type> --field <field>\n")
-                self._append_output("\n[bold]Field types (for manual configuration):[/]\n")
-                self._append_output("  Single field mappings (length=1):\n")
-                self._append_output("    --type discrete --field r          - Map to red channel only\n")
-                self._append_output("    --type discrete --field g          - Map to green channel only\n")
-                self._append_output("    --type discrete --field b          - Map to blue channel only\n")
-                self._append_output("    --type discrete --field w          - Map to white channel only\n")
-                self._append_output("    --type discrete --field brightness - Map to brightness control\n")
-                self._append_output("    --type discrete --field ct         - Map to color temperature (kelvin)\n")
-                self._append_output("  Multi-channel mappings:\n")
-                self._append_output("    --type range --length 3            - Map to RGB (auto-detected from device capabilities)\n")
-                self._append_output("    --type range --length 4            - Map to RGBW (auto-detected from device capabilities)\n")
+                self._append_output("\n[bold]Discrete field mappings (recommended for single-channel control):[/]\n")
+                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --field <field>\n")
+                self._append_output("\n[bold]Multi-channel range mappings:[/]\n")
+                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --length <num>\n")
+                self._append_output("\n[bold]Available fields (for discrete mappings):[/]\n")
+                self._append_output("  • power       - Power on/off (DMX >= 128 = on, < 128 = off)\n")
+                self._append_output("  • brightness  - Brightness control (0-255)\n")
+                self._append_output("  • r           - Red channel only\n")
+                self._append_output("  • g           - Green channel only\n")
+                self._append_output("  • b           - Blue channel only\n")
+                self._append_output("  • w           - White channel only\n")
+                self._append_output("  • ct          - Color temperature in Kelvin\n")
+                self._append_output("\n[bold]Notes:[/]\n")
+                self._append_output("  • Type is auto-inferred: discrete if --field is provided, range otherwise\n")
+                self._append_output("  • Universe defaults to 0 if omitted\n")
+                self._append_output("  • Templates are for multi-channel mappings only\n")
+                self._append_output("  • Use discrete field mappings for single-channel control\n")
                 self._append_output("\n[bold]Examples:[/]\n")
-                self._append_output("  # Template-based (universe defaults to 0 if omitted)\n")
+                self._append_output("  # Template-based multi-channel mapping\n")
                 self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --template rgb --start-channel 1\n")
                 self._append_output("  mappings create --device-id @kitchen --universe 1 --template rgbw --start-channel 10\n")
-                self._append_output("\n  # Manual single field mapping\n")
-                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --type discrete --field brightness\n")
-                self._append_output("  mappings create --device-id @kitchen --channel 20 --type discrete --field w\n")
-                self._append_output("\n  # Manual multi-channel mapping\n")
-                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --length 3 --type range\n")
+                self._append_output("\n  # Discrete single-field mappings\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness\n")
+                self._append_output("  mappings create --device-id @kitchen --channel 20 --field w\n")
+                self._append_output("\n  # Manual multi-channel range mapping\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --length 3\n")
                 return
             elif arg == "--device-id" and i + 1 < len(args):
                 device_id = self._resolve_bookmark(args[i + 1])
@@ -2331,11 +2333,13 @@ class GoveeShell:
         Usage: mappings list
                mappings get <id>
                mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>
-               mappings create --device-id <id> [--universe <num>] --channel <num> [--length <num>] --type <type> --field <field>
+               mappings create --device-id <id> [--universe <num>] --channel <num> --field <field>
+               mappings create --device-id <id> [--universe <num>] --channel <num> --length <num>
                mappings delete <id>
                mappings channel-map
-        Templates: rgb, rgbw, brightness_rgb, master_only, rgbwa, rgbaw, full
-        Note: --universe defaults to 0 if omitted
+        Templates (multi-channel): rgb, rgbw, brightness_rgb, rgbwa, rgbaw, full
+        Fields (discrete): power, brightness, r, g, b, w, ct
+        Note: --universe defaults to 0 if omitted; --type is auto-inferred
         Use 'help mappings create', 'mappings create --help', or 'mappings create ?' for detailed creation help
         """
         if not self.client:

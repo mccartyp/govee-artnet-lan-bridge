@@ -138,9 +138,27 @@ See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete documentation an
 | `rgb` | 3 | R, G, B | Standard RGB fixtures |
 | `rgbw` | 4 | R, G, B, W | RGB + dedicated white channel |
 | `brightness_rgb` | 4 | Brightness, R, G, B | Master dimmer + RGB color |
-| `master_only` | 1 | Brightness | Simple dimmer/brightness control |
 | `rgbwa` | 5 | R, G, B, W, Brightness | RGBW color + master dimmer |
 | `rgbaw` | 5 | Brightness, R, G, B, W | Master dimmer + RGBW color |
+
+### Discrete Field Mappings
+
+For single-channel control, use discrete field mappings instead of templates:
+
+| Field | Description |
+|-------|-------------|
+| `power` | Power on/off (DMX >= 128 = on, < 128 = off) |
+| `brightness` | Brightness control (0-255) |
+| `r`, `g`, `b`, `w` | Individual color channels |
+| `ct` | Color temperature in Kelvin |
+
+```bash
+# Create a power control mapping
+govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power
+
+# Create a brightness control mapping
+govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness
+```
 
 ## CLI Commands
 
