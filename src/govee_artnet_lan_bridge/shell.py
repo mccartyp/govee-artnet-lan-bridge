@@ -1821,11 +1821,12 @@ class GoveeShell:
 
     def do_channels(self, arg: str) -> None:
         """
-        Channel commands: list channels for a universe.
-        Usage: channels list [universe]    # Default universe is 0
+        Channel commands: list channels for one or more universes.
+        Usage: channels list [universe...]    # Default universe is 0
         Examples:
             channels list              # Show channels for universe 0
             channels list 1            # Show channels for universe 1
+            channels list 0 1 2        # Show channels for universes 0, 1, and 2
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -1833,55 +1834,61 @@ class GoveeShell:
 
         args = shlex.split(arg)
         if not args:
-            self._append_output("[yellow]Usage: channels list [universe][/]" + "\n")
+            self._append_output("[yellow]Usage: channels list [universe...][/]" + "\n")
             return
 
         command = args[0]
 
         try:
             if command == "list":
-                # Parse universe argument (default to 0)
-                universe = 0
+                # Parse universe arguments (default to [0])
+                universes = [0]
                 if len(args) > 1:
+                    # Parse one or more universe numbers
                     try:
-                        universe = int(args[1])
-                    except ValueError:
-                        self._append_output(f"[red]Invalid universe number: {args[1]}[/]\n")
+                        universes = [int(u) for u in args[1:]]
+                    except ValueError as e:
+                        self._append_output(f"[red]Invalid universe number: {e}[/]\n")
                         return
 
-                self._show_channels_list(universe)
+                self._show_channels_list(universes)
             else:
                 self._append_output(f"[red]Unknown command: channels {arg}[/]" + "\n")
-                self._append_output("[yellow]Try: channels list [universe][/]" + "\n")
+                self._append_output("[yellow]Try: channels list [universe...][/]" + "\n")
         except Exception as exc:
             self._handle_error(exc, "channels")
 
-    def _show_channels_list(self, universe: int = 0) -> None:
-        """Show DMX channels for the specified universe.
+    def _show_channels_list(self, universes: list[int] = None) -> None:
+        """Show DMX channels for the specified universe(s).
 
         Args:
-            universe: ArtNet universe number (default 0)
+            universes: List of ArtNet universe numbers (default [0])
         """
+        if universes is None:
+            universes = [0]
+
         try:
-            # Fetch mappings and devices
-            mappings_response = self.client.get("/mappings")
+            # Fetch mappings and devices without caching for fresh IP data
+            mappings_response = self._cached_get("/mappings", use_cache=False)
             mappings = _handle_response(mappings_response)
 
-            devices_response = self.client.get("/devices")
+            devices_response = self._cached_get("/devices", use_cache=False)
             devices = _handle_response(devices_response)
 
             # Create device lookup by ID
             device_lookup = {d["id"]: d for d in devices} if devices else {}
 
-            # Filter mappings for this universe
-            universe_mappings = [m for m in mappings if m.get("universe") == universe]
+            # Filter mappings for the specified universes
+            universe_mappings = [m for m in mappings if m.get("universe") in universes]
 
             if not universe_mappings:
-                self._append_output(f"[yellow]No mappings found for universe {universe}[/]\n")
+                universes_str = ", ".join(str(u) for u in universes)
+                self._append_output(f"[yellow]No mappings found for universe(s) {universes_str}[/]\n")
                 return
 
-            # Build channel map (1-512)
-            channel_map = {}  # channel_num -> (device_id, ip, function)
+            # Build channel map with universe information
+            # channel_map: {(universe, channel_num): (device_id, function, mapping_id)}
+            channel_map = {}
 
             # Channel function names for common templates
             TEMPLATE_FUNCTIONS = {
@@ -1896,13 +1903,11 @@ class GoveeShell:
 
             for mapping in universe_mappings:
                 device_id = mapping.get("device_id", "N/A")
+                mapping_id = mapping.get("id", "N/A")
+                universe = mapping.get("universe", 0)
                 start_channel = mapping.get("channel", 1)
                 channel_length = mapping.get("length", 1)
                 fields_list = mapping.get("fields", [])
-
-                # Get device IP
-                device = device_lookup.get(device_id, {})
-                device_ip = device.get("ip", "N/A")
 
                 # Determine channel functions from the fields list
                 # Try to match against known templates, otherwise use the field names directly
@@ -1926,27 +1931,35 @@ class GoveeShell:
                     channel_num = start_channel + i
                     if 1 <= channel_num <= 512:
                         function = functions[i] if i < len(functions) else f"Ch{i+1}"
-                        channel_map[channel_num] = (device_id, device_ip, function)
+                        # Store with (universe, channel) as key, (device_id, function, mapping_id) as value
+                        channel_map[(universe, channel_num)] = (device_id, function, mapping_id)
 
             if not channel_map:
-                self._append_output(f"[yellow]No channels populated for universe {universe}[/]\n")
+                universes_str = ", ".join(str(u) for u in universes)
+                self._append_output(f"[yellow]No channels populated for universe(s) {universes_str}[/]\n")
                 return
 
             # Create table with unicode borders
+            universes_str = ", ".join(str(u) for u in sorted(universes))
             table = Table(
-                title=f"DMX Channels - Universe {universe}",
+                title=f"DMX Channels - Universe {universes_str}",
                 show_header=True,
                 header_style="bold cyan",
                 box=box.ROUNDED
             )
+            table.add_column("Universe", style="dim", width=8, justify="right")
             table.add_column("Channel", style="cyan", width=8, justify="right")
             table.add_column("Device ID", style="yellow", width=23)
             table.add_column("IP Address", style="green", width=15)
             table.add_column("Function", style="magenta", width=15)
 
-            # Add rows for populated channels (sorted by channel number)
-            for channel_num in sorted(channel_map.keys()):
-                device_id, device_ip, function = channel_map[channel_num]
+            # Add rows for populated channels (sorted by universe, then channel number)
+            for (universe, channel_num) in sorted(channel_map.keys()):
+                device_id, function, mapping_id = channel_map[(universe, channel_num)]
+
+                # Look up IP address dynamically from fresh device data
+                device = device_lookup.get(device_id, {})
+                device_ip = device.get("ip", "N/A")
 
                 # Apply color coding to functions
                 if "Red" in function:
@@ -1963,6 +1976,7 @@ class GoveeShell:
                     function_style = function
 
                 table.add_row(
+                    str(universe),
                     str(channel_num),
                     device_id[:23],
                     device_ip,
@@ -1970,8 +1984,15 @@ class GoveeShell:
                 )
 
             self._append_output(table)
-            self._append_output(f"\n[dim]Total: {len(channel_map)} populated channel(s) in universe {universe}[/]\n")
-            self._append_output(f"[dim]Range: {min(channel_map.keys())} - {max(channel_map.keys())}[/]\n")
+
+            # Calculate summary statistics
+            total_channels = len(channel_map)
+            channel_nums = [ch for (u, ch) in channel_map.keys()]
+            min_channel = min(channel_nums) if channel_nums else 0
+            max_channel = max(channel_nums) if channel_nums else 0
+
+            self._append_output(f"\n[dim]Total: {total_channels} populated channel(s)[/]\n")
+            self._append_output(f"[dim]Channel range: {min_channel} - {max_channel}[/]\n")
 
         except Exception as exc:
             self._append_output(f"[red]Error fetching channels: {exc}[/]\n")
