@@ -524,12 +524,18 @@ def create_app(
             if channel is None:
                 raise ValueError("Channel is required")
             length = payload.length if payload.length is not None else 1
+
+            # Infer mapping type: if field is provided, default to discrete; otherwise range
+            mapping_type = payload.mapping_type
+            if mapping_type is None:
+                mapping_type = "discrete" if payload.field else "range"
+
             row = await store.create_mapping(
                 device_id=payload.device_id,
                 universe=payload.universe,
                 channel=channel,
                 length=length,
-                mapping_type=payload.mapping_type or "range",
+                mapping_type=mapping_type,
                 field=payload.field,
                 allow_overlap=payload.allow_overlap,
             )

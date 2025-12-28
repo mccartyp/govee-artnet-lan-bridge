@@ -764,12 +764,12 @@ class GoveeShell:
                 'create': {
                     '--device-id': None,
                     '--universe': None,
-                    '--template': {'rgb': None, 'rgbw': None, 'brightness_rgb': None, 'master_only': None, 'rgbwa': None, 'rgbaw': None, 'full': None},
+                    '--template': {'rgb': None, 'rgbw': None, 'brightness_rgb': None, 'rgbwa': None, 'rgbaw': None, 'brgbwct': None},
                     '--start-channel': None,
                     '--channel': None,
                     '--length': None,
                     '--type': {'range': None, 'discrete': None},
-                    '--field': {'r': None, 'g': None, 'b': None, 'w': None, 'brightness': None, 'ct': None},
+                    '--field': {'power': None, 'brightness': None, 'r': None, 'red': None, 'g': None, 'green': None, 'b': None, 'blue': None, 'w': None, 'white': None, 'ct': None, 'color_temp': None},
                     '--allow-overlap': None,
                     '--help': None,
                 },
@@ -1999,12 +1999,13 @@ class GoveeShell:
 
     def do_devices(self, arg: str) -> None:
         """
-        Device commands: list, list detailed, enable, disable, set-name.
+        Device commands: list, list detailed, enable, disable, set-name, set-capabilities.
         Usage: devices list [--id ID] [--ip IP] [--state STATE]              # Show simplified 2-line view
                devices list detailed [--id ID] [--ip IP] [--state STATE]     # Show full device details
                devices enable <device_id>
                devices disable <device_id>
                devices set-name <device_id> <name>                          # Set device name (use "" to clear)
+               devices set-capabilities <device_id> --brightness <bool> --color <bool> --white <bool> --color-temp <bool>
         Examples:
             devices list
             devices list --id AA:BB:CC:DD:EE:FFC
@@ -2013,6 +2014,7 @@ class GoveeShell:
             devices list detailed --state offline
             devices set-name AA:BB:CC:DD:EE:FF "Kitchen Light"
             devices set-name AA:BB:CC:DD:EE:FF ""                            # Clear name
+            devices set-capabilities AA:BB:CC:DD:EE:FF --brightness true --color true --white false
         """
         if not self.client:
             self._append_output("[red]Not connected. Use 'connect' first.[/]" + "\n")
@@ -2087,6 +2089,43 @@ class GoveeShell:
                         self._append_output(f"[green]Device name cleared[/]\n")
                 else:
                     self._append_output(f"[red]Failed to set device name: {response.status_code}[/]\n")
+            elif command == "set-capabilities" and len(args) >= 2:
+                device_id = args[1]
+
+                # Parse capability flags
+                capabilities = {}
+                i = 2
+                while i < len(args):
+                    if args[i] == "--brightness" and i + 1 < len(args):
+                        capabilities["brightness"] = args[i + 1].lower() in ("true", "1", "yes")
+                        i += 2
+                    elif args[i] == "--color" and i + 1 < len(args):
+                        capabilities["color"] = args[i + 1].lower() in ("true", "1", "yes")
+                        i += 2
+                    elif args[i] == "--white" and i + 1 < len(args):
+                        capabilities["white"] = args[i + 1].lower() in ("true", "1", "yes")
+                        i += 2
+                    elif args[i] == "--color-temp" and i + 1 < len(args):
+                        capabilities["color_temp"] = args[i + 1].lower() in ("true", "1", "yes")
+                        i += 2
+                    else:
+                        self._append_output(f"[red]Unknown flag: {args[i]}[/]\n")
+                        return
+
+                if not capabilities:
+                    self._append_output("[red]Error: At least one capability flag must be provided[/]\n")
+                    self._append_output("[yellow]Available flags: --brightness, --color, --white, --color-temp[/]\n")
+                    return
+
+                # Call API to update device capabilities
+                payload = {"capabilities": capabilities}
+                response = self.client.patch(f"/devices/{device_id}", json=payload)
+                if response.status_code == 200:
+                    self._invalidate_cache("/devices")
+                    caps_list = ", ".join([f"{k}={v}" for k, v in capabilities.items()])
+                    self._append_output(f"[green]Device capabilities updated: {caps_list}[/]\n")
+                else:
+                    self._append_output(f"[red]Failed to update device capabilities: {response.status_code}[/]\n")
             else:
                 self._append_output(f"[red]Unknown or incomplete command: devices {arg}[/]" + "\n")
                 self._append_output("[yellow]Try: devices list, devices enable <id>, devices disable <id>, devices set-name <id> <name>[/]" + "\n")
@@ -2173,40 +2212,44 @@ class GoveeShell:
             arg = args[i]
             if arg == "--help":
                 self._append_output("[cyan]Mappings Create Help[/]\n")
-                self._append_output("\n[bold]Template-based (recommended):[/]\n")
+                self._append_output("\n[bold]Template-based (recommended for multi-channel mappings):[/]\n")
                 self._append_output("  mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>\n")
                 self._append_output("\n[bold]Available templates:[/]\n")
                 self._append_output("  • rgb             - 3 channels: Red, Green, Blue\n")
                 self._append_output("  • rgbw            - 4 channels: Red, Green, Blue, White\n")
                 self._append_output("  • brightness_rgb  - 4 channels: Brightness, Red, Green, Blue\n")
-                self._append_output("  • master_only     - 1 channel: Brightness\n")
                 self._append_output("  • rgbwa           - 5 channels: Red, Green, Blue, White, Brightness\n")
                 self._append_output("  • rgbaw           - 5 channels: Brightness, Red, Green, Blue, White\n")
-                self._append_output("  • full            - 6 channels: Brightness, Red, Green, Blue, White, Color Temp\n")
-                self._append_output("\n[bold]Manual configuration for single fields:[/]\n")
-                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --type <type> --field <field>\n")
-                self._append_output("\n[bold]Manual configuration for multi-channel fields:[/]\n")
-                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --length <num> --type <type> --field <field>\n")
-                self._append_output("\n[bold]Field types (for manual configuration):[/]\n")
-                self._append_output("  Single field mappings (length=1):\n")
-                self._append_output("    --type discrete --field r          - Map to red channel only\n")
-                self._append_output("    --type discrete --field g          - Map to green channel only\n")
-                self._append_output("    --type discrete --field b          - Map to blue channel only\n")
-                self._append_output("    --type discrete --field w          - Map to white channel only\n")
-                self._append_output("    --type discrete --field brightness - Map to brightness control\n")
-                self._append_output("    --type discrete --field ct         - Map to color temperature (kelvin)\n")
-                self._append_output("  Multi-channel mappings:\n")
-                self._append_output("    --type range --length 3            - Map to RGB (auto-detected from device capabilities)\n")
-                self._append_output("    --type range --length 4            - Map to RGBW (auto-detected from device capabilities)\n")
+                self._append_output("  • brgbwct         - 6 channels: Brightness, Red, Green, Blue, White, Color Temp\n")
+                self._append_output("\n[bold]Single channel mappings (recommended for individual control):[/]\n")
+                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --field <field>\n")
+                self._append_output("\n[bold]Multi-channel range mappings:[/]\n")
+                self._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --length <num>\n")
+                self._append_output("\n[bold]Available fields (for single channel mappings):[/]\n")
+                self._append_output("  • power              - Power on/off (DMX >= 128 = on, < 128 = off) [all devices]\n")
+                self._append_output("  • brightness         - Brightness control (0-255) [requires brightness capability]\n")
+                self._append_output("  • r (or red)         - Red channel only [requires color capability]\n")
+                self._append_output("  • g (or green)       - Green channel only [requires color capability]\n")
+                self._append_output("  • b (or blue)        - Blue channel only [requires color capability]\n")
+                self._append_output("  • w (or white)       - White channel only [requires white capability]\n")
+                self._append_output("  • ct (or color_temp) - Color temperature in Kelvin [requires color_temp capability]\n")
+                self._append_output("\n[bold]Notes:[/]\n")
+                self._append_output("  • Universe defaults to 0 if omitted\n")
+                self._append_output("  • Templates are for multi-channel mappings only\n")
+                self._append_output("  • Use single channel mappings for individual field control\n")
+                self._append_output("  • Device capabilities are validated - mappings will fail if unsupported\n")
+                self._append_output("  • Use 'devices list' to check device capabilities\n")
                 self._append_output("\n[bold]Examples:[/]\n")
-                self._append_output("  # Template-based (universe defaults to 0 if omitted)\n")
+                self._append_output("  # Template-based multi-channel mapping\n")
                 self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --template rgb --start-channel 1\n")
                 self._append_output("  mappings create --device-id @kitchen --universe 1 --template rgbw --start-channel 10\n")
-                self._append_output("\n  # Manual single field mapping\n")
-                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --type discrete --field brightness\n")
-                self._append_output("  mappings create --device-id @kitchen --channel 20 --type discrete --field w\n")
-                self._append_output("\n  # Manual multi-channel mapping\n")
-                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --length 3 --type range\n")
+                self._append_output("\n  # Single channel mappings\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness\n")
+                self._append_output("  mappings create --device-id @kitchen --channel 20 --field w\n")
+                self._append_output("  mappings create --device-id @kitchen --channel 21 --field red\n")
+                self._append_output("\n  # Manual multi-channel range mapping\n")
+                self._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --length 3\n")
                 return
             elif arg == "--device-id" and i + 1 < len(args):
                 device_id = self._resolve_bookmark(args[i + 1])
@@ -2331,11 +2374,13 @@ class GoveeShell:
         Usage: mappings list
                mappings get <id>
                mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>
-               mappings create --device-id <id> [--universe <num>] --channel <num> [--length <num>] --type <type> --field <field>
+               mappings create --device-id <id> [--universe <num>] --channel <num> --field <field>
+               mappings create --device-id <id> [--universe <num>] --channel <num> --length <num>
                mappings delete <id>
                mappings channel-map
-        Templates: rgb, rgbw, brightness_rgb, master_only, rgbwa, rgbaw, full
-        Note: --universe defaults to 0 if omitted
+        Templates (multi-channel): rgb, rgbw, brightness_rgb, rgbwa, rgbaw, brgbwct
+        Fields (single-channel): power [all], brightness [caps], r/red [caps], g/green [caps], b/blue [caps], w/white [caps], ct/color_temp [caps]
+        Note: --universe defaults to 0; [caps] = requires device capability check
         Use 'help mappings create', 'mappings create --help', or 'mappings create ?' for detailed creation help
         """
         if not self.client:

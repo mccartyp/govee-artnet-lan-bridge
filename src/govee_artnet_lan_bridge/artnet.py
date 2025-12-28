@@ -210,8 +210,17 @@ def _payload_from_discrete_slice(
 ) -> Optional[Mapping[str, Any]]:
     if not slice_data or not mapping.record.field:
         return None
-    value = _apply_gamma_dimmer(slice_data[0], mapping.spec.gamma, mapping.spec.dimmer)
+    raw_value = slice_data[0]
     field = mapping.record.field
+
+    # Handle power as a special case - convert DMX value to on/off
+    if field == "power":
+        # DMX values >= 128 (50%) turn the device on, < 128 turn it off
+        power_state = raw_value >= 128
+        return {"turn": "on" if power_state else "off"}
+
+    # Apply gamma/dimmer for other fields
+    value = _apply_gamma_dimmer(raw_value, mapping.spec.gamma, mapping.spec.dimmer)
     if field == "brightness":
         return {"brightness": value}
     return {"color": {field: value}}

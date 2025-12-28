@@ -236,7 +236,16 @@ def _coerce_metadata_for_db(metadata: Mapping[str, Any]) -> Dict[str, Any]:
     return db_values
 
 
-SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness", "ct"}
+SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness", "ct", "power"}
+
+# Field aliases for user convenience
+FIELD_ALIASES: Dict[str, str] = {
+    "red": "r",
+    "green": "g",
+    "blue": "b",
+    "white": "w",
+    "color_temp": "ct",
+}
 
 
 @dataclass(frozen=True)
@@ -258,7 +267,6 @@ _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("range", ("r", "g", "b")),
     ),
-    "master_only": (TemplateSegment("discrete", ("brightness",)),),
     # Ambience fixtures often expose a master brightness alongside RGBW channels.
     "rgbwa": (
         TemplateSegment("range", ("r", "g", "b", "w")),
@@ -268,8 +276,8 @@ _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("range", ("r", "g", "b", "w")),
     ),
-    # Full control template with brightness, color, and color temperature
-    "full": (
+    # Full control template with brightness, RGBW color, and color temperature
+    "brgbwct": (
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("range", ("r", "g", "b", "w")),
         TemplateSegment("discrete", ("ct",)),
@@ -318,6 +326,8 @@ def _normalize_field_name(field: Optional[str]) -> str:
     if field is None or not str(field).strip():
         raise ValueError("Field is required for discrete mappings")
     normalized = str(field).strip().lower()
+    # Apply field aliases
+    normalized = FIELD_ALIASES.get(normalized, normalized)
     if normalized not in SUPPORTED_FIELDS:
         raise ValueError(
             f"Unsupported field '{field}'. Supported fields: {', '.join(sorted(SUPPORTED_FIELDS))}."
@@ -328,16 +338,24 @@ def _normalize_field_name(field: Optional[str]) -> str:
 def _validate_field_support(field: str, capabilities: NormalizedCapabilities) -> None:
     if field == "brightness" and not capabilities.supports_brightness:
         raise ValueError("Device does not support brightness control.")
-    if field in {"r", "g", "b", "w"} and not capabilities.supports_color:
+    if field in {"r", "g", "b"} and not capabilities.supports_color:
         supported = ", ".join(capabilities.supported_modes) or "none"
         raise ValueError(
             f"Device does not support color control. Supported modes: {supported}."
+        )
+    if field == "w" and not capabilities.supports_white:
+        supported = ", ".join(capabilities.supported_modes) or "none"
+        raise ValueError(
+            f"Device does not support white channel control. Supported modes: {supported}."
         )
     if field == "ct" and not capabilities.supports_color_temperature:
         supported = ", ".join(capabilities.supported_modes) or "none"
         raise ValueError(
             f"Device does not support color temperature control. Supported modes: {supported}."
         )
+    # Power control is assumed to be supported by all Govee devices
+    if field == "power":
+        pass  # No validation needed - all devices support on/off
 
 
 def _mapping_fields_for_length(

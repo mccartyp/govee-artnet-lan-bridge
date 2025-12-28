@@ -185,13 +185,24 @@ Create a single mapping or multiple mappings using a template.
 \* Either `channel` or `start_channel` is required
 \*\* Required when `mapping_type` is "discrete"
 
-**Template Names**:
+**Template Names** (for multi-channel mappings):
 - `rgb`: 3-channel RGB
 - `rgbw`: 4-channel RGBW
 - `brightness_rgb`: 4-channel brightness + RGB
-- `master_only`: 1-channel brightness
 - `rgbwa`: 5-channel RGBW + brightness
 - `rgbaw`: 5-channel brightness + RGBW
+- `brgbwct`: 6-channel brightness + RGBW + color temperature
+
+**Single Channel Field Names**:
+- `power`: Power on/off control (DMX >= 128 = on, < 128 = off) - **All devices**
+- `brightness`: Brightness control (0-255) - **Requires `brightness` capability**
+- `r` (alias: `red`): Red channel only - **Requires `color` capability**
+- `g` (alias: `green`): Green channel only - **Requires `color` capability**
+- `b` (alias: `blue`): Blue channel only - **Requires `color` capability**
+- `w` (alias: `white`): White channel only - **Requires `white` capability**
+- `ct` (alias: `color_temp`): Color temperature in Kelvin - **Requires `color_temperature` capability**
+
+**Note**: Device capabilities are validated when creating mappings. Use `GET /devices` to check device capabilities.
 
 **Response** (Individual Mapping): `201 Created`
 ```json
@@ -230,7 +241,7 @@ Create a single mapping or multiple mappings using a template.
 `400 Bad Request` - Validation errors:
 ```json
 {
-  "detail": "Unknown template 'rgbb'. Supported templates: brightness_rgb, master_only, rgb, rgbaw, rgbwa, rgbw."
+  "detail": "Unknown template 'rgbb'. Supported templates: brgbwct, brightness_rgb, rgb, rgbaw, rgbwa, rgbw."
 }
 ```
 
@@ -469,14 +480,24 @@ curl -X POST http://127.0.0.1:8000/mappings \
     "template": "rgbw"
   }'
 
-# Device 3: Brightness only at channel 20
+# Device 3: Brightness only at channel 20 (discrete field mapping)
 curl -X POST http://127.0.0.1:8000/mappings \
   -H "Content-Type: application/json" \
   -d '{
     "device_id": "AA:BB:CC:DD:EE:03",
     "universe": 0,
-    "start_channel": 20,
-    "template": "master_only"
+    "channel": 20,
+    "field": "brightness"
+  }'
+
+# Device 4: Power control at channel 25 (discrete field mapping)
+curl -X POST http://127.0.0.1:8000/mappings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "AA:BB:CC:DD:EE:04",
+    "universe": 0,
+    "channel": 25,
+    "field": "power"
   }'
 
 # View the complete channel map
