@@ -628,7 +628,7 @@ class WatchController:
     """
 
     # Default refresh interval
-    DEFAULT_REFRESH_INTERVAL = 2.0  # 2 seconds
+    DEFAULT_REFRESH_INTERVAL = 5.0  # 5 seconds
 
     def __init__(self, app: Application, watch_buffer: Buffer, shell: 'GoveeShell'):
         """
@@ -654,7 +654,7 @@ class WatchController:
         """Check if watch is currently active."""
         return self.watch_task is not None and not self.watch_task.done()
 
-    async def start(self, target: str, interval: float = 2.0) -> None:
+    async def start(self, target: str, interval: float = 5.0) -> None:
         """
         Start watching a target with periodic refreshes.
 
@@ -951,10 +951,10 @@ class GoveeShell:
             'bookmark': {'add': None, 'list': None, 'delete': None, 'use': None},
             'alias': {'add': None, 'list': None, 'delete': None, 'clear': None},
             'watch': {
-                'devices': {'-c': None, '--continuous': None, '--interval': None},
-                'mappings': {'-c': None, '--continuous': None, '--interval': None},
-                'logs': {'-c': None, '--continuous': None, '--interval': None},
-                'dashboard': {'-c': None, '--continuous': None, '--interval': None},
+                'devices': {'--interval': None},
+                'mappings': {'--interval': None},
+                'logs': {'--interval': None},
+                'dashboard': {'--interval': None},
             },
             'batch': {'load': None},
             'session': {'save': None, 'list': None, 'delete': None},
@@ -1389,7 +1389,7 @@ class GoveeShell:
         # Show exit message in normal output
         self._append_output("\n[dim]Exited log tail mode[/]\n")
 
-    async def _enter_watch_mode(self, target: str, interval: float = 2.0) -> None:
+    async def _enter_watch_mode(self, target: str, interval: float = 5.0) -> None:
         """
         Enter watch mode and start periodic refreshes.
 
@@ -3279,8 +3279,8 @@ class GoveeShell:
 
     def do_watch(self, arg: str) -> None:
         """
-        Watch devices, mappings, logs, or dashboard with optional continuous mode.
-        Usage: watch <target> [-c|--continuous] [--interval SECONDS]
+        Watch devices, mappings, logs, or dashboard with continuous updates.
+        Usage: watch <target> [--interval SECONDS]
 
         Targets:
             devices      - Watch device status
@@ -3289,17 +3289,15 @@ class GoveeShell:
             dashboard    - Watch dashboard summary
 
         Options:
-            -c, --continuous    Enter continuous watch mode with overlay window
-            --interval SECONDS  Refresh interval for continuous mode (default: 2.0)
+            --interval SECONDS  Refresh interval (default: 5.0)
 
         Examples:
-            watch devices                      # Single refresh of devices
-            watch devices -c                   # Continuous watch mode (2s refresh)
-            watch mappings --continuous        # Continuous watch mode
-            watch dashboard -c --interval 5    # Continuous with 5s refresh
+            watch devices              # Continuous watch with 5s refresh
+            watch mappings             # Continuous watch with 5s refresh
+            watch dashboard --interval 3    # Continuous with 3s refresh
 
-        Continuous Mode:
-            Press Esc or 'q' to exit
+        Controls:
+            Press Esc or 'q' to exit watch mode
             Press '+' to decrease interval (faster refresh)
             Press '-' to increase interval (slower refresh)
         """
@@ -3309,20 +3307,17 @@ class GoveeShell:
 
         args = shlex.split(arg)
         if not args:
-            self._append_output("[yellow]Usage: watch <target> [-c|--continuous] [--interval SECONDS][/]" + "\n")
+            self._append_output("[yellow]Usage: watch <target> [--interval SECONDS][/]" + "\n")
             self._append_output("[yellow]Valid targets: devices, mappings, logs, dashboard[/]\n")
             return
 
         # Parse arguments
         command = args[0]
-        continuous = False
-        interval = 2.0
+        interval = 5.0
 
         i = 1
         while i < len(args):
-            if args[i] in ["-c", "--continuous"]:
-                continuous = True
-            elif args[i] == "--interval":
+            if args[i] == "--interval":
                 if i + 1 < len(args):
                     try:
                         interval = float(args[i + 1])
@@ -3346,26 +3341,8 @@ class GoveeShell:
             return
 
         try:
-            if continuous:
-                # Enter continuous watch mode with overlay window
-                asyncio.create_task(self._enter_watch_mode(target=command, interval=interval))
-            else:
-                # Single refresh (original behavior)
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                self._append_output(f"\n[bold cyan]─── Refreshed at {timestamp} ───[/]\n")
-
-                # Execute command based on target
-                if command == "devices":
-                    self._show_devices_simple()
-                elif command == "mappings":
-                    self._show_mappings_list()
-                elif command == "logs":
-                    self.do_logs("")
-                elif command == "dashboard":
-                    self._monitor_dashboard()
-
-                self._append_output(f"\n[dim]Tip: Use 'watch {command} -c' for continuous mode, or run the command again to refresh[/]\n")
+            # Always enter continuous watch mode with overlay window
+            asyncio.create_task(self._enter_watch_mode(target=command, interval=interval))
 
         except Exception as exc:
             self._handle_error(exc, f"watch {command}")
