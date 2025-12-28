@@ -323,8 +323,16 @@ class LogTailController:
                                 new_text = new_text[trim_point:]
 
                         # Update buffer
+                        # Calculate cursor position, avoiding empty line at bottom if text ends with newline
+                        if self.follow_tail:
+                            cursor_pos = len(new_text)
+                            if new_text and new_text.endswith('\n'):
+                                cursor_pos = max(0, len(new_text) - 1)
+                        else:
+                            cursor_pos = self.log_buffer.cursor_position
+
                         self.log_buffer.set_document(
-                            Document(text=new_text, cursor_position=len(new_text) if self.follow_tail else self.log_buffer.cursor_position),
+                            Document(text=new_text, cursor_position=cursor_pos),
                             bypass_readonly=True
                         )
 
