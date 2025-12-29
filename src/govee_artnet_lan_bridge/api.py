@@ -266,7 +266,51 @@ def _build_command_payload(
     if not payload:
         return {}, []
     sanitized, warnings = validate_command_payload(payload, capabilities)
-    return sanitized, warnings
+
+    # Build separate Govee commands based on what's in the sanitized payload
+    # Following govee-discovery patterns: brightness cmd, colorwc cmd, etc.
+    wrapped_payloads: list[Mapping[str, Any]] = []
+
+    # Brightness command
+    if "brightness" in sanitized and "color" not in sanitized and "color_temp" not in sanitized:
+        wrapped_payloads.append({
+            "msg": {
+                "cmd": "brightness",
+                "data": {"value": sanitized["brightness"]}
+            }
+        })
+
+    # Color/colorwc command (may include color_temp for combined commands)
+    if "color" in sanitized or "color_temp" in sanitized:
+        data: Dict[str, Any] = {}
+        if "color" in sanitized:
+            data["color"] = sanitized["color"]
+        if "color_temp" in sanitized:
+            data["colorTemInKelvin"] = sanitized["color_temp"]
+        wrapped_payloads.append({
+            "msg": {
+                "cmd": "colorwc",
+                "data": data
+            }
+        })
+        # If brightness was also specified with color, send it as a separate command
+        if "brightness" in sanitized:
+            wrapped_payloads.append({
+                "msg": {
+                    "cmd": "brightness",
+                    "data": {"value": sanitized["brightness"]}
+                }
+            })
+
+    # Return the first wrapped payload (or combined logic)
+    # For now, return all wrapped payloads as a single combined one if multiple
+    if len(wrapped_payloads) == 1:
+        return wrapped_payloads[0], warnings
+    elif len(wrapped_payloads) > 1:
+        # Return as a list indicator - we'll need to handle this
+        return {"_multiple": wrapped_payloads}, warnings
+
+    return {}, warnings
 
 
 def _build_turn_payload(command: DeviceCommand) -> Optional[Mapping[str, Any]]:
@@ -475,7 +519,11 @@ def create_app(
         if turn_payload:
             payloads.append(turn_payload)
         if state_payload:
-            payloads.append(state_payload)
+            # Check if state_payload contains multiple wrapped payloads
+            if isinstance(state_payload, dict) and "_multiple" in state_payload:
+                payloads.extend(state_payload["_multiple"])
+            else:
+                payloads.append(state_payload)
         if not payloads:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No actions to enqueue")
         for entry in payloads:
