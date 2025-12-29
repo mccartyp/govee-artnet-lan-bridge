@@ -236,7 +236,7 @@ async def test_command_endpoint_enqueues_sanitized_payload(tmp_path) -> None:
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/devices/cmd-device/command",
-            json={"on": True, "brightness": 10, "color": "336699", "kelvin": 128},
+            json={"on": True, "brightness": 10, "color": "336699", "kelvin": 3500},
         )
 
     assert response.status_code == 202
@@ -254,11 +254,16 @@ async def test_command_endpoint_enqueues_sanitized_payload(tmp_path) -> None:
     state = await store.next_state("cmd-device")
     assert state is not None
     queued = json.loads(state.payload)
-    assert queued["msg"]["cmd"] == "devControl"
-    assert queued["msg"]["data"]["brightness"] == 10
+    assert queued["msg"]["cmd"] == "colorwc"
+    assert queued["msg"]["data"]["colorTemInKelvin"] == 3500
     assert queued["msg"]["data"]["color"] == {"r": 51, "g": 102, "b": 153}
-    expected_kelvin = int(round(2000 + (6500 - 2000) * (128 / 255)))
-    assert queued["msg"]["data"]["color_temp"] == expected_kelvin
+
+    # Second command should be brightness
+    state2 = await store.next_state("cmd-device")
+    assert state2 is not None
+    brightness_cmd = json.loads(state2.payload)
+    assert brightness_cmd["msg"]["cmd"] == "brightness"
+    assert brightness_cmd["msg"]["data"]["value"] == 10
 
 
 @pytest.mark.asyncio
