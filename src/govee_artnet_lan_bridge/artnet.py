@@ -223,6 +223,16 @@ def _payload_from_discrete_slice(
     value = _apply_gamma_dimmer(raw_value, mapping.spec.gamma, mapping.spec.dimmer)
     if field == "brightness":
         return {"brightness": value}
+
+    # Handle color temperature - scale DMX 0-255 to kelvin range
+    if field == "ct":
+        # Get color temp range from capabilities, default to common range
+        color_temp_range = mapping.record.capabilities.color_temp_range if mapping.record.capabilities else None
+        low, high = color_temp_range or (2000, 9000)
+        # Scale 0-255 DMX value to kelvin range
+        kelvin = int(round(low + (high - low) * (value / 255.0)))
+        return {"color_temp": kelvin}
+
     return {"color": {field: value}}
 
 

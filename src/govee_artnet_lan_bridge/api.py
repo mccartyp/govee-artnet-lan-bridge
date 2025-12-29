@@ -199,7 +199,7 @@ class DeviceCommand(BaseModel):
     off: bool = False
     brightness: Optional[int] = Field(default=None, ge=0, le=255)
     color: Optional[str] = None
-    kelvin: Optional[int] = Field(default=None, ge=0, le=255)
+    kelvin: Optional[int] = Field(default=None, ge=1000, le=10000)
 
     @field_validator("color")
     @classmethod
@@ -247,12 +247,6 @@ def _parse_hex_color(value: str) -> Mapping[str, int]:
     }
 
 
-def _scale_color_temp(value: int, capabilities: NormalizedCapabilities) -> int:
-    low, high = capabilities.color_temp_range or (2000, 9000)
-    scaled = low + (high - low) * (max(0, min(255, value)) / 255.0)
-    return int(round(scaled))
-
-
 def _build_command_payload(
     command: DeviceCommand, capabilities: NormalizedCapabilities
 ) -> tuple[Mapping[str, Any], list[str]]:
@@ -262,7 +256,7 @@ def _build_command_payload(
     if command.color:
         payload["color"] = _parse_hex_color(command.color)
     if command.kelvin is not None:
-        payload["color_temp"] = _scale_color_temp(command.kelvin, capabilities)
+        payload["color_temp"] = command.kelvin
     if not payload:
         return {}, []
     sanitized, warnings = validate_command_payload(payload, capabilities)
