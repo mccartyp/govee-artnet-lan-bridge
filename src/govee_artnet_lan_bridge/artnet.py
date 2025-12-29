@@ -227,7 +227,13 @@ def _payload_from_discrete_slice(
     # Handle color temperature - scale DMX 0-255 to kelvin range
     if field == "ct":
         # Get color temp range from capabilities, default to common range
-        color_temp_range = mapping.record.capabilities.color_temp_range if mapping.record.capabilities else None
+        color_temp_range = None
+        if mapping.record.capabilities:
+            # Handle both dict and NormalizedCapabilities object
+            if hasattr(mapping.record.capabilities, 'color_temp_range'):
+                color_temp_range = mapping.record.capabilities.color_temp_range
+            elif isinstance(mapping.record.capabilities, dict):
+                color_temp_range = mapping.record.capabilities.get('color_temp_range')
         low, high = color_temp_range or (2000, 9000)
         # Scale 0-255 DMX value to kelvin range
         kelvin = int(round(low + (high - low) * (value / 255.0)))
