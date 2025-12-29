@@ -78,12 +78,21 @@ def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     Uses specific Govee command types based on payload contents:
     - "brightness" cmd for brightness-only changes
     - "colorwc" cmd for color/color_temp changes
-    - For combined color+brightness, uses "colorwc" with color and brightness together
+    - "turn" cmd for power on/off changes
+    - For combined color+brightness, returns multiple commands via "_multiple" key
 
     Transforms:
         {"color": {"r": 154, "g": 0, "b": 0}}
     Into:
         {"msg": {"cmd": "colorwc", "data": {"color": {"r": 154, "g": 0, "b": 0}}}}
+
+    For combined updates:
+        {"color": {"r": 154, "g": 0, "b": 0}, "brightness": 200}
+    Into:
+        {"_multiple": [
+            {"msg": {"cmd": "colorwc", "data": {"color": {"r": 154, "g": 0, "b": 0}}}},
+            {"msg": {"cmd": "brightness", "data": {"value": 200}}}
+        ]}
     """
     # If already wrapped, return as-is
     if "msg" in payload:
@@ -113,7 +122,7 @@ def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
             }
         }
 
-    # Color/colorwc command (may include brightness)
+    # Color/colorwc command
     if has_color or has_color_temp:
         data: Dict[str, Any] = {}
         if has_color:
@@ -122,15 +131,25 @@ def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
             data["colorTemInKelvin"] = payload["color_temp"]
         elif "colorTemInKelvin" in payload:
             data["colorTemInKelvin"] = payload["colorTemInKelvin"]
-        # Include brightness in the same colorwc command if present
-        if has_brightness:
-            data["brightness"] = payload["brightness"]
-        return {
+
+        colorwc_cmd = {
             "msg": {
                 "cmd": "colorwc",
                 "data": data
             }
         }
+
+        # If brightness is also present, send it as a separate command
+        if has_brightness:
+            brightness_cmd = {
+                "msg": {
+                    "cmd": "brightness",
+                    "data": {"value": payload["brightness"]}
+                }
+            }
+            return {"_multiple": [colorwc_cmd, brightness_cmd]}
+
+        return colorwc_cmd
 
     # Fallback for any other payload (shouldn't normally happen)
     return {
@@ -1882,19 +1901,33 @@ class DeviceStore:
     def _enqueue_state(self, conn: sqlite3.Connection, update: DeviceStateUpdate) -> None:
         # Wrap payload in Govee LAN API format
         wrapped_payload = wrap_govee_command(update.payload)
-        serialized = _serialize_capabilities(wrapped_payload) or "null"
-        conn.execute(
-            """
-            INSERT INTO state (device_id, payload, context_id)
-            VALUES (?, ?, ?)
-            """,
-            (update.device_id, serialized, update.context_id),
-        )
+
+        # Handle multiple commands (e.g., color + brightness)
+        if isinstance(wrapped_payload, dict) and "_multiple" in wrapped_payload:
+            payloads = wrapped_payload["_multiple"]
+        else:
+            payloads = [wrapped_payload]
+
+        # Enqueue each command separately
+        for payload in payloads:
+            serialized = _serialize_capabilities(payload) or "null"
+            conn.execute(
+                """
+                INSERT INTO state (device_id, payload, context_id)
+                VALUES (?, ?, ?)
+                """,
+                (update.device_id, serialized, update.context_id),
+            )
+
         conn.commit()
         self._update_queue_metrics(conn, update.device_id)
         self.logger.debug(
             "Enqueued device update",
-            extra={"device_id": update.device_id, "context_id": update.context_id},
+            extra={
+                "device_id": update.device_id,
+                "context_id": update.context_id,
+                "command_count": len(payloads)
+            },
         )
 
     async def set_last_seen(
