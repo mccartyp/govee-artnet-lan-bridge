@@ -820,13 +820,14 @@ class GoveeShell:
 
     def do_devices(self, arg: str) -> None:
         """
-        Device commands: list, list detailed, enable, disable, set-name, set-capabilities.
-        Usage: devices list [--id ID] [--ip IP] [--state STATE]              # Show simplified 2-line view
-               devices list detailed [--id ID] [--ip IP] [--state STATE]     # Show full device details
+        Device commands: list, list detailed, enable, disable, set-name, set-capabilities, command.
+        Usage: devices list [--id ID] [--ip IP] [--state STATE]                              # Show simplified 2-line view
+               devices list detailed [--id ID] [--ip IP] [--state STATE]                     # Show full device details
                devices enable <device_id>
                devices disable <device_id>
-               devices set-name <device_id> <name>                          # Set device name (use "" to clear)
+               devices set-name <device_id> <name>                                           # Set device name (use "" to clear)
                devices set-capabilities <device_id> --brightness <bool> --color <bool> --white <bool> --color-temp <bool>
+               devices command <device_id> [--on|--off] [--brightness N] [--color HEX] [--ct N]
         Examples:
             devices list
             devices list --id AA:BB:CC:DD:EE:FFC
@@ -836,6 +837,10 @@ class GoveeShell:
             devices set-name AA:BB:CC:DD:EE:FF "Kitchen Light"
             devices set-name AA:BB:CC:DD:EE:FF ""                            # Clear name
             devices set-capabilities AA:BB:CC:DD:EE:FF --brightness true --color true --white false
+            devices command AA:BB:CC:DD:EE:FF --on --brightness 200 --color #FF00FF
+            devices command AA:BB:CC:DD:EE:FF --off
+            devices command AA:BB:CC:DD:EE:FF --color ff8800 --brightness 128
+            devices command AA:BB:CC:DD:EE:FF --ct 128
         """
         return self.device_handler.do_devices(arg)
 
