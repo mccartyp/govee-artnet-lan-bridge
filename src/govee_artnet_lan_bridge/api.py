@@ -271,9 +271,9 @@ def _build_command_payload(
 
 def _build_turn_payload(command: DeviceCommand) -> Optional[Mapping[str, Any]]:
     if command.on:
-        return {"msg": {"cmd": "turn", "data": {"value": "on"}}}
+        return {"msg": {"cmd": "turn", "data": {"value": 1}}}
     if command.off:
-        return {"msg": {"cmd": "turn", "data": {"value": "off"}}}
+        return {"msg": {"cmd": "turn", "data": {"value": 0}}}
     return None
 
 

@@ -248,7 +248,7 @@ async def test_command_endpoint_enqueues_sanitized_payload(tmp_path) -> None:
     assert turn_state is not None
     turn_payload = json.loads(turn_state.payload)
     assert turn_payload["msg"]["cmd"] == "turn"
-    assert turn_payload["msg"]["data"]["value"] == "on"
+    assert turn_payload["msg"]["data"]["value"] == 1
     await store.delete_state(turn_state.id)
 
     state = await store.next_state("cmd-device")
@@ -287,4 +287,4 @@ async def test_command_endpoint_turn_only(tmp_path) -> None:
     assert state is not None
     payload = json.loads(state.payload)
     assert payload["msg"]["cmd"] == "turn"
-    assert payload["msg"]["data"]["value"] == "off"
+    assert payload["msg"]["data"]["value"] == 0
