@@ -75,16 +75,64 @@ def _deserialize_fields(value: Any) -> Tuple[str, ...]:
 def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     """Wrap a device state payload in the Govee LAN API message format.
 
+    Uses specific Govee command types based on payload contents:
+    - "brightness" cmd for brightness-only changes
+    - "colorwc" cmd for color/color_temp changes
+    - For combined color+brightness, uses "colorwc" with color and brightness together
+
     Transforms:
         {"color": {"r": 154, "g": 0, "b": 0}}
     Into:
-        {"msg": {"cmd": "devControl", "data": {"color": {"r": 154, "g": 0, "b": 0}}}}
+        {"msg": {"cmd": "colorwc", "data": {"color": {"r": 154, "g": 0, "b": 0}}}}
     """
     # If already wrapped, return as-is
     if "msg" in payload:
         return payload
 
-    # Wrap in Govee LAN API format
+    # Determine the appropriate command type based on payload contents
+    has_color = "color" in payload
+    has_color_temp = "color_temp" in payload or "colorTemInKelvin" in payload
+    has_brightness = "brightness" in payload
+    has_turn = "turn" in payload
+
+    # Handle power/turn commands
+    if has_turn:
+        return {
+            "msg": {
+                "cmd": "turn",
+                "data": {"value": payload["turn"]}
+            }
+        }
+
+    # Brightness-only command (no color or color_temp)
+    if has_brightness and not has_color and not has_color_temp:
+        return {
+            "msg": {
+                "cmd": "brightness",
+                "data": {"value": payload["brightness"]}
+            }
+        }
+
+    # Color/colorwc command (may include brightness)
+    if has_color or has_color_temp:
+        data: Dict[str, Any] = {}
+        if has_color:
+            data["color"] = payload["color"]
+        if "color_temp" in payload:
+            data["colorTemInKelvin"] = payload["color_temp"]
+        elif "colorTemInKelvin" in payload:
+            data["colorTemInKelvin"] = payload["colorTemInKelvin"]
+        # Include brightness in the same colorwc command if present
+        if has_brightness:
+            data["brightness"] = payload["brightness"]
+        return {
+            "msg": {
+                "cmd": "colorwc",
+                "data": data
+            }
+        }
+
+    # Fallback for any other payload (shouldn't normally happen)
     return {
         "msg": {
             "cmd": "devControl",
