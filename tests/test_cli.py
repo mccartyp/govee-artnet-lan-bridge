@@ -75,7 +75,7 @@ def test_cli_device_command_payload_and_url() -> None:
         off=False,
         brightness=25,
         color="#0f0f0f",
-        kelvin=3500,
+        kelvin=128,
     )
 
     with _client_with_capture(captured, status=202, response_json={"status": "queued"}) as client:
@@ -86,5 +86,5 @@ def test_cli_device_command_payload_and_url() -> None:
         "on": True,
         "brightness": 25,
         "color": "0f0f0f",
-        "kelvin": 3500,
+        "kelvin": 128,
     }
