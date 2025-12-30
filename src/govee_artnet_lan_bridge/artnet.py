@@ -226,6 +226,9 @@ def _payload_from_discrete_slice(
 
     # Handle color temperature - scale DMX 0-255 to kelvin range
     if field == "ct":
+        # If ArtNet value is 0, don't send color temp command to allow RGB to work
+        if raw_value == 0:
+            return None
         # Get color temp range from capabilities, default to common range
         color_temp_range = None
         if mapping.record.capabilities:
