@@ -9,13 +9,14 @@ import math
 import socket
 import struct
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 from uuid import uuid4
 import time
 import random
 
 from .config import Config
 from .devices import DeviceStateUpdate, DeviceStore, MappingRecord
+from .events import EVENT_MAPPING_CREATED, EVENT_MAPPING_DELETED, EVENT_MAPPING_UPDATED, SystemEvent
 from .logging import get_logger
 from .metrics import observe_artnet_ingest, record_artnet_packet, record_artnet_update
 
@@ -352,9 +353,11 @@ class ArtNetService:
         config: Config,
         store: DeviceStore,
         initial_last_payloads: Optional[Mapping[str, Mapping[str, Any]]] = None,
+        event_bus: Optional[Any] = None,
     ) -> None:
         self.config = config
         self.store = store
+        self.event_bus = event_bus
         self.logger = get_logger("govee.artnet")
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._protocol: Optional[ArtNetProtocol] = None
@@ -369,12 +372,21 @@ class ArtNetService:
         self._trace_context_ids = config.trace_context_ids
         self._trace_context_sample_rate = max(0.0, min(1.0, config.trace_context_sample_rate))
         self._log_sample_rate = max(0.0, min(1.0, config.noisy_log_sample_rate))
+        self._reload_lock = asyncio.Lock()
+        self._unsubscribe_handlers: list[Callable[[], None]] = []
 
     async def start(self) -> None:
         self._error_event.clear()
         await self._reload_mappings()
         if not self._universe_mappings:
             self.logger.warning("No ArtNet mappings configured; listener will still start.")
+
+        # Subscribe to mapping events for automatic reload
+        if self.event_bus:
+            for event_type in [EVENT_MAPPING_CREATED, EVENT_MAPPING_UPDATED, EVENT_MAPPING_DELETED]:
+                unsubscribe = await self.event_bus.subscribe(event_type, self._handle_mapping_event)
+                self._unsubscribe_handlers.append(unsubscribe)
+            self.logger.info("Subscribed to mapping events for automatic reload")
 
         if self.config.dry_run:
             self.logger.info(
@@ -400,6 +412,11 @@ class ArtNetService:
         )
 
     async def stop(self) -> None:
+        # Unsubscribe from mapping events
+        for unsubscribe in self._unsubscribe_handlers:
+            unsubscribe()
+        self._unsubscribe_handlers.clear()
+
         if self._transport:
             self._transport.close()
         self._transport = None
@@ -409,48 +426,62 @@ class ArtNetService:
         self._error_event.set()
 
     async def _reload_mappings(self) -> None:
-        records = await self.store.mappings()
-        universes: Dict[int, List[DeviceMapping]] = {}
-        for record in records:
-            if record.channel <= 0 or record.length <= 0:
-                self.logger.warning(
-                    "Skipping mapping; invalid channel or length",
-                    extra={
-                        "device_id": record.device_id,
-                        "universe": record.universe,
-                        "channel": record.channel,
-                        "length": record.length,
-                    },
-                )
-                continue
-            spec = _build_spec(record)
-            if record.mapping_type == "discrete" and not record.field:
-                self.logger.warning(
-                    "Skipping mapping; discrete mapping missing field",
-                    extra={
-                        "device_id": record.device_id,
-                        "universe": record.universe,
-                        "channel": record.channel,
-                    },
-                )
-                continue
-            if record.length < spec.required_channels:
-                self.logger.warning(
-                    "Skipping mapping; insufficient length for required channels",
-                    extra={
-                        "device_id": record.device_id,
-                        "universe": record.universe,
-                        "channel": record.channel,
-                        "length": record.length,
-                        "required_channels": spec.required_channels,
-                    },
-                )
-                continue
-            universes.setdefault(record.universe, []).append(DeviceMapping(record=record, spec=spec))
-        self._universe_mappings = {
-            universe: UniverseMapping(universe, mappings, self._log_sample_rate)
-            for universe, mappings in universes.items()
-        }
+        """Reload mappings from the database. Thread-safe using lock."""
+        async with self._reload_lock:
+            records = await self.store.mappings()
+            universes: Dict[int, List[DeviceMapping]] = {}
+            for record in records:
+                if record.channel <= 0 or record.length <= 0:
+                    self.logger.warning(
+                        "Skipping mapping; invalid channel or length",
+                        extra={
+                            "device_id": record.device_id,
+                            "universe": record.universe,
+                            "channel": record.channel,
+                            "length": record.length,
+                        },
+                    )
+                    continue
+                spec = _build_spec(record)
+                if record.mapping_type == "discrete" and not record.field:
+                    self.logger.warning(
+                        "Skipping mapping; discrete mapping missing field",
+                        extra={
+                            "device_id": record.device_id,
+                            "universe": record.universe,
+                            "channel": record.channel,
+                        },
+                    )
+                    continue
+                if record.length < spec.required_channels:
+                    self.logger.warning(
+                        "Skipping mapping; insufficient length for required channels",
+                        extra={
+                            "device_id": record.device_id,
+                            "universe": record.universe,
+                            "channel": record.channel,
+                            "length": record.length,
+                            "required_channels": spec.required_channels,
+                        },
+                    )
+                    continue
+                universes.setdefault(record.universe, []).append(DeviceMapping(record=record, spec=spec))
+            self._universe_mappings = {
+                universe: UniverseMapping(universe, mappings, self._log_sample_rate)
+                for universe, mappings in universes.items()
+            }
+            self.logger.info(
+                "Reloaded mappings",
+                extra={"universes": sorted(self._universe_mappings.keys()), "mapping_count": len(records)},
+            )
+
+    async def _handle_mapping_event(self, event: SystemEvent) -> None:
+        """Handle mapping events by reloading mappings."""
+        self.logger.info(
+            "Mapping changed, reloading mappings",
+            extra={"event_type": event.event_type, "data": event.data},
+        )
+        await self._reload_mappings()
 
     def handle_packet(self, packet: ArtNetPacket, addr: Tuple[str, int]) -> None:
         started = time.perf_counter()
