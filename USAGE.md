@@ -139,10 +139,10 @@ Templates provide pre-configured channel layouts for common lighting fixture typ
 
 | Template | Channels | Layout | Use Case |
 |----------|----------|--------|----------|
-| `rgb` | 3 | R, G, B | Standard RGB fixtures |
-| `rgbc` | 4 | R, G, B, CT | RGB + color temperature |
-| `brgbc` | 5 | Brightness, R, G, B, CT | Full control with brightness, color, and color temperature |
-| `bc` | 2 | Brightness, CT | Brightness + color temperature (tunable white) |
+| `RGB` | 3 | R, G, B | Standard RGB fixtures |
+| `RGBCT` | 4 | R, G, B, CT | RGB + color temperature |
+| `DimRGBCT` | 5 | Dim, R, G, B, CT | Full control with dimmer, color, and color temperature |
+| `DimCT` | 2 | Dim, CT | Dimmer + color temperature (tunable white) |
 
 #### Single Channel Mappings
 
@@ -201,7 +201,7 @@ govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
-  --template rgb
+  --template RGB
 ```
 
 This creates mappings for:
@@ -215,7 +215,7 @@ govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 10 \
-  --template rgbc
+  --template RGBc
 ```
 
 This creates mappings for:
@@ -224,17 +224,17 @@ This creates mappings for:
 - Channel 12: Blue
 - Channel 13: Color Temperature
 
-**Full Control Light (5-channel Brightness+RGB+CT)**
+**Full Control Light (5-channel Dimmer+RGB+CT)**
 ```bash
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 1 \
   --start-channel 5 \
-  --template brgbc
+  --template DimRGBCT
 ```
 
 This creates mappings for:
-- Channel 5: Brightness (0=power off, >0=power on+brightness)
+- Channel 5: Dimmer (0=power off, >0=power on+brightness)
 - Channel 6: Red
 - Channel 7: Green
 - Channel 8: Blue
@@ -254,18 +254,18 @@ This creates a single channel mapping for:
 
 **Note**: This only works if the device has the `brightness` capability. Check with `govee-artnet devices list`.
 
-**Tunable White (2-channel Brightness+CT)**
+**Tunable White (2-channel Dimmer+CT)**
 ```bash
-# Brightness and Color Temperature
+# Dimmer and Color Temperature
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 2 \
   --start-channel 20 \
-  --template bc
+  --template DimCT
 ```
 
 This creates mappings for:
-- Channel 20: Brightness (0=power off, >0=power on+brightness)
+- Channel 20: Dimmer (0=power off, >0=power on+brightness)
 - Channel 21: Color Temperature (kelvin)
 
 ### Individual Channel Mapping
@@ -365,10 +365,10 @@ Govee devices report their capabilities:
 
 | Template | Requires Brightness | Requires Color | Requires Color Temp | Compatible Devices |
 |----------|---------------------|----------------|---------------------|-------------------|
-| `rgb` | No | Yes | No | Any RGB-capable device |
-| `rgbc` | No | Yes | Yes | Devices with color AND color temperature |
-| `brgbc` | Yes | Yes | Yes | Devices with brightness, color, and color temperature |
-| `bc` | Yes | No | Yes | Devices with brightness and color temperature |
+| `RGB` | No | Yes | No | Any RGB-capable device |
+| `RGBCT` | No | Yes | Yes | Devices with color AND color temperature |
+| `DimRGBCT` | Yes | Yes | Yes | Devices with brightness, color, and color temperature |
+| `DimCT` | Yes | No | Yes | Devices with brightness and color temperature |
 
 **Note**: For individual field control (brightness only, power, color channels, etc.), use single channel mappings instead of templates. All Govee devices support `power` mappings, but `brightness`, color, and color temperature mappings require the corresponding device capabilities.
 
@@ -419,7 +419,7 @@ Discovery responses that include a `model_number` are matched against the bundle
 
 #### "Unknown template"
 ```
-Unknown template 'rgbb'. Supported templates: rgb, rgbc, brgbc, bc.
+Unknown template 'rgbb'. Supported templates: RGB, RGBCT, DimRGBCT, DimCT.
 ```
 
 **Solution**: Check your template name for typos. Use one of the supported templates listed above.
@@ -428,7 +428,7 @@ Unknown template 'rgbb'. Supported templates: rgb, rgbc, brgbc, bc.
 
 #### "Template is incompatible with this device"
 ```
-Template 'brgbc' is incompatible with this device (missing brightness support; supported: color, color temperature).
+Template 'DimRGBCT' is incompatible with this device (missing brightness support; supported: color, color temperature).
 ```
 
 **Cause**: The device doesn't support all features required by the template.
@@ -653,21 +653,21 @@ govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
   --universe 0 \
   --start-channel 1 \
-  --template rgb
+  --template RGB
 
 # Strip 2: Channels 4-6
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:02" \
   --universe 0 \
   --start-channel 4 \
-  --template rgb
+  --template RGB
 
 # Strip 3: Channels 7-9
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:03" \
   --universe 0 \
   --start-channel 7 \
-  --template rgb
+  --template RGB
 ```
 
 **DMX Channel Layout:**
@@ -681,34 +681,34 @@ Ch 10-512: Unused
 ### Example 2: Mixed Fixture Types
 
 ```bash
-# Living room: RGB+CT strip with master brightness (5 channels)
+# Living room: RGB+CT strip with master dimmer (5 channels)
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:10" \
   --universe 1 \
   --start-channel 1 \
-  --template brgbc
+  --template DimRGBCT
 
-# Bedroom: Tunable white bulb (2 channels - brightness + color temp)
+# Bedroom: Tunable white bulb (2 channels - dimmer + color temp)
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:20" \
   --universe 1 \
   --start-channel 10 \
-  --template bc
+  --template DimCT
 
 # Kitchen: RGB+CT strip (4 channels)
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:30" \
   --universe 1 \
   --start-channel 20 \
-  --template rgbc
+  --template RGBc
 ```
 
 **DMX Channel Layout:**
 ```
 Universe 1:
-Ch  1-5:   Living Room (Brightness, R, G, B, CT)
+Ch  1-5:   Living Room (Dim, R, G, B, CT)
 Ch  6-9:   Unused
-Ch 10-11:  Bedroom (Brightness, CT)
+Ch 10-11:  Bedroom (Dim, CT)
 Ch 12-19:  Unused
 Ch 20-23:  Kitchen (R, G, B, CT)
 ```

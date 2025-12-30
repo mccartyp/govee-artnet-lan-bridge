@@ -49,7 +49,7 @@ def get_completer_dict() -> dict:
             'create': {
                 '--device-id': None,
                 '--universe': None,
-                '--template': {'rgb': None, 'rgbc': None, 'brgbc': None, 'bc': None},
+                '--template': {'RGB': None, 'RGBCT': None, 'DimRGBCT': None, 'DimCT': None},
                 '--start-channel': None,
                 '--channel': None,
                 '--length': None,

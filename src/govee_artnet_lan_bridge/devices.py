@@ -348,17 +348,17 @@ class TemplateSegment:
 
 
 _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
-    "rgb": (TemplateSegment("range", ("r", "g", "b")),),
-    "rgbc": (
+    "RGB": (TemplateSegment("range", ("r", "g", "b")),),
+    "RGBCT": (
         TemplateSegment("range", ("r", "g", "b")),
         TemplateSegment("discrete", ("ct",)),
     ),
-    "brgbc": (
+    "DimRGBCT": (
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("range", ("r", "g", "b")),
         TemplateSegment("discrete", ("ct",)),
     ),
-    "bc": (
+    "DimCT": (
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("discrete", ("ct",)),
     ),
@@ -366,7 +366,7 @@ _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
 
 
 def _template_segments(name: str) -> Tuple[TemplateSegment, ...]:
-    normalized = name.strip().lower()
+    normalized = name.strip().upper()
     if normalized not in _TEMPLATE_CATALOGUE:
         raise ValueError(
             f"Unknown template '{name}'. Supported templates: {', '.join(sorted(_TEMPLATE_CATALOGUE))}."

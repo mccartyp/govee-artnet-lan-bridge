@@ -88,14 +88,14 @@ govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
-  --template rgb
+  --template RGB
 
 # Map an RGB+CT light to channels 10-13
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
   --universe 0 \
   --start-channel 10 \
-  --template rgbc
+  --template RGBc
 ```
 
 ### 5. Send ArtNet
@@ -135,10 +135,10 @@ See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete documentation an
 
 | Template | Channels | Layout | Use Case |
 |----------|----------|--------|----------|
-| `rgb` | 3 | R, G, B | Standard RGB fixtures |
-| `rgbc` | 4 | R, G, B, CT | RGB + color temperature |
-| `brgbc` | 5 | Brightness, R, G, B, CT | Full control with brightness, color, and color temperature |
-| `bc` | 2 | Brightness, CT | Brightness + color temperature (tunable white) |
+| `RGB` | 3 | R, G, B | Standard RGB fixtures |
+| `RGBCT` | 4 | R, G, B, CT | RGB + color temperature |
+| `DimRGBCT` | 5 | Dim, R, G, B, CT | Full control with dimmer, color, and color temperature |
+| `DimCT` | 2 | Dim, CT | Dimmer + color temperature (tunable white) |
 
 ### Single Channel Mappings
 
@@ -207,7 +207,7 @@ govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
-  --template rgb
+  --template RGB
 
 # Delete a mapping
 govee-artnet mappings delete <mapping_id>
