@@ -161,9 +161,10 @@ async def _artnet_loop(
     health: HealthMonitor,
     services: Optional[RunningServices] = None,
     artnet_state: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    event_bus: Optional[Any] = None,
 ) -> None:
     logger = get_logger("govee.artnet")
-    service = ArtNetService(config, store, initial_last_payloads=artnet_state)
+    service = ArtNetService(config, store, initial_last_payloads=artnet_state, event_bus=event_bus)
     if services is not None:
         services.artnet = service
     backoff = BackoffPolicy(
@@ -403,7 +404,7 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
             protocol_task,
             asyncio.create_task(_discovery_loop(stop_event, current_config, store, health, protocol_service, services)),
             asyncio.create_task(_rate_limit_monitor(stop_event, current_config)),
-            asyncio.create_task(_artnet_loop(stop_event, current_config, store, health, services, artnet_state)),
+            asyncio.create_task(_artnet_loop(stop_event, current_config, store, health, services, artnet_state, event_bus)),
             asyncio.create_task(_sender_loop(stop_event, current_config, store, health, services)),
             asyncio.create_task(_poller_loop(stop_event, current_config, store, health, protocol_service, services)),
             asyncio.create_task(_api_loop(stop_event, current_config, store, health, services, _request_reload, log_buffer, event_bus)),

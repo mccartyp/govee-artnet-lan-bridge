@@ -17,6 +17,7 @@ import uvicorn
 from .capabilities import NormalizedCapabilities, validate_command_payload
 from .config import Config, ManualDevice
 from .devices import DeviceStateUpdate, DeviceStore
+from .events import EVENT_MAPPING_CREATED, EVENT_MAPPING_DELETED, EVENT_MAPPING_UPDATED
 from .health import HealthMonitor
 from .logging import get_logger, redact_mapping
 from .metrics import (
@@ -567,7 +568,12 @@ def create_app(
                     template=payload.template,
                     allow_overlap=payload.allow_overlap,
                 )
-                return [MappingOut(**row.__dict__) for row in rows]
+                result = [MappingOut(**row.__dict__) for row in rows]
+                # Publish event for each created mapping
+                if event_bus:
+                    for row in rows:
+                        await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe})
+                return result
             channel = payload.channel or payload.start_channel
             if channel is None:
                 raise ValueError("Channel is required")
@@ -587,7 +593,11 @@ def create_app(
                 field=payload.field,
                 allow_overlap=payload.allow_overlap,
             )
-            return MappingOut(**row.__dict__)
+            result = MappingOut(**row.__dict__)
+            # Publish event after successfully creating mapping
+            if event_bus:
+                await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe})
+            return result
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -615,13 +625,26 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mapping not found")
-        return MappingOut(**row.__dict__)
+        result = MappingOut(**row.__dict__)
+        # Publish event after successfully updating mapping
+        if event_bus:
+            await event_bus.publish(EVENT_MAPPING_UPDATED, {"mapping_id": row.id, "universe": row.universe})
+        return result
 
     @app.delete("/mappings/{mapping_id}", dependencies=[Depends(auth_dependency)], status_code=status.HTTP_204_NO_CONTENT)
     async def delete_mapping(mapping_id: int) -> None:
+        # Get mapping details before deletion for event publishing
+        mapping = await store.mapping_by_id(mapping_id)
+        if not mapping:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mapping not found")
+
         deleted = await store.delete_mapping(mapping_id)
         if not deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mapping not found")
+
+        # Publish event after successfully deleting mapping
+        if event_bus:
+            await event_bus.publish(EVENT_MAPPING_DELETED, {"mapping_id": mapping_id, "universe": mapping.universe})
         return None
 
     @app.post("/reload", dependencies=[Depends(auth_dependency)], status_code=status.HTTP_202_ACCEPTED)
