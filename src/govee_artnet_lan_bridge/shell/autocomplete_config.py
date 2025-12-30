@@ -32,7 +32,6 @@ def get_completer_dict() -> dict:
             'set-capabilities': {
                 '--brightness': None,
                 '--color': None,
-                '--white': None,
                 '--color-temp': None
             },
             'command': {
@@ -50,12 +49,12 @@ def get_completer_dict() -> dict:
             'create': {
                 '--device-id': None,
                 '--universe': None,
-                '--template': {'rgb': None, 'rgbw': None, 'brightness_rgb': None, 'rgbwa': None, 'rgbaw': None, 'brgbwct': None},
+                '--template': {'RGB': None, 'RGBCT': None, 'DimRGBCT': None, 'DimCT': None},
                 '--start-channel': None,
                 '--channel': None,
                 '--length': None,
                 '--type': {'range': None, 'discrete': None},
-                '--field': {'power': None, 'brightness': None, 'r': None, 'red': None, 'g': None, 'green': None, 'b': None, 'blue': None, 'w': None, 'white': None, 'ct': None, 'color_temp': None},
+                '--field': {'power': None, 'brightness': None, 'r': None, 'red': None, 'g': None, 'green': None, 'b': None, 'blue': None, 'ct': None, 'color_temp': None},
                 '--allow-overlap': None,
                 '--help': None,
             },

@@ -88,14 +88,14 @@ govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
-  --template rgb
+  --template RGB
 
-# Map an RGBW light to channels 10-13
+# Map an RGB+CT light to channels 10-13
 govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
   --universe 0 \
   --start-channel 10 \
-  --template rgbw
+  --template RGBc
 ```
 
 ### 5. Send ArtNet
@@ -135,12 +135,10 @@ See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete documentation an
 
 | Template | Channels | Layout | Use Case |
 |----------|----------|--------|----------|
-| `rgb` | 3 | R, G, B | Standard RGB fixtures |
-| `rgbw` | 4 | R, G, B, W | RGB + dedicated white channel |
-| `brightness_rgb` | 4 | Brightness, R, G, B | Master dimmer + RGB color |
-| `rgbwa` | 5 | R, G, B, W, Brightness | RGBW color + master dimmer |
-| `rgbaw` | 5 | Brightness, R, G, B, W | Master dimmer + RGBW color |
-| `brgbwct` | 6 | Brightness, R, G, B, W, CT | Full control with color temperature |
+| `RGB` | 3 | R, G, B | Standard RGB fixtures |
+| `RGBCT` | 4 | R, G, B, CT | RGB + color temperature |
+| `DimRGBCT` | 5 | Dim, R, G, B, CT | Full control with dimmer, color, and color temperature |
+| `DimCT` | 2 | Dim, CT | Dimmer + color temperature (tunable white) |
 
 ### Single Channel Mappings
 
@@ -149,19 +147,17 @@ For individual field control, use single channel mappings instead of templates:
 | Field | Aliases | Description | Capability Required |
 |-------|---------|-------------|---------------------|
 | `power` | - | Power on/off (DMX >= 128 = on, < 128 = off) | None (all devices) |
-| `brightness` | - | Brightness control (0-255) | `brightness` |
+| `brightness` | - | Brightness control (0-255, 0=power off, >0=power on+brightness) | `brightness` |
 | `r` | `red` | Red channel only | `color` |
 | `g` | `green` | Green channel only | `color` |
 | `b` | `blue` | Blue channel only | `color` |
-| `w` | `white` | White channel only | `white` |
 | `ct` | `color_temp` | Color temperature in Kelvin | `color_temperature` |
 
 **Capability Summary:**
 - **None** - Works on all Govee devices (plugs, lights, bulbs, switches)
 - **`brightness`** - Dimmable devices only (lights, bulbs) - NOT plugs or switches
-- **`color`** - Color-capable devices (RGB lights, RGBW strips)
-- **`white`** - White channel capable devices (RGBW strips, tunable white lights) - NOT RGB-only devices
-- **`color_temperature`** - Color temperature devices (tunable white, RGBWW lights)
+- **`color`** - Color-capable devices (RGB lights, RGB strips)
+- **`color_temperature`** - Color temperature devices (tunable white lights)
 
 **Note**: Device capabilities are validated when creating mappings. Not all Govee devices support all features (e.g., plug-type devices only support power control). Use `govee-artnet devices list` to check device capabilities.
 
@@ -211,7 +207,7 @@ govee-artnet mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
-  --template rgb
+  --template RGB
 
 # Delete a mapping
 govee-artnet mappings delete <mapping_id>
