@@ -27,8 +27,8 @@ class MappingCommandHandler(CommandHandler):
                mappings create --device-id <id> [--universe <num>] --channel <num> --length <num>
                mappings delete <id>
                mappings channel-map
-        Templates (multi-channel): rgb, rgbw, brightness_rgb, rgbwa, rgbaw, brgbwct
-        Fields (single-channel): power [all], brightness [caps], r/red [caps], g/green [caps], b/blue [caps], w/white [caps], ct/color_temp [caps]
+        Templates (multi-channel): rgb, rgbc, brgbc, bc
+        Fields (single-channel): power [all], brightness [caps], r/red [caps], g/green [caps], b/blue [caps], ct/color_temp [caps]
         Note: --universe defaults to 0; [caps] = requires device capability check
         Use 'help mappings create', 'mappings create --help', or 'mappings create ?' for detailed creation help
         """
@@ -160,11 +160,9 @@ class MappingCommandHandler(CommandHandler):
                 self.shell._append_output("  mappings create --device-id <id> [--universe <num>] --template <name> --start-channel <num>\n")
                 self.shell._append_output("\n[bold]Available templates:[/]\n")
                 self.shell._append_output("  • rgb             - 3 channels: Red, Green, Blue\n")
-                self.shell._append_output("  • rgbw            - 4 channels: Red, Green, Blue, White\n")
-                self.shell._append_output("  • brightness_rgb  - 4 channels: Brightness, Red, Green, Blue\n")
-                self.shell._append_output("  • rgbwa           - 5 channels: Red, Green, Blue, White, Brightness\n")
-                self.shell._append_output("  • rgbaw           - 5 channels: Brightness, Red, Green, Blue, White\n")
-                self.shell._append_output("  • brgbwct         - 6 channels: Brightness, Red, Green, Blue, White, Color Temp\n")
+                self.shell._append_output("  • rgbc            - 4 channels: Red, Green, Blue, Color Temp\n")
+                self.shell._append_output("  • brgbc           - 5 channels: Brightness, Red, Green, Blue, Color Temp\n")
+                self.shell._append_output("  • bc              - 2 channels: Brightness, Color Temp\n")
                 self.shell._append_output("\n[bold]Single channel mappings (recommended for individual control):[/]\n")
                 self.shell._append_output("  mappings create --device-id <id> [--universe <num>] --channel <num> --field <field>\n")
                 self.shell._append_output("\n[bold]Multi-channel range mappings:[/]\n")
@@ -175,7 +173,6 @@ class MappingCommandHandler(CommandHandler):
                 self.shell._append_output("  • r (or red)         - Red channel only [requires color capability]\n")
                 self.shell._append_output("  • g (or green)       - Green channel only [requires color capability]\n")
                 self.shell._append_output("  • b (or blue)        - Blue channel only [requires color capability]\n")
-                self.shell._append_output("  • w (or white)       - White channel only [requires white capability]\n")
                 self.shell._append_output("  • ct (or color_temp) - Color temperature in Kelvin [requires color_temp capability]\n")
                 self.shell._append_output("\n[bold]Notes:[/]\n")
                 self.shell._append_output("  • Universe defaults to 0 if omitted\n")
@@ -186,11 +183,11 @@ class MappingCommandHandler(CommandHandler):
                 self.shell._append_output("\n[bold]Examples:[/]\n")
                 self.shell._append_output("  # Template-based multi-channel mapping\n")
                 self.shell._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --template rgb --start-channel 1\n")
-                self.shell._append_output("  mappings create --device-id @kitchen --universe 1 --template rgbw --start-channel 10\n")
+                self.shell._append_output("  mappings create --device-id @kitchen --universe 1 --template brgbc --start-channel 10\n")
                 self.shell._append_output("\n  # Single channel mappings\n")
                 self.shell._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power\n")
                 self.shell._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness\n")
-                self.shell._append_output("  mappings create --device-id @kitchen --channel 20 --field w\n")
+                self.shell._append_output("  mappings create --device-id @kitchen --channel 20 --field ct\n")
                 self.shell._append_output("  mappings create --device-id @kitchen --channel 21 --field red\n")
                 self.shell._append_output("\n  # Manual multi-channel range mapping\n")
                 self.shell._append_output("  mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --length 3\n")

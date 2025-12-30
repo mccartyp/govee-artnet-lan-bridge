@@ -324,14 +324,13 @@ def _coerce_metadata_for_db(metadata: Mapping[str, Any]) -> Dict[str, Any]:
     return db_values
 
 
-SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "w", "brightness", "ct", "power"}
+SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "brightness", "ct", "power"}
 
 # Field aliases for user convenience
 FIELD_ALIASES: Dict[str, str] = {
     "red": "r",
     "green": "g",
     "blue": "b",
-    "white": "w",
     "color_temp": "ct",
 }
 
@@ -350,24 +349,17 @@ class TemplateSegment:
 
 _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
     "rgb": (TemplateSegment("range", ("r", "g", "b")),),
-    "rgbw": (TemplateSegment("range", ("r", "g", "b", "w")),),
-    "brightness_rgb": (
+    "rgbc": (
+        TemplateSegment("range", ("r", "g", "b")),
+        TemplateSegment("discrete", ("ct",)),
+    ),
+    "brgbc": (
         TemplateSegment("discrete", ("brightness",)),
         TemplateSegment("range", ("r", "g", "b")),
+        TemplateSegment("discrete", ("ct",)),
     ),
-    # Ambience fixtures often expose a master brightness alongside RGBW channels.
-    "rgbwa": (
-        TemplateSegment("range", ("r", "g", "b", "w")),
+    "bc": (
         TemplateSegment("discrete", ("brightness",)),
-    ),
-    "rgbaw": (
-        TemplateSegment("discrete", ("brightness",)),
-        TemplateSegment("range", ("r", "g", "b", "w")),
-    ),
-    # Full control template with brightness, RGBW color, and color temperature
-    "brgbwct": (
-        TemplateSegment("discrete", ("brightness",)),
-        TemplateSegment("range", ("r", "g", "b", "w")),
         TemplateSegment("discrete", ("ct",)),
     ),
 }
@@ -386,7 +378,7 @@ def _validate_template_support(
     segments: Tuple[TemplateSegment, ...], capabilities: NormalizedCapabilities, template_name: str
 ) -> None:
     needs_brightness = any("brightness" in segment.fields for segment in segments)
-    needs_color = any(field in {"r", "g", "b", "w"} for segment in segments for field in segment.fields)
+    needs_color = any(field in {"r", "g", "b"} for segment in segments for field in segment.fields)
     needs_color_temp = any("ct" in segment.fields for segment in segments)
     errors = []
     if needs_brightness and not capabilities.supports_brightness:
@@ -430,11 +422,6 @@ def _validate_field_support(field: str, capabilities: NormalizedCapabilities) ->
         supported = ", ".join(capabilities.supported_modes) or "none"
         raise ValueError(
             f"Device does not support color control. Supported modes: {supported}."
-        )
-    if field == "w" and not capabilities.supports_white:
-        supported = ", ".join(capabilities.supported_modes) or "none"
-        raise ValueError(
-            f"Device does not support white channel control. Supported modes: {supported}."
         )
     if field == "ct" and not capabilities.supports_color_temperature:
         supported = ", ".join(capabilities.supported_modes) or "none"

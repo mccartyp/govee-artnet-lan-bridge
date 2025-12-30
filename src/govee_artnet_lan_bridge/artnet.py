@@ -107,10 +107,10 @@ def _parse_artnet_packet(data: bytes) -> Optional[ArtNetPacket]:
 
 
 def _coerce_mode(capabilities: Any, length: int) -> str:
-    default_mode = "rgbw" if length >= 4 else "rgb" if length >= 3 else "brightness"
+    default_mode = "rgb" if length >= 3 else "brightness"
     if isinstance(capabilities, Mapping):
         mode = str(capabilities.get("mode", default_mode)).lower()
-        if mode in {"rgb", "rgbw", "brightness", "custom"}:
+        if mode in {"rgb", "brightness", "custom"}:
             return mode
     return default_mode
 
@@ -118,13 +118,12 @@ def _coerce_mode(capabilities: Any, length: int) -> str:
 def _coerce_order(capabilities: Any, mode: str) -> Tuple[str, ...]:
     def _normalize_entry(entry: str) -> Optional[str]:
         value = entry.strip().lower()
-        if value in {"r", "g", "b", "w", "brightness"}:
+        if value in {"r", "g", "b", "brightness"}:
             return value
         return None
 
     default_orders: Dict[str, Tuple[str, ...]] = {
         "rgb": ("r", "g", "b"),
-        "rgbw": ("r", "g", "b", "w"),
         "brightness": ("brightness",),
     }
     if isinstance(capabilities, Mapping):
@@ -193,7 +192,7 @@ def _payload_from_slice(mapping: DeviceMapping, slice_data: bytes) -> Optional[M
         return {"brightness": values.get("brightness", 0)}
 
     color: Dict[str, int] = {}
-    for key in ("r", "g", "b", "w"):
+    for key in ("r", "g", "b"):
         if key in values:
             color[key] = values[key]
 
@@ -222,7 +221,14 @@ def _payload_from_discrete_slice(
     # Apply gamma/dimmer for other fields
     value = _apply_gamma_dimmer(raw_value, mapping.spec.gamma, mapping.spec.dimmer)
     if field == "brightness":
-        return {"brightness": value}
+        # Brightness of 0 sends power off, non-zero sends power on + brightness
+        if value == 0:
+            return {"turn": "off"}
+        else:
+            return {"_multiple": [
+                {"turn": "on"},
+                {"brightness": value}
+            ]}
 
     # Handle color temperature - scale DMX 0-255 to kelvin range
     if field == "ct":
