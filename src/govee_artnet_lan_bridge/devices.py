@@ -79,18 +79,18 @@ def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     - "brightness" cmd for brightness-only changes
     - "colorwc" cmd for color/color_temp changes
     - "turn" cmd for power on/off changes
-    - For combined turn+color/brightness, returns multiple commands via "_multiple" key
+    - For combined color+brightness, returns multiple commands via "_multiple" key
 
     Transforms:
         {"color": {"r": 154, "g": 0, "b": 0}}
     Into:
         {"msg": {"cmd": "colorwc", "data": {"color": {"r": 154, "g": 0, "b": 0}}}}
 
-    For combined updates with power state:
-        {"turn": "on", "brightness": 200}
+    For combined updates:
+        {"color": {"r": 154, "g": 0, "b": 0}, "brightness": 200}
     Into:
         {"_multiple": [
-            {"msg": {"cmd": "turn", "data": {"value": "on"}}},
+            {"msg": {"cmd": "colorwc", "data": {"color": {"r": 154, "g": 0, "b": 0}}}},
             {"msg": {"cmd": "brightness", "data": {"value": 200}}}
         ]}
     """
@@ -104,48 +104,14 @@ def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     has_brightness = "brightness" in payload
     has_turn = "turn" in payload
 
-    # Handle power/turn commands combined with other fields
+    # Handle power/turn commands
     if has_turn:
-        turn_cmd = {
+        return {
             "msg": {
                 "cmd": "turn",
                 "data": {"value": payload["turn"]}
             }
         }
-
-        # If turn is the only field, return just the turn command
-        if not has_color and not has_color_temp and not has_brightness:
-            return turn_cmd
-
-        # Build additional commands for color/brightness
-        commands = [turn_cmd]
-
-        # Add color/color_temp command if present
-        if has_color or has_color_temp:
-            data: Dict[str, Any] = {}
-            if has_color:
-                data["color"] = payload["color"]
-            if "color_temp" in payload:
-                data["colorTemInKelvin"] = payload["color_temp"]
-            elif "colorTemInKelvin" in payload:
-                data["colorTemInKelvin"] = payload["colorTemInKelvin"]
-            commands.append({
-                "msg": {
-                    "cmd": "colorwc",
-                    "data": data
-                }
-            })
-
-        # Add brightness command if present
-        if has_brightness:
-            commands.append({
-                "msg": {
-                    "cmd": "brightness",
-                    "data": {"value": payload["brightness"]}
-                }
-            })
-
-        return {"_multiple": commands}
 
     # Brightness-only command (no color or color_temp)
     if has_brightness and not has_color and not has_color_temp:
