@@ -12,7 +12,7 @@ The bridge consists of two components:
    - Automatic device discovery
    - Device health monitoring
 
-2. **CLI Client** (`govee-artnet`) - Command-line tool for managing the bridge:
+2. **CLI Client** (`govee-artnet-cli`) - Command-line tool for managing the bridge:
    - List and manage devices
    - Create and manage DMX channel mappings
    - Query server status
@@ -48,14 +48,10 @@ The server will:
 
 ### 3. Discover Devices
 
-The CLI launches an interactive shell by default:
+Use the CLI to list discovered devices:
 
 ```bash
-# Start the interactive shell (default behavior)
-govee-artnet
-
-# Or run commands directly without the shell
-govee-artnet devices list
+govee-artnet-cli devices list
 ```
 
 Discovery responses that include a `model_number` automatically pull metadata from the bundled capability catalog. Device payloads now surface `model_number`, `device_type`, and length/segment hints so mappings can be validated without guesswork:
@@ -84,14 +80,14 @@ Map DMX channels to your devices using templates:
 
 ```bash
 # Map an RGB light strip to channels 1-3 on universe 0
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
   --template RGB
 
 # Map an RGB+CT light to channels 10-13
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
   --universe 0 \
   --start-channel 10 \
@@ -102,26 +98,11 @@ govee-artnet mappings create \
 
 Point your lighting software at the bridge server's IP address and start controlling your lights!
 
-## Interactive CLI Shell
+## Interactive Console
 
-The `govee-artnet` CLI launches an interactive shell by default with real-time monitoring and log viewing:
+The `govee-artnet-cli` tool provides direct command-line access to the bridge API.
 
-```bash
-# Start interactive shell (default - just run govee-artnet)
-govee-artnet
-
-# Or explicitly use the shell command
-govee-artnet shell
-
-# Shell features:
-govee> logs tail                    # Tail logs in real-time (like tail -f)
-govee> logs search "error"          # Search through logs
-govee> monitor dashboard            # Live system dashboard
-govee> devices watch                # Watch device state changes
-govee> devices list                 # All existing CLI commands work!
-```
-
-**Key Shell Features:**
+For an interactive shell experience with features like:
 - 📊 **Real-time monitoring** - Live dashboards for devices, ArtNet, queue, and health
 - 📝 **Log viewing & tailing** - View, search, and stream logs with filtering
 - ⌨️  **Command history & autocomplete** - Tab completion and persistent history
@@ -129,7 +110,9 @@ govee> devices list                 # All existing CLI commands work!
 - 📜 **Scripting support** - Execute batch commands from files
 - 🎨 **Rich formatting** - Beautiful tables and colored output
 
-See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete documentation and examples.
+Check out the dedicated interactive console tool:
+
+**[govee-artnet-console](https://github.com/mccartyp/govee-artnet-console)**
 
 ## Available Templates
 
@@ -159,17 +142,17 @@ For individual field control, use single channel mappings instead of templates:
 - **`color`** - Color-capable devices (RGB lights, RGB strips)
 - **`color_temperature`** - Color temperature devices (tunable white lights)
 
-**Note**: Device capabilities are validated when creating mappings. Not all Govee devices support all features (e.g., plug-type devices only support power control). Use `govee-artnet devices list` to check device capabilities.
+**Note**: Device capabilities are validated when creating mappings. Not all Govee devices support all features (e.g., plug-type devices only support power control). Use `govee-artnet-cli devices list` to check device capabilities.
 
 ```bash
 # Create a power control mapping (works on all devices)
-govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power
+govee-artnet-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power
 
 # Create a brightness control mapping (requires brightness capability)
-govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness
+govee-artnet-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness
 
 # Use field aliases for convenience (requires color capability)
-govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --field red
+govee-artnet-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --field red
 ```
 
 ## CLI Commands
@@ -178,18 +161,18 @@ govee-artnet mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --field 
 
 ```bash
 # List all devices
-govee-artnet devices list
+govee-artnet-cli devices list
 
 # Add a manual device
-govee-artnet devices add --id "..." --ip "192.168.1.100" --model-number "H61XX" --device-type "led_strip"
+govee-artnet-cli devices add --id "..." --ip "192.168.1.100" --model-number "H61XX" --device-type "led_strip"
 
 # Enable/disable a device
-govee-artnet devices enable "AA:BB:CC:DD:EE:FF"
-govee-artnet devices disable "AA:BB:CC:DD:EE:FF"
+govee-artnet-cli devices enable "AA:BB:CC:DD:EE:FF"
+govee-artnet-cli devices disable "AA:BB:CC:DD:EE:FF"
 
 # Send a quick command (on/off/brightness/color/kelvin)
-govee-artnet devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
-govee-artnet devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
+govee-artnet-cli devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
+govee-artnet-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
 ```
 
 - `--on`/`--off` send the native Govee LAN `turn` command instead of manipulating brightness.
@@ -200,30 +183,30 @@ govee-artnet devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
 
 ```bash
 # List all mappings
-govee-artnet mappings list
+govee-artnet-cli mappings list
 
 # Create mapping with template
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
   --template RGB
 
 # Delete a mapping
-govee-artnet mappings delete <mapping_id>
+govee-artnet-cli mappings delete <mapping_id>
 
 # View channel map
-govee-artnet mappings channel-map
+govee-artnet-cli mappings channel-map
 ```
 
 ### Server Status
 
 ```bash
 # Check server health
-govee-artnet health
+govee-artnet-cli health
 
 # View server status and metrics
-govee-artnet status
+govee-artnet-cli status
 ```
 
 ## Remote Server Connection
@@ -232,14 +215,14 @@ The CLI can connect to a remote bridge server:
 
 ```bash
 # Connect to remote server
-govee-artnet --server-url http://192.168.1.100:8000 devices list
+govee-artnet-cli --server-url http://192.168.1.100:8000 devices list
 
 # Or set environment variable
-export GOVEE_ARTNET_SERVER_URL=http://192.168.1.100:8000
-govee-artnet devices list
+export GOVEE_ARTNET_CLI_SERVER_URL=http://192.168.1.100:8000
+govee-artnet-cli devices list
 
 # With authentication
-govee-artnet --api-key your-key devices list
+govee-artnet-cli --api-key your-key devices list
 ```
 
 ## Configuration
@@ -269,7 +252,6 @@ See [USAGE.md](USAGE.md) for detailed configuration options.
 
 - **[INSTALL.md](INSTALL.md)** - Installation instructions, systemd setup, and deployment options
 - **[USAGE.md](USAGE.md)** - Detailed usage guide, mapping strategies, and troubleshooting
-- **[CLI Shell Guide](README_CLI_SHELL.md)** - Interactive shell features, log viewing, and real-time monitoring
 - **[Configuration Guide](USAGE.md#configuration)** - Server configuration options
 - **[Template Reference](USAGE.md#available-templates)** - Complete template documentation
 
@@ -293,17 +275,17 @@ curl http://localhost:8000/metrics | grep govee_rate_limit
 **Devices not discovered?**
 - Check that devices are on the same network
 - Ensure multicast traffic is allowed
-- Try adding devices manually with `govee-artnet devices add`
+- Try adding devices manually with `govee-artnet-cli devices add`
 
 **Mappings not working?**
-- Verify device capabilities: `govee-artnet devices list`
+- Verify device capabilities: `govee-artnet-cli devices list`
 - Check mapping compatibility with device capabilities
-- View active mappings: `govee-artnet mappings channel-map`
+- View active mappings: `govee-artnet-cli mappings channel-map`
 
 **Can't connect to server?**
 - Ensure the bridge server is running
 - Check firewall rules for port 8000
-- Verify server URL with `govee-artnet health`
+- Verify server URL with `govee-artnet-cli health`
 
 See [USAGE.md](USAGE.md#troubleshooting-mapping-errors) for detailed troubleshooting.
 
