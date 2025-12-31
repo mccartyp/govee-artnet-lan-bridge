@@ -396,6 +396,10 @@ _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
         TemplateSegment("discrete", ("dimmer",)),
         TemplateSegment("range", ("r", "g", "b")),
     ),
+    "DIMMER_RGB": (
+        TemplateSegment("discrete", ("dimmer",)),
+        TemplateSegment("range", ("r", "g", "b")),
+    ),
     "DIMRGBCT": (
         TemplateSegment("discrete", ("dimmer",)),
         TemplateSegment("range", ("r", "g", "b")),
