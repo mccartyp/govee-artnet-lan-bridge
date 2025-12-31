@@ -99,10 +99,10 @@ async def test_channel_map_endpoint(tmp_path) -> None:
     assert "0" in payload
     entries = payload["0"]
     assert any(entry["mapping_type"] == "range" for entry in entries)
-    brightness_entries = [entry for entry in entries if entry.get("field") == "brightness"]
-    assert brightness_entries
-    assert brightness_entries[0]["device_description"] == "API Fixture"
-    assert brightness_entries[0]["fields"] == ["brightness"]
+    dimmer_entries = [entry for entry in entries if entry.get("field") == "dimmer"]
+    assert dimmer_entries
+    assert dimmer_entries[0]["device_description"] == "API Fixture"
+    assert dimmer_entries[0]["fields"] == ["dimmer"]
     assert any(set(entry["fields"]) == {"r", "g", "b"} for entry in entries if entry["mapping_type"] == "range")
 
 
@@ -145,8 +145,8 @@ async def test_mappings_endpoint_includes_fields(tmp_path) -> None:
     range_entry = next(entry for entry in payload if entry["mapping_type"] == "range")
     discrete_entry = next(entry for entry in payload if entry["mapping_type"] == "discrete")
     assert set(range_entry["fields"]) == {"r", "g", "b"}
-    assert discrete_entry["field"] == "brightness"
-    assert discrete_entry["fields"] == ["brightness"]
+    assert discrete_entry["field"] == "dimmer"
+    assert discrete_entry["fields"] == ["dimmer"]
 
 
 @pytest.mark.asyncio
@@ -158,7 +158,7 @@ async def test_template_mapping_creation_via_api(tmp_path) -> None:
         ManualDevice(
             id="api-template",
             ip="10.0.2.1",
-            capabilities={"mode": "rgbw", "order": ["r", "g", "b", "w"], "brightness": True},
+            capabilities={"mode": "rgb", "order": ["r", "g", "b"], "brightness": True},
         )
     )
 
@@ -170,7 +170,7 @@ async def test_template_mapping_creation_via_api(tmp_path) -> None:
             json={
                 "device_id": "api-template",
                 "universe": 0,
-                "template": "rgbaw",
+                "template": "dimrgb",
                 "start_channel": 10,
             },
         )
@@ -242,8 +242,9 @@ async def test_command_endpoint_enqueues_sanitized_payload(tmp_path) -> None:
     assert response.status_code == 202
     payload = response.json()
     assert payload["status"] == "queued"
-    assert len(payload["payloads"]) == 2
+    assert len(payload["payloads"]) == 3
 
+    # First command: turn
     turn_state = await store.next_state("cmd-device")
     assert turn_state is not None
     turn_payload = json.loads(turn_state.payload)
@@ -251,14 +252,22 @@ async def test_command_endpoint_enqueues_sanitized_payload(tmp_path) -> None:
     assert turn_payload["msg"]["data"]["value"] == 1
     await store.delete_state(turn_state.id)
 
-    state = await store.next_state("cmd-device")
-    assert state is not None
-    queued = json.loads(state.payload)
-    assert queued["msg"]["cmd"] == "devControl"
-    assert queued["msg"]["data"]["brightness"] == 10
-    assert queued["msg"]["data"]["color"] == {"r": 51, "g": 102, "b": 153}
+    # Second command: colorwc (color and color temperature)
+    colorwc_state = await store.next_state("cmd-device")
+    assert colorwc_state is not None
+    colorwc_payload = json.loads(colorwc_state.payload)
+    assert colorwc_payload["msg"]["cmd"] == "colorwc"
+    assert colorwc_payload["msg"]["data"]["color"] == {"r": 51, "g": 102, "b": 153}
     expected_kelvin = int(round(2000 + (6500 - 2000) * (128 / 255)))
-    assert queued["msg"]["data"]["color_temp"] == expected_kelvin
+    assert colorwc_payload["msg"]["data"]["colorTemInKelvin"] == expected_kelvin
+    await store.delete_state(colorwc_state.id)
+
+    # Third command: brightness
+    brightness_state = await store.next_state("cmd-device")
+    assert brightness_state is not None
+    brightness_payload = json.loads(brightness_state.payload)
+    assert brightness_payload["msg"]["cmd"] == "brightness"
+    assert brightness_payload["msg"]["data"]["value"] == 10
 
 
 @pytest.mark.asyncio
