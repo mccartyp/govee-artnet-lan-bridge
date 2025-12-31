@@ -45,10 +45,19 @@ Returns all discovered Govee devices with their capabilities.
       "color_temp_range": [2000, 9000],
       "effects": ["sunrise", "sunset"]
     },
-    "last_seen": "2025-12-26T10:30:00Z"
+    "offline": false,
+    "stale": false,
+    "mapping_count": 3,
+    "last_seen": "2025-12-26T10:30:00Z",
+    "first_seen": "2025-12-25T08:00:00Z"
   }
 ]
 ```
+
+**Response Fields**:
+- `mapping_count` (integer): Number of DMX mappings configured for this device
+- `offline` (boolean): Whether device is currently offline due to failures
+- `stale` (boolean): Whether device hasn't responded to recent discovery probes
 
 #### Get Specific Device
 ```
@@ -404,6 +413,104 @@ Reload configuration and restart listeners without stopping the service.
 {
   "status": "reloaded"
 }
+```
+
+---
+
+### WebSocket Event Streaming
+
+The bridge provides real-time event notifications via WebSocket for monitoring device status, health, and system changes.
+
+#### Event Stream
+```
+WebSocket /events/stream
+```
+
+Streams all system events in real-time. Events are published when event_bus_enabled=true in configuration (default).
+
+**Connection Example**:
+```javascript
+const ws = new WebSocket('ws://127.0.0.1:8000/events/stream');
+
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+
+  // Handle ping/pong for keepalive
+  if (message.type === 'ping') {
+    ws.send(JSON.stringify({ type: 'pong' }));
+    return;
+  }
+
+  console.log('Event:', message.event, message.data);
+};
+```
+
+**Event Message Format**:
+```json
+{
+  "event": "device_discovered",
+  "timestamp": "2025-12-31T10:30:45.123Z",
+  "data": {
+    "device_id": "AA:BB:CC:DD:EE:FF",
+    "ip": "192.168.1.100",
+    "model": "H6199"
+  }
+}
+```
+
+**Keepalive**:
+- Server sends `{"type": "ping"}` every 30 seconds
+- Client should respond with `{"type": "pong"}` to maintain connection
+
+#### Event Types
+
+**Device Events**:
+
+| Event Type | Trigger | Data Fields |
+|------------|---------|-------------|
+| `device_discovered` | New device found during discovery | `device_id`, `ip`, `model`, `device_type`, `capabilities[]`, `is_new` |
+| `device_updated` | Device metadata changed | `device_id`, `changed_fields[]`, `ip` |
+| `device_online` | Offline device comes back online | `device_id`, `previous_offline_reason` |
+| `device_offline` | Device goes offline after failures | `device_id`, `reason`, `failure_count` |
+
+**Mapping Events**:
+
+| Event Type | Trigger | Data Fields |
+|------------|---------|-------------|
+| `mapping_created` | New DMX mapping created | `mapping_id`, `universe`, `channel` |
+| `mapping_updated` | Mapping modified | `mapping_id`, `changed_fields[]` |
+| `mapping_deleted` | Mapping removed | `mapping_id` |
+
+**Health Events**:
+
+| Event Type | Trigger | Data Fields |
+|------------|---------|-------------|
+| `health_status_changed` | Subsystem health changes | `subsystem`, `status`, `previous_status`, `failure_count?` |
+
+**Health Status Values**:
+- `ok`: Subsystem operating normally
+- `degraded`: Some failures but below threshold
+- `suppressed`: Failure threshold exceeded, temporarily disabled
+- `recovering`: Coming back online after suppression
+
+**Subsystems**:
+- `discovery`: Device discovery service
+- `sender`: Device command sender
+- `artnet`: ArtNet DMX listener
+- `api`: REST API server
+- `poller`: Device state poller (if enabled)
+
+#### Event Stream Example
+
+```bash
+# Using wscat (npm install -g wscat)
+wscat -c ws://127.0.0.1:8000/events/stream
+
+# You'll receive events like:
+# < {"event":"device_discovered","timestamp":"2025-12-31T10:30:45.123Z","data":{"device_id":"AA:BB:CC:DD:EE:FF","ip":"192.168.1.100","model":"H6199","is_new":true}}
+# < {"event":"mapping_created","timestamp":"2025-12-31T10:31:00.456Z","data":{"mapping_id":1,"universe":0,"channel":1}}
+# < {"type":"ping"}
+# > {"type":"pong"}
 ```
 
 ---
