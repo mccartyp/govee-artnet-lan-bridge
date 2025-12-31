@@ -25,24 +25,17 @@ def test_wrap_govee_command_color_and_turn_on() -> None:
 
 
 def test_wrap_govee_command_color_and_turn_off() -> None:
-    """Test that color + turn:off sends both commands."""
+    """Test that color + turn:off only sends turn-off (color is ignored when turning off)."""
     payload = {
         "color": {"r": 255, "g": 0, "b": 0},
         "turn": "off"
     }
     result = wrap_govee_command(payload)
 
-    assert "_multiple" in result
-    cmds = result["_multiple"]
-    assert len(cmds) == 2
-
-    # First command should be turn:off with numeric value 0
-    assert cmds[0]["msg"]["cmd"] == "turn"
-    assert cmds[0]["msg"]["data"]["value"] == 0
-
-    # Second command should be colorwc
-    assert cmds[1]["msg"]["cmd"] == "colorwc"
-    assert cmds[1]["msg"]["data"]["color"] == {"r": 255, "g": 0, "b": 0}
+    # When turning off, only the turn command should be sent
+    assert "msg" in result
+    assert result["msg"]["cmd"] == "turn"
+    assert result["msg"]["data"]["value"] == 0
 
 
 def test_wrap_govee_command_color_turn_brightness() -> None:
