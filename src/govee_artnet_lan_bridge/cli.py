@@ -444,7 +444,7 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
     )
     create.add_argument(
         "--field",
-        help="Payload field for discrete mappings (r, g, b, w, brightness). Required for discrete.",
+        help="Payload field for discrete mappings (r, g, b, w, dimmer). Required for discrete.",
     )
     create.add_argument(
         "--allow-overlap",
@@ -474,7 +474,7 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
     )
     update.add_argument(
         "--field",
-        help="Payload field for discrete mappings (r, g, b, w, brightness)",
+        help="Payload field for discrete mappings (r, g, b, w, dimmer)",
     )
     update.add_argument("--allow-overlap", action="store_true", help="Allow overlapping ranges")
     update.add_argument(

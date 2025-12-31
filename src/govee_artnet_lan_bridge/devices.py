@@ -172,14 +172,14 @@ def _coerce_mode_for_mapping(capabilities: Any, length: int) -> str:
 def _coerce_order_for_mapping(capabilities: Any, mode: str) -> Tuple[str, ...]:
     def _normalize_entry(entry: str) -> Optional[str]:
         value = entry.strip().lower()
-        if value in {"r", "g", "b", "w", "brightness"}:
+        if value in {"r", "g", "b", "dimmer"}:
             return value
         return None
 
     default_orders: Dict[str, Tuple[str, ...]] = {
         "rgb": ("r", "g", "b"),
-        "rgbw": ("r", "g", "b", "w"),
-        "brightness": ("brightness",),
+        "rgbw": ("r", "g", "b"),
+        "brightness": ("dimmer",),
     }
     if isinstance(capabilities, Mapping):
         order_value = capabilities.get("order") or capabilities.get("channel_order")
@@ -324,7 +324,7 @@ def _coerce_metadata_for_db(metadata: Mapping[str, Any]) -> Dict[str, Any]:
     return db_values
 
 
-SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "brightness", "ct", "power"}
+SUPPORTED_FIELDS: Set[str] = {"r", "g", "b", "dimmer", "ct", "power"}
 
 # Field aliases for user convenience
 FIELD_ALIASES: Dict[str, str] = {
@@ -354,12 +354,12 @@ _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
         TemplateSegment("discrete", ("ct",)),
     ),
     "DIMRGBCT": (
-        TemplateSegment("discrete", ("brightness",)),
+        TemplateSegment("discrete", ("dimmer",)),
         TemplateSegment("range", ("r", "g", "b")),
         TemplateSegment("discrete", ("ct",)),
     ),
     "DIMCT": (
-        TemplateSegment("discrete", ("brightness",)),
+        TemplateSegment("discrete", ("dimmer",)),
         TemplateSegment("discrete", ("ct",)),
     ),
 }
@@ -416,7 +416,7 @@ def _normalize_field_name(field: Optional[str]) -> str:
 
 
 def _validate_field_support(field: str, capabilities: NormalizedCapabilities) -> None:
-    if field == "brightness" and not capabilities.supports_brightness:
+    if field == "dimmer" and not capabilities.supports_brightness:
         raise ValueError("Device does not support brightness control.")
     if field in {"r", "g", "b"} and not capabilities.supports_color:
         supported = ", ".join(capabilities.supported_modes) or "none"

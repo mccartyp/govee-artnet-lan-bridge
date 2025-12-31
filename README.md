@@ -130,7 +130,7 @@ For individual field control, use single channel mappings instead of templates:
 | Field | Aliases | Description | Capability Required |
 |-------|---------|-------------|---------------------|
 | `power` | - | Power on/off (DMX >= 128 = on, < 128 = off) | None (all devices) |
-| `brightness` | - | Brightness control (0-255, 0=power off, >0=power on+brightness) | `brightness` |
+| `dimmer` | - | Dimmer/brightness control (0-255, 0=power off, >0=power on+brightness) | `brightness` |
 | `r` | `red` | Red channel only | `color` |
 | `g` | `green` | Green channel only | `color` |
 | `b` | `blue` | Blue channel only | `color` |

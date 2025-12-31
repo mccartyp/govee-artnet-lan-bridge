@@ -86,7 +86,7 @@ async def test_channel_map_endpoint(tmp_path) -> None:
         channel=4,
         length=1,
         mapping_type="discrete",
-        field="brightness",
+        field="dimmer",
     )
 
     app = create_app(Config(), store=store, health=None, reload_callback=None)
@@ -131,7 +131,7 @@ async def test_mappings_endpoint_includes_fields(tmp_path) -> None:
         channel=4,
         length=1,
         mapping_type="discrete",
-        field="brightness",
+        field="dimmer",
     )
 
     app = create_app(Config(), store=store, health=None, reload_callback=None)

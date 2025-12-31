@@ -78,7 +78,7 @@ async def test_channel_map_reports_fields(tmp_path) -> None:
         channel=4,
         length=1,
         mapping_type="discrete",
-        field="brightness",
+        field="dimmer",
     )
     channel_map = await store.channel_map()
     assert 0 in channel_map

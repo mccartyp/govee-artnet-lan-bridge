@@ -83,8 +83,8 @@ def test_universe_mapping_merges_discrete_fields() -> None:
         channel=2,
         length=1,
         mapping_type="discrete",
-        field="brightness",
-        fields=("brightness",),
+        field="dimmer",
+        fields=("dimmer",),
         capabilities={"gamma": 1.0, "dimmer": 1.0},
     )
     red_mapping = DeviceMapping(
@@ -93,7 +93,7 @@ def test_universe_mapping_merges_discrete_fields() -> None:
     )
     brightness_mapping = DeviceMapping(
         record=brightness_record,
-        spec=DeviceMappingSpec(mode="discrete", order=("brightness",), gamma=1.0, dimmer=1.0),
+        spec=DeviceMappingSpec(mode="discrete", order=("dimmer",), gamma=1.0, dimmer=1.0),
     )
     universe_map = UniverseMapping(0, [red_mapping, brightness_mapping])
     updates = universe_map.apply(bytes([50, 100]))
@@ -120,8 +120,8 @@ def test_universe_mapping_range_and_discrete_merge() -> None:
         channel=4,
         length=1,
         mapping_type="discrete",
-        field="brightness",
-        fields=("brightness",),
+        field="dimmer",
+        fields=("dimmer",),
         capabilities={"gamma": 1.0, "dimmer": 1.0},
     )
     range_mapping = DeviceMapping(
@@ -130,7 +130,7 @@ def test_universe_mapping_range_and_discrete_merge() -> None:
     )
     brightness_mapping = DeviceMapping(
         record=brightness_record,
-        spec=DeviceMappingSpec(mode="discrete", order=("brightness",), gamma=1.0, dimmer=1.0),
+        spec=DeviceMappingSpec(mode="discrete", order=("dimmer",), gamma=1.0, dimmer=1.0),
     )
     universe_map = UniverseMapping(0, [range_mapping, brightness_mapping])
     updates = universe_map.apply(bytes([5, 15, 25, 40]))
