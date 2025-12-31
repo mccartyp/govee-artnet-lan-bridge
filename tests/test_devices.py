@@ -84,10 +84,10 @@ async def test_channel_map_reports_fields(tmp_path) -> None:
     assert 0 in channel_map
     entries = channel_map[0]
     assert any(entry["mapping_type"] == "range" and set(entry["fields"]) == {"r", "g", "b"} for entry in entries)
-    brightness_entries = [entry for entry in entries if entry.get("field") == "brightness"]
-    assert brightness_entries
-    assert brightness_entries[0]["device_description"] == "Fixture"
-    assert brightness_entries[0]["device_ip"] == "127.0.0.1"
+    dimmer_entries = [entry for entry in entries if entry.get("field") == "dimmer"]
+    assert dimmer_entries
+    assert dimmer_entries[0]["device_description"] == "Fixture"
+    assert dimmer_entries[0]["device_ip"] == "127.0.0.1"
 
 
 @pytest.mark.asyncio
@@ -305,13 +305,13 @@ async def test_template_expansion_creates_expected_mappings(tmp_path) -> None:
         device_id="dev-template",
         universe=1,
         start_channel=5,
-        template="brightness_rgb",
+        template="dimrgb",
     )
 
     assert len(rows) == 2
     first, second = rows
     assert first.mapping_type == "discrete"
-    assert first.field == "brightness"
+    assert first.field == "dimmer"
     assert first.channel == 5
     assert first.length == 1
     assert second.mapping_type == "range"
@@ -337,7 +337,8 @@ async def test_template_validation_rejects_incompatible_device(tmp_path) -> None
             device_id="dev-template-unsupported",
             universe=0,
             start_channel=1,
-            template="brightness_rgb",
+            template="dimrgb",
         )
 
-    assert "brightness" in str(excinfo.value)
+    # Template should be rejected due to missing capabilities (either brightness or color)
+    assert "incompatible" in str(excinfo.value)

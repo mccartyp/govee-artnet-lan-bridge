@@ -226,10 +226,11 @@ def _payload_from_discrete_slice(
         if value == 0:
             return {"turn": "off"}
         else:
-            return {"_multiple": [
-                {"turn": "on"},
-                {"brightness": value}
-            ]}
+            # Return both turn and brightness - wrap_govee_command will create the _multiple structure
+            return {
+                "turn": "on",
+                "brightness": value
+            }
 
     # Handle color temperature - scale DMX 0-255 to kelvin range
     if field == "ct":

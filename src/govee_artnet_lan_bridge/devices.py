@@ -106,6 +106,21 @@ def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
 
     # Handle power/turn commands
     if has_turn:
+        # If brightness is also present with turn, send both commands
+        if has_brightness:
+            turn_cmd = {
+                "msg": {
+                    "cmd": "turn",
+                    "data": {"value": payload["turn"]}
+                }
+            }
+            brightness_cmd = {
+                "msg": {
+                    "cmd": "brightness",
+                    "data": {"value": payload["brightness"]}
+                }
+            }
+            return {"_multiple": [turn_cmd, brightness_cmd]}
         return {
             "msg": {
                 "cmd": "turn",
@@ -352,6 +367,10 @@ _TEMPLATE_CATALOGUE: Dict[str, Tuple[TemplateSegment, ...]] = {
     "RGBCT": (
         TemplateSegment("range", ("r", "g", "b")),
         TemplateSegment("discrete", ("ct",)),
+    ),
+    "DIMRGB": (
+        TemplateSegment("discrete", ("dimmer",)),
+        TemplateSegment("range", ("r", "g", "b")),
     ),
     "DIMRGBCT": (
         TemplateSegment("discrete", ("dimmer",)),
