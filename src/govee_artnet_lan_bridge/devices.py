@@ -106,10 +106,12 @@ def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
 
     # Handle power/turn commands
     if has_turn:
+        # Convert "on"/"off" to 1/0 as required by Govee API
+        turn_value = 1 if payload["turn"] == "on" else 0
         turn_cmd = {
             "msg": {
                 "cmd": "turn",
-                "data": {"value": payload["turn"]}
+                "data": {"value": turn_value}
             }
         }
 
