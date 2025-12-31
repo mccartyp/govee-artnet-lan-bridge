@@ -119,13 +119,13 @@ def _coerce_mode(capabilities: Any, length: int) -> str:
 def _coerce_order(capabilities: Any, mode: str) -> Tuple[str, ...]:
     def _normalize_entry(entry: str) -> Optional[str]:
         value = entry.strip().lower()
-        if value in {"r", "g", "b", "brightness"}:
+        if value in {"r", "g", "b", "dimmer"}:
             return value
         return None
 
     default_orders: Dict[str, Tuple[str, ...]] = {
         "rgb": ("r", "g", "b"),
-        "brightness": ("brightness",),
+        "brightness": ("dimmer",),
     }
     if isinstance(capabilities, Mapping):
         order_value = capabilities.get("order") or capabilities.get("channel_order")
@@ -189,8 +189,8 @@ def _payload_from_slice(mapping: DeviceMapping, slice_data: bytes) -> Optional[M
         raw_value = slice_data[idx]
         values[channel_name] = _apply_gamma_dimmer(raw_value, spec.gamma, spec.dimmer)
 
-    if spec.mode == "brightness" or spec.order == ("brightness",):
-        return {"brightness": values.get("brightness", 0)}
+    if spec.mode == "brightness" or spec.order == ("dimmer",):
+        return {"brightness": values.get("dimmer", 0)}
 
     color: Dict[str, int] = {}
     for key in ("r", "g", "b"):
@@ -200,8 +200,8 @@ def _payload_from_slice(mapping: DeviceMapping, slice_data: bytes) -> Optional[M
     payload: Dict[str, Any] = {}
     if color:
         payload["color"] = color
-    if "brightness" in values:
-        payload["brightness"] = values["brightness"]
+    if "dimmer" in values:
+        payload["brightness"] = values["dimmer"]
     return payload if payload else None
 
 
@@ -221,8 +221,8 @@ def _payload_from_discrete_slice(
 
     # Apply gamma/dimmer for other fields
     value = _apply_gamma_dimmer(raw_value, mapping.spec.gamma, mapping.spec.dimmer)
-    if field == "brightness":
-        # Brightness of 0 sends power off, non-zero sends power on + brightness
+    if field == "dimmer":
+        # Dimmer of 0 sends power off, non-zero sends power on + brightness
         if value == 0:
             return {"turn": "off"}
         else:

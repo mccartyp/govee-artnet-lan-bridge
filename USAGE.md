@@ -86,7 +86,7 @@ govee-artnet-cli devices list --output yaml
 
 ## DMX Channel Mapping
 
-The bridge maps ArtNet DMX channels to Govee device controls. Each device can be mapped to one or more DMX channels to control brightness, color (RGB), and color temperature.
+The bridge maps ArtNet DMX channels to Govee device controls. Each device can be mapped to one or more DMX channels to control dimmer (brightness), color (RGB), and color temperature.
 
 ### Using Templates (Recommended)
 
@@ -108,7 +108,7 @@ For individual field control, use single channel mappings instead of templates:
 | Field | Aliases | Description | Capability Required |
 |-------|---------|-------------|---------------------|
 | `power` | - | Power on/off (DMX >= 128 = on, < 128 = off) | None (all devices) |
-| `brightness` | - | Brightness control (0-255, 0=power off, >0=power on+brightness) | `brightness` |
+| `dimmer` | - | Dimmer/brightness control (0-255, 0=power off, >0=power on+brightness) | `brightness` |
 | `r` | `red` | Red channel only | `color` |
 | `g` | `green` | Green channel only | `color` |
 | `b` | `blue` | Blue channel only | `color` |
@@ -122,14 +122,14 @@ For individual field control, use single channel mappings instead of templates:
 
 **Important**: Device capabilities are validated when creating mappings. Not all Govee devices support all features:
 - **All devices** support `power` control (on/off)
-- **Brightness-capable devices** (lights, bulbs) support `brightness` field
-- **Non-dimmable devices** (plugs, switches) do NOT support `brightness` field
+- **Brightness-capable devices** (lights, bulbs) support `dimmer` field
+- **Non-dimmable devices** (plugs, switches) do NOT support `dimmer` field
 - **Color-capable devices** support `r`, `g`, `b` fields
 - **Color temperature devices** support `ct` field
 
 Use `govee-artnet-cli devices list` to check which capabilities your device supports.
 
-**Example - Power and Brightness Control:**
+**Example - Power and Dimmer Control:**
 ```bash
 # Power control on channel 1 (works on ALL devices, including plugs)
 govee-artnet-cli mappings create \
@@ -137,11 +137,11 @@ govee-artnet-cli mappings create \
   --channel 1 \
   --field power
 
-# Brightness control on channel 5 (only works if device supports brightness)
+# Dimmer control on channel 5 (only works if device supports brightness)
 govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 5 \
-  --field brightness
+  --field dimmer
 
 # Use field aliases for convenience (only works if device supports color)
 govee-artnet-cli mappings create \
@@ -197,17 +197,17 @@ This creates mappings for:
 - Channel 8: Blue
 - Channel 9: Color Temperature
 
-**Simple Brightness-Only Light (single channel mapping)**
+**Simple Dimmer-Only Light (single channel mapping)**
 ```bash
 govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 100 \
-  --field brightness
+  --field dimmer
 ```
 
 This creates a single channel mapping for:
-- Channel 100: Brightness (0-255)
+- Channel 100: Dimmer (0-255)
 
 **Note**: This only works if the device has the `brightness` capability. Check with `govee-artnet-cli devices list`.
 
@@ -232,11 +232,11 @@ For fine-grained control or non-standard fixture layouts, you can create individ
 #### Mapping Types
 
 - **`range`**: Maps consecutive DMX channels to color fields (R, G, B)
-- **`discrete`**: Maps a single DMX channel to one device field (brightness, r, g, b, or ct)
+- **`discrete`**: Maps a single DMX channel to one device field (dimmer, r, g, b, or ct)
 
 #### Quick Guide: How to Map Individual Channels
 
-**Step 1: Map a single brightness channel**
+**Step 1: Map a single dimmer channel**
 ```bash
 govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
@@ -244,7 +244,7 @@ govee-artnet-cli mappings create \
   --channel 1 \
   --length 1 \
   --type discrete \
-  --field brightness
+  --field dimmer
 ```
 
 **Step 2: Map RGB as a range (3 consecutive channels)**
@@ -301,7 +301,7 @@ govee-artnet-cli mappings create \
 
 #### Important Notes
 
-- **No duplicate fields**: Each field (brightness, r, g, b, ct) can only be mapped once per device per universe
+- **No duplicate fields**: Each field (dimmer, r, g, b, ct) can only be mapped once per device per universe
 - **Channel overlap**: By default, overlapping channel ranges are prevented. Use `--allow-overlap` to override
 - **Range mapping**: For `type=range`, the bridge automatically assigns fields based on length:
   - Length 3: R, G, B
@@ -327,7 +327,7 @@ Govee devices report their capabilities:
 | `DimRGBCT` | Yes | Yes | Yes | Devices with brightness, color, and color temperature |
 | `DimCT` | Yes | No | Yes | Devices with brightness and color temperature |
 
-**Note**: For individual field control (brightness only, power, color channels, etc.), use single channel mappings instead of templates. All Govee devices support `power` mappings, but `brightness`, color, and color temperature mappings require the corresponding device capabilities.
+**Note**: For individual field control (dimmer only, power, color channels, etc.), use single channel mappings instead of templates. All Govee devices support `power` mappings, but `dimmer`, color, and color temperature mappings require the corresponding device capabilities.
 
 #### Checking Device Capabilities
 
@@ -429,7 +429,7 @@ Device does not support color control. Supported modes: ct
 
 **Cause**: You're trying to map color channels (R, G, B), but the device only supports color temperature (warm/cool white).
 
-**Solution**: Use single channel mapping with `--field brightness` for brightness control only, or check if you selected the correct device.
+**Solution**: Use single channel mapping with `--field dimmer` for brightness control only, or check if you selected the correct device.
 
 ---
 
@@ -438,7 +438,7 @@ Device does not support color control. Supported modes: ct
 Device does not support brightness control.
 ```
 
-**Cause**: You're trying to create a brightness mapping on a device that doesn't have the `brightness` capability (e.g., a smart plug).
+**Cause**: You're trying to create a dimmer mapping on a device that doesn't have the `brightness` capability (e.g., a smart plug).
 
 **Solution**:
 1. Check device capabilities: `govee-artnet-cli devices list`
@@ -448,7 +448,7 @@ Device does not support brightness control.
 **Example - Controlling a smart plug:**
 ```bash
 # This will FAIL on a plug (no brightness capability)
-govee-artnet-cli mappings create --device-id H5080_PLUG --channel 1 --field brightness
+govee-artnet-cli mappings create --device-id H5080_PLUG --channel 1 --field dimmer
 
 # This will WORK on a plug (power is supported by all devices)
 govee-artnet-cli mappings create --device-id H5080_PLUG --channel 1 --field power
@@ -458,13 +458,13 @@ govee-artnet-cli mappings create --device-id H5080_PLUG --channel 1 --field powe
 
 #### "Unsupported field"
 ```
-Unsupported field 'white'. Supported fields: brightness, b, ct, g, r, power.
+Unsupported field 'white'. Supported fields: dimmer, b, ct, g, r, power.
 ```
 
 **Cause**: Field name typo or using unsupported field name.
 
 **Solution**: Use one of the supported field names:
-- `brightness`: Master brightness/dimmer (0=power off, >0=power on+brightness)
+- `dimmer`: Master dimmer/brightness (0=power off, >0=power on+brightness)
 - `r`: Red channel
 - `g`: Green channel
 - `b`: Blue channel
@@ -675,13 +675,13 @@ Ch 20-23:  Kitchen (R, G, B, CT)
 If you need a non-standard layout, use individual mappings:
 
 ```bash
-# Brightness on channel 1
+# Dimmer on channel 1
 govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 1 \
   --type discrete \
-  --field brightness
+  --field dimmer
 
 # Skip channel 2 (for future use)
 

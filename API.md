@@ -107,8 +107,8 @@ Returns all DMX channel mappings.
     "channel": 10,
     "length": 1,
     "mapping_type": "discrete",
-    "field": "brightness",
-    "fields": ["brightness"],
+    "field": "dimmer",
+    "fields": ["dimmer"],
     "created_at": "2025-12-26T10:05:00Z",
     "updated_at": "2025-12-26T10:05:00Z"
   }
@@ -188,14 +188,14 @@ Create a single mapping or multiple mappings using a template.
 **Template Names** (for multi-channel mappings):
 - `rgb`: 3-channel RGB
 - `rgbw`: 4-channel RGBW
-- `brightness_rgb`: 4-channel brightness + RGB
-- `rgbwa`: 5-channel RGBW + brightness
-- `rgbaw`: 5-channel brightness + RGBW
-- `brgbwct`: 6-channel brightness + RGBW + color temperature
+- `dimmer_rgb`: 4-channel dimmer + RGB
+- `rgbwa`: 5-channel RGBW + dimmer
+- `rgbaw`: 5-channel dimmer + RGBW
+- `brgbwct`: 6-channel dimmer + RGBW + color temperature
 
 **Single Channel Field Names**:
 - `power`: Power on/off control (DMX >= 128 = on, < 128 = off) - **All devices**
-- `brightness`: Brightness control (0-255) - **Requires `brightness` capability**
+- `dimmer`: Dimmer/brightness control (0-255) - **Requires `brightness` capability**
 - `r` (alias: `red`): Red channel only - **Requires `color` capability**
 - `g` (alias: `green`): Green channel only - **Requires `color` capability**
 - `b` (alias: `blue`): Blue channel only - **Requires `color` capability**
@@ -241,13 +241,13 @@ Create a single mapping or multiple mappings using a template.
 `400 Bad Request` - Validation errors:
 ```json
 {
-  "detail": "Unknown template 'rgbb'. Supported templates: brgbwct, brightness_rgb, rgb, rgbaw, rgbwa, rgbw."
+  "detail": "Unknown template 'rgbb'. Supported templates: brgbwct, dimmer_rgb, rgb, rgbaw, rgbwa, rgbw."
 }
 ```
 
 ```json
 {
-  "detail": "Template 'brightness_rgb' is incompatible with this device (missing brightness support; supported: color)."
+  "detail": "Template 'dimmer_rgb' is incompatible with this device (missing brightness support; supported: color)."
 }
 ```
 
@@ -271,7 +271,7 @@ Create a single mapping or multiple mappings using a template.
 
 ```json
 {
-  "detail": "Unsupported field 'red'. Supported fields: brightness, b, g, r, w."
+  "detail": "Unsupported field 'red'. Supported fields: dimmer, b, g, r, w."
 }
 ```
 
@@ -370,8 +370,8 @@ Returns a map of universes to their channel mappings, useful for visualizing the
       "channel": 10,
       "length": 1,
       "mapping_type": "discrete",
-      "field": "brightness",
-      "fields": ["brightness"]
+      "field": "dimmer",
+      "fields": ["dimmer"]
     }
   ],
   "1": [
@@ -430,10 +430,10 @@ curl -X POST http://127.0.0.1:8000/mappings \
 curl http://127.0.0.1:8000/mappings
 ```
 
-### Example 2: Custom Brightness + RGB Mapping
+### Example 2: Custom Dimmer + RGB Mapping
 
 ```bash
-# 1. Map brightness to channel 1
+# 1. Map dimmer to channel 1
 curl -X POST http://127.0.0.1:8000/mappings \
   -H "Content-Type: application/json" \
   -d '{
@@ -442,7 +442,7 @@ curl -X POST http://127.0.0.1:8000/mappings \
     "channel": 1,
     "length": 1,
     "mapping_type": "discrete",
-    "field": "brightness"
+    "field": "dimmer"
   }'
 
 # 2. Map RGB to channels 3-5 (skipping channel 2)
@@ -480,14 +480,14 @@ curl -X POST http://127.0.0.1:8000/mappings \
     "template": "rgbw"
   }'
 
-# Device 3: Brightness only at channel 20 (discrete field mapping)
+# Device 3: Dimmer only at channel 20 (discrete field mapping)
 curl -X POST http://127.0.0.1:8000/mappings \
   -H "Content-Type: application/json" \
   -d '{
     "device_id": "AA:BB:CC:DD:EE:03",
     "universe": 0,
     "channel": 20,
-    "field": "brightness"
+    "field": "dimmer"
   }'
 
 # Device 4: Power control at channel 25 (discrete field mapping)
@@ -514,12 +514,12 @@ curl -X POST http://127.0.0.1:8000/mappings \
     "device_id": "AA:BB:CC:DD:EE:FF",
     "universe": 0,
     "start_channel": 1,
-    "template": "brightness_rgb"
+    "template": "dimmer_rgb"
   }'
 
 # Response (if device doesn't support brightness):
 # {
-#   "detail": "Template 'brightness_rgb' is incompatible with this device (missing brightness support; supported: color)."
+#   "detail": "Template 'dimmer_rgb' is incompatible with this device (missing brightness support; supported: color)."
 # }
 
 # Solution: Check device capabilities first
@@ -544,7 +544,7 @@ curl -X POST http://127.0.0.1:8000/mappings \
 
 | Field | Description | Usage |
 |-------|-------------|-------|
-| `brightness` | Master brightness/dimmer (0-255) | Controls overall light intensity |
+| `dimmer` | Master dimmer/brightness (0-255) | Controls overall light intensity |
 | `r` | Red channel (0-255) | RGB color component |
 | `g` | Green channel (0-255) | RGB color component |
 | `b` | Blue channel (0-255) | RGB color component |
