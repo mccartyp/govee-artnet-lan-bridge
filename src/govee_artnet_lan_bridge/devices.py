@@ -21,6 +21,10 @@ from .db import DatabaseManager
 from .logging import get_logger
 from .metrics import set_offline_devices, set_queue_depth, set_total_queue_depth
 
+# Import EventBus type for type hints (avoid circular import at runtime)
+if False:  # TYPE_CHECKING
+    from .events import EventBus
+
 
 def _now_iso() -> str:
     return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -618,6 +622,7 @@ class DeviceRow:
     poll_failure_count: int
     poll_state: Any
     poll_state_updated_at: Optional[str]
+    mapping_count: int
     created_at: str
     updated_at: str
 
@@ -659,11 +664,17 @@ class MappingRow:
 class DeviceStore:
     """SQLite-backed persistence for device metadata."""
 
-    def __init__(self, db_path: Path, capability_catalog: Optional[CapabilityCatalog] = None) -> None:
+    def __init__(
+        self,
+        db_path: Path,
+        capability_catalog: Optional[CapabilityCatalog] = None,
+        event_bus: Optional[Any] = None
+    ) -> None:
         self.db = DatabaseManager(db_path)
         self.logger = get_logger("govee.devices")
         self._capability_catalog = capability_catalog or load_embedded_catalog()
         self._capability_cache = CapabilityCache(self._capability_catalog)
+        self._event_bus = event_bus
 
     async def start(self) -> None:
         await self.db.start_integrity_checks()
@@ -678,36 +689,39 @@ class DeviceStore:
         rows = conn.execute(
             """
             SELECT
-                id,
-                ip,
-                name,
-                model,
-                model_number,
-                device_type,
-                length_meters,
-                led_count,
-                led_density_per_meter,
-                has_segments,
-                segment_count,
-                description,
-                capabilities,
-                manual,
-                discovered,
-                configured,
-                enabled,
-                stale,
-                offline,
-                last_seen,
-                first_seen,
-                poll_last_success_at,
-                poll_last_failure_at,
-                poll_failure_count,
-                poll_state,
-                poll_state_updated_at,
-                created_at,
-                updated_at
-            FROM devices
-            ORDER BY created_at ASC
+                d.id,
+                d.ip,
+                d.name,
+                d.model,
+                d.model_number,
+                d.device_type,
+                d.length_meters,
+                d.led_count,
+                d.led_density_per_meter,
+                d.has_segments,
+                d.segment_count,
+                d.description,
+                d.capabilities,
+                d.manual,
+                d.discovered,
+                d.configured,
+                d.enabled,
+                d.stale,
+                d.offline,
+                d.last_seen,
+                d.first_seen,
+                d.poll_last_success_at,
+                d.poll_last_failure_at,
+                d.poll_failure_count,
+                d.poll_state,
+                d.poll_state_updated_at,
+                COALESCE(COUNT(m.id), 0) as mapping_count,
+                d.created_at,
+                d.updated_at
+            FROM devices d
+            LEFT JOIN mappings m ON d.id = m.device_id
+            GROUP BY d.id
+            ORDER BY d.created_at ASC
             """
         ).fetchall()
         return [self._row_to_device(row) for row in rows]
@@ -719,36 +733,39 @@ class DeviceStore:
         row = conn.execute(
             """
             SELECT
-                id,
-                ip,
-                name,
-                model,
-                model_number,
-                device_type,
-                length_meters,
-                led_count,
-                led_density_per_meter,
-                has_segments,
-                segment_count,
-                description,
-                capabilities,
-                manual,
-                discovered,
-                configured,
-                enabled,
-                stale,
-                offline,
-                last_seen,
-                first_seen,
-                poll_last_success_at,
-                poll_last_failure_at,
-                poll_failure_count,
-                poll_state,
-                poll_state_updated_at,
-                created_at,
-                updated_at
-            FROM devices
-            WHERE id = ?
+                d.id,
+                d.ip,
+                d.name,
+                d.model,
+                d.model_number,
+                d.device_type,
+                d.length_meters,
+                d.led_count,
+                d.led_density_per_meter,
+                d.has_segments,
+                d.segment_count,
+                d.description,
+                d.capabilities,
+                d.manual,
+                d.discovered,
+                d.configured,
+                d.enabled,
+                d.stale,
+                d.offline,
+                d.last_seen,
+                d.first_seen,
+                d.poll_last_success_at,
+                d.poll_last_failure_at,
+                d.poll_failure_count,
+                d.poll_state,
+                d.poll_state_updated_at,
+                COALESCE(COUNT(m.id), 0) as mapping_count,
+                d.created_at,
+                d.updated_at
+            FROM devices d
+            LEFT JOIN mappings m ON d.id = m.device_id
+            WHERE d.id = ?
+            GROUP BY d.id
             """,
             (device_id,),
         ).fetchone()
@@ -1042,10 +1059,42 @@ class DeviceStore:
         )
 
     async def record_discovery(self, result: DiscoveryResult) -> None:
-        await self.db.run(lambda conn: self._record_discovery(conn, result))
+        event_data = await self.db.run(lambda conn: self._record_discovery(conn, result))
 
-    def _record_discovery(self, conn: sqlite3.Connection, result: DiscoveryResult) -> None:
+        # Publish events if event_bus is available
+        if self._event_bus and event_data:
+            from .events import EVENT_DEVICE_DISCOVERED, EVENT_DEVICE_UPDATED
+
+            is_new = event_data.get("is_new", False)
+            changed_fields = event_data.get("changed_fields", [])
+
+            if is_new:
+                await self._event_bus.publish(EVENT_DEVICE_DISCOVERED, {
+                    "device_id": result.id,
+                    "ip": result.ip,
+                    "model": event_data.get("model_number"),
+                    "device_type": event_data.get("device_type"),
+                    "capabilities": event_data.get("capabilities_list", []),
+                    "is_new": True,
+                })
+            elif changed_fields:
+                await self._event_bus.publish(EVENT_DEVICE_UPDATED, {
+                    "device_id": result.id,
+                    "changed_fields": changed_fields,
+                    "ip": result.ip,
+                })
+
+    def _record_discovery(self, conn: sqlite3.Connection, result: DiscoveryResult) -> Optional[Dict[str, Any]]:
         now = _now_iso()
+
+        # Check if device exists before upsert
+        existing = conn.execute(
+            "SELECT id, ip, model_number FROM devices WHERE id = ?",
+            (result.id,)
+        ).fetchone()
+        is_new = existing is None
+        old_ip = existing["ip"] if existing else None
+
         metadata_input = _extract_metadata(result)
         normalized = None
         if (
@@ -1059,6 +1108,7 @@ class DeviceStore:
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
         model_number = result.model_number or (normalized.model_number if normalized else None)
         metadata = _coerce_metadata_for_db(_merge_metadata(normalized.metadata if normalized else {}, result))
+
         conn.execute(
             """
             INSERT INTO devices (
@@ -1118,6 +1168,26 @@ class DeviceStore:
                 "manual": result.manual,
             },
         )
+
+        # Track what changed for event publishing
+        changed_fields = []
+        if not is_new and old_ip and old_ip != result.ip:
+            changed_fields.append("ip")
+
+        # Extract capabilities list for event data
+        capabilities_list = []
+        if normalized:
+            cap_dict = normalized.as_mapping()
+            if isinstance(cap_dict, dict):
+                capabilities_list = [k for k, v in cap_dict.items() if v is True]
+
+        return {
+            "is_new": is_new,
+            "changed_fields": changed_fields,
+            "model_number": model_number,
+            "device_type": metadata.get("device_type"),
+            "capabilities_list": capabilities_list,
+        }
 
     async def mark_stale(self, stale_after_seconds: float) -> None:
         await self.db.run(lambda conn: self._mark_stale(conn, stale_after_seconds))
@@ -2119,11 +2189,23 @@ class DeviceStore:
         )
 
     async def record_send_success(self, device_id: str, payload_hash: str) -> None:
-        await self.db.run(lambda conn: self._record_send_success(conn, device_id, payload_hash))
+        event_data = await self.db.run(lambda conn: self._record_send_success(conn, device_id, payload_hash))
+
+        # Publish device_online event if device transitioned from offline to online
+        if self._event_bus and event_data and event_data.get("went_online"):
+            from .events import EVENT_DEVICE_ONLINE
+            await self._event_bus.publish(EVENT_DEVICE_ONLINE, {
+                "device_id": device_id,
+                "previous_offline_reason": "send_failures",
+            })
 
     def _record_send_success(
         self, conn: sqlite3.Connection, device_id: str, payload_hash: str
-    ) -> None:
+    ) -> Optional[Dict[str, Any]]:
+        # Check current offline status before update
+        row = conn.execute("SELECT offline FROM devices WHERE id = ?", (device_id,)).fetchone()
+        was_offline = row["offline"] if row else False
+
         now = _now_iso()
         conn.execute(
             """
@@ -2141,12 +2223,27 @@ class DeviceStore:
         conn.commit()
         self._update_offline_metric(conn)
 
+        # Return event data if status changed
+        return {"went_online": was_offline}
+
     async def record_poll_success(self, device_id: str, state: Optional[Mapping[str, Any]]) -> None:
-        await self.db.run(lambda conn: self._record_poll_success(conn, device_id, state))
+        event_data = await self.db.run(lambda conn: self._record_poll_success(conn, device_id, state))
+
+        # Publish device_online event if device transitioned from offline to online
+        if self._event_bus and event_data and event_data.get("went_online"):
+            from .events import EVENT_DEVICE_ONLINE
+            await self._event_bus.publish(EVENT_DEVICE_ONLINE, {
+                "device_id": device_id,
+                "previous_offline_reason": "poll_failures",
+            })
 
     def _record_poll_success(
         self, conn: sqlite3.Connection, device_id: str, state: Optional[Mapping[str, Any]]
-    ) -> None:
+    ) -> Optional[Dict[str, Any]]:
+        # Check current offline status before update
+        row = conn.execute("SELECT offline FROM devices WHERE id = ?", (device_id,)).fetchone()
+        was_offline = row["offline"] if row else False
+
         now = _now_iso()
         serialized_state = _serialize_capabilities(state) if state is not None else None
         conn.execute(
@@ -2171,12 +2268,31 @@ class DeviceStore:
         conn.commit()
         self._update_offline_metric(conn)
 
+        return {"went_online": was_offline}
+
     async def record_poll_failure(self, device_id: str, offline_threshold: int) -> None:
-        await self.db.run(lambda conn: self._record_poll_failure(conn, device_id, offline_threshold))
+        event_data = await self.db.run(lambda conn: self._record_poll_failure(conn, device_id, offline_threshold))
+
+        # Publish device_offline event if device transitioned to offline
+        if self._event_bus and event_data and event_data.get("went_offline"):
+            from .events import EVENT_DEVICE_OFFLINE
+            await self._event_bus.publish(EVENT_DEVICE_OFFLINE, {
+                "device_id": device_id,
+                "reason": "poll_failures",
+                "failure_count": event_data.get("failure_count", 0),
+            })
 
     def _record_poll_failure(
         self, conn: sqlite3.Connection, device_id: str, offline_threshold: int
-    ) -> None:
+    ) -> Optional[Dict[str, Any]]:
+        # Check current status before update
+        row = conn.execute(
+            "SELECT offline, poll_failure_count FROM devices WHERE id = ?",
+            (device_id,)
+        ).fetchone()
+        was_offline = row["offline"] if row else False
+        old_failure_count = row["poll_failure_count"] if row else 0
+
         now = _now_iso()
         conn.execute(
             """
@@ -2195,16 +2311,42 @@ class DeviceStore:
         conn.commit()
         self._update_offline_metric(conn)
 
+        # Check if device went offline
+        new_failure_count = old_failure_count + 1
+        went_offline = not was_offline and new_failure_count >= offline_threshold
+
+        return {
+            "went_offline": went_offline,
+            "failure_count": new_failure_count,
+        }
+
     async def record_send_failure(
         self, device_id: str, payload_hash: str, offline_threshold: int
     ) -> None:
-        await self.db.run(
+        event_data = await self.db.run(
             lambda conn: self._record_send_failure(conn, device_id, payload_hash, offline_threshold)
         )
 
+        # Publish device_offline event if device transitioned to offline
+        if self._event_bus and event_data and event_data.get("went_offline"):
+            from .events import EVENT_DEVICE_OFFLINE
+            await self._event_bus.publish(EVENT_DEVICE_OFFLINE, {
+                "device_id": device_id,
+                "reason": "send_failures",
+                "failure_count": event_data.get("failure_count", 0),
+            })
+
     def _record_send_failure(
         self, conn: sqlite3.Connection, device_id: str, payload_hash: str, offline_threshold: int
-    ) -> None:
+    ) -> Optional[Dict[str, Any]]:
+        # Check current status before update
+        row = conn.execute(
+            "SELECT offline, failure_count FROM devices WHERE id = ?",
+            (device_id,)
+        ).fetchone()
+        was_offline = row["offline"] if row else False
+        old_failure_count = row["failure_count"] if row else 0
+
         now = _now_iso()
         conn.execute(
             """
@@ -2224,6 +2366,15 @@ class DeviceStore:
         )
         conn.commit()
         self._update_offline_metric(conn)
+
+        # Check if device went offline
+        new_failure_count = old_failure_count + 1
+        went_offline = not was_offline and new_failure_count >= offline_threshold
+
+        return {
+            "went_offline": went_offline,
+            "failure_count": new_failure_count,
+        }
 
     async def stats(self) -> Mapping[str, int]:
         return await self.db.run(self._stats)
@@ -2461,6 +2612,9 @@ class DeviceStore:
             poll_state_updated_at=row["poll_state_updated_at"]
             if "poll_state_updated_at" in row.keys()
             else None,
+            mapping_count=int(row["mapping_count"] or 0)
+            if "mapping_count" in row.keys()
+            else 0,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

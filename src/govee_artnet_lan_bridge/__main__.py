@@ -342,12 +342,8 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
     logger = get_logger("govee")
     shutdown_event = asyncio.Event()
     reload_event = asyncio.Event()
-    catalog = _load_capability_catalog(config.capability_catalog_path, logger)
-    store = DeviceStore(config.db_path, capability_catalog=catalog)
-    await store.start()
-    await store.refresh_metrics()
 
-    # Initialize log buffer and event_bus
+    # Initialize log buffer and event_bus BEFORE creating store
     log_buffer = None
     event_bus = None
     if config.log_buffer_enabled:
@@ -359,6 +355,11 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
         from .events import EventBus
         event_bus = EventBus()
         logger.info("Event bus enabled")
+
+    catalog = _load_capability_catalog(config.capability_catalog_path, logger)
+    store = DeviceStore(config.db_path, capability_catalog=catalog, event_bus=event_bus)
+    await store.start()
+    await store.refresh_metrics()
 
     # Reconfigure logging with log buffer
     if log_buffer is not None:
@@ -390,6 +391,7 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
             ("discovery", "sender", "artnet", "api", "poller"),
             failure_threshold=current_config.subsystem_failure_threshold,
             cooldown_seconds=current_config.subsystem_failure_cooldown,
+            event_bus=event_bus,
         )
         services = RunningServices()
         stop_event = asyncio.Event()

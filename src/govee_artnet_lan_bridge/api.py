@@ -119,6 +119,7 @@ class DeviceOut(BaseModel):
     poll_failure_count: int = 0
     poll_state: Optional[Any] = None
     poll_state_updated_at: Optional[str] = None
+    mapping_count: int = 0
     created_at: str
     updated_at: str
 
