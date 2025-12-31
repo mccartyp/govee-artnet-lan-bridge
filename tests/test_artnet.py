@@ -173,6 +173,54 @@ def test_brightness_mode_zero_sends_turn_off() -> None:
     assert updates[0].payload == {"turn": "on", "brightness": 100}
 
 
+def test_rgb_with_brightness_mode_range() -> None:
+    """Test RGB range mapping combined with brightness range mapping."""
+    rgb_record = MappingRecord(
+        device_id="dev-rgb-bright",
+        universe=0,
+        channel=1,
+        length=3,
+        mapping_type="range",
+        field=None,
+        fields=("r", "g", "b"),
+        capabilities={"mode": "rgb", "order": ["r", "g", "b"], "gamma": 1.0, "dimmer": 1.0},
+    )
+    brightness_record = MappingRecord(
+        device_id="dev-rgb-bright",
+        universe=0,
+        channel=4,
+        length=1,
+        mapping_type="range",
+        field=None,
+        fields=("dimmer",),
+        capabilities={"mode": "brightness", "order": ["dimmer"], "gamma": 1.0, "dimmer": 1.0},
+    )
+    rgb_mapping = DeviceMapping(
+        record=rgb_record,
+        spec=DeviceMappingSpec(mode="rgb", order=("r", "g", "b"), gamma=1.0, dimmer=1.0),
+    )
+    brightness_mapping = DeviceMapping(
+        record=brightness_record,
+        spec=DeviceMappingSpec(mode="brightness", order=("dimmer",), gamma=1.0, dimmer=1.0),
+    )
+    universe_map = UniverseMapping(0, [rgb_mapping, brightness_mapping])
+
+    # Test RGB with brightness > 0: both color and turn/brightness should be present
+    updates = universe_map.apply(bytes([255, 100, 50, 128]))
+    assert len(updates) == 1
+    payload = updates[0].payload
+    assert payload["color"] == {"r": 255, "g": 100, "b": 50}
+    assert payload["turn"] == "on"
+    assert payload["brightness"] == 128
+
+    # Test RGB with brightness = 0: color and turn:off should both be present
+    updates = universe_map.apply(bytes([255, 100, 50, 0]))
+    assert len(updates) == 1
+    payload = updates[0].payload
+    assert payload["color"] == {"r": 255, "g": 100, "b": 50}
+    assert payload["turn"] == "off"
+
+
 def test_artnet_reuses_last_payloads(tmp_path: Path) -> None:
     asyncio.run(_run_artnet_reuse(tmp_path))
 
