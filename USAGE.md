@@ -38,27 +38,24 @@ See [INSTALL.md](INSTALL.md) for systemd service setup and other installation op
 
 ## CLI Overview
 
-The `govee-artnet` CLI communicates with the bridge server via its REST API. By default, it launches an interactive shell and connects to `http://127.0.0.1:8000`.
-
-You can run commands directly without the shell by specifying a command:
+The `govee-artnet-cli` tool communicates with the bridge server via its REST API and connects to `http://127.0.0.1:8000` by default.
 
 ```bash
-# Launch interactive shell (default)
-govee-artnet
-
-# Or run a command directly
-govee-artnet devices list
+# Run CLI commands
+govee-artnet-cli devices list
 ```
+
+For an interactive shell experience with real-time monitoring, log viewing, and enhanced features, see the dedicated console tool: **[govee-artnet-console](https://github.com/mccartyp/govee-artnet-console)**
 
 ### Connecting to a Remote Server
 
 ```bash
 # Connect to a remote bridge server
-govee-artnet --server-url http://192.168.1.100:8000 devices list
+govee-artnet-cli --server-url http://192.168.1.100:8000 devices list
 
 # Or set the environment variable
-export GOVEE_ARTNET_SERVER_URL=http://192.168.1.100:8000
-govee-artnet devices list
+export GOVEE_ARTNET_CLI_SERVER_URL=http://192.168.1.100:8000
+govee-artnet-cli devices list
 ```
 
 ### Authentication
@@ -67,64 +64,24 @@ If the bridge server has API authentication enabled:
 
 ```bash
 # Using API key
-govee-artnet --api-key your-api-key devices list
+govee-artnet-cli --api-key your-api-key devices list
 
 # Using bearer token
-govee-artnet --api-bearer-token your-token devices list
+govee-artnet-cli --api-bearer-token your-token devices list
 
 # Or use environment variables
-export GOVEE_ARTNET_API_KEY=your-api-key
-govee-artnet devices list
+export GOVEE_ARTNET_CLI_API_KEY=your-api-key
+govee-artnet-cli devices list
 ```
 
 ### Output Formats
 
 ```bash
 # JSON output (default)
-govee-artnet devices list
+govee-artnet-cli devices list
 
 # YAML output
-govee-artnet devices list --output yaml
-```
-
-### Interactive Shell Mode
-
-The CLI launches in interactive shell mode by default, providing an enhanced user experience with real-time monitoring and log viewing:
-
-```bash
-# Start interactive shell (default - just run govee-artnet)
-govee-artnet
-
-# Or explicitly use the shell command
-govee-artnet shell
-```
-
-The shell provides:
-- **Real-time monitoring** - Live dashboards for system metrics
-- **Log viewing and tailing** - View and stream logs with filtering
-- **Command history** - Tab completion and persistent history
-- **Bookmarks and aliases** - Save frequently used devices and commands
-- **Batch execution** - Run commands from scripts
-- **Enhanced output** - Beautiful formatted tables
-
-See the **[CLI Shell Guide](README_CLI_SHELL.md)** for complete shell documentation, configuration options, and examples.
-
-#### Shell Configuration
-
-Create a configuration file at `~/.govee_artnet/shell_config.toml`:
-
-```toml
-[shell]
-default_output = "table"    # Default output format
-history_size = 1000         # Command history size
-
-[connection]
-server_url = "http://127.0.0.1:8000"  # Default server URL
-timeout = 10.0                        # Request timeout
-
-[monitoring]
-watch_interval = 2.0        # Default watch interval (seconds)
-log_lines = 50              # Default log lines to show
+govee-artnet-cli devices list --output yaml
 ```
 
 ## DMX Channel Mapping
@@ -170,24 +127,24 @@ For individual field control, use single channel mappings instead of templates:
 - **Color-capable devices** support `r`, `g`, `b` fields
 - **Color temperature devices** support `ct` field
 
-Use `govee-artnet devices list` to check which capabilities your device supports.
+Use `govee-artnet-cli devices list` to check which capabilities your device supports.
 
 **Example - Power and Brightness Control:**
 ```bash
 # Power control on channel 1 (works on ALL devices, including plugs)
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 1 \
   --field power
 
 # Brightness control on channel 5 (only works if device supports brightness)
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 5 \
   --field brightness
 
 # Use field aliases for convenience (only works if device supports color)
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 10 \
   --field red
@@ -197,7 +154,7 @@ govee-artnet mappings create \
 
 **RGB Light Strip (3-channel RGB)**
 ```bash
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
@@ -211,7 +168,7 @@ This creates mappings for:
 
 **RGB + Color Temperature Light (4-channel RGB+CT)**
 ```bash
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 10 \
@@ -226,7 +183,7 @@ This creates mappings for:
 
 **Full Control Light (5-channel Dimmer+RGB+CT)**
 ```bash
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 1 \
   --start-channel 5 \
@@ -242,7 +199,7 @@ This creates mappings for:
 
 **Simple Brightness-Only Light (single channel mapping)**
 ```bash
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 100 \
@@ -252,12 +209,12 @@ govee-artnet mappings create \
 This creates a single channel mapping for:
 - Channel 100: Brightness (0-255)
 
-**Note**: This only works if the device has the `brightness` capability. Check with `govee-artnet devices list`.
+**Note**: This only works if the device has the `brightness` capability. Check with `govee-artnet-cli devices list`.
 
 **Tunable White (2-channel Dimmer+CT)**
 ```bash
 # Dimmer and Color Temperature
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 2 \
   --start-channel 20 \
@@ -281,7 +238,7 @@ For fine-grained control or non-standard fixture layouts, you can create individ
 
 **Step 1: Map a single brightness channel**
 ```bash
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 1 \
@@ -292,7 +249,7 @@ govee-artnet mappings create \
 
 **Step 2: Map RGB as a range (3 consecutive channels)**
 ```bash
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 2 \
@@ -304,7 +261,7 @@ This automatically maps channels 2, 3, 4 to R, G, B respectively.
 **Step 3: Map individual color channels**
 ```bash
 # Map red to channel 10
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 10 \
@@ -313,7 +270,7 @@ govee-artnet mappings create \
   --field r
 
 # Map green to channel 11
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 11 \
@@ -322,7 +279,7 @@ govee-artnet mappings create \
   --field g
 
 # Map blue to channel 12
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 12 \
@@ -333,7 +290,7 @@ govee-artnet mappings create \
 
 **Step 4: Map a color temperature channel**
 ```bash
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 13 \
@@ -376,7 +333,7 @@ Govee devices report their capabilities:
 
 List all devices with their capabilities:
 ```bash
-govee-artnet devices list
+govee-artnet-cli devices list
 ```
 
 Example output:
@@ -411,7 +368,7 @@ Example output:
 | **RGBIC Lights** | ✓ | ✓ | ✓ | ✗ | Multi-segment RGB strips |
 | **RGB+CT Lights** | ✓ | ✓ | ✓ | ✓ | Full-featured lights |
 
-**Important**: Always check your specific device's capabilities with `govee-artnet devices list` before creating mappings.
+**Important**: Always check your specific device's capabilities with `govee-artnet-cli devices list` before creating mappings.
 
 Discovery responses that include a `model_number` are matched against the bundled capability catalog. When a device does not report full capabilities, the bridge fills in `device_type`, `length_meters`, and segment metadata from the catalog so channel templates can be validated without manual editing. Manual devices can provide the same fields to override or augment catalog values.
 
@@ -434,7 +391,7 @@ Template 'DimRGBCT' is incompatible with this device (missing brightness support
 **Cause**: The device doesn't support all features required by the template.
 
 **Solution**:
-1. Check device capabilities: `govee-artnet devices list`
+1. Check device capabilities: `govee-artnet-cli devices list`
 2. Choose a compatible template based on the capability matrix above
 3. For this example, use `rgbc` template instead (doesn't require brightness)
 
@@ -448,8 +405,8 @@ Field(s) already mapped for device AA:BB:CC:DD:EE:FF on universe 0: r, g, b
 **Cause**: You're trying to map a field (like 'r' for red) that's already mapped for this device on this universe.
 
 **Solution**:
-1. List existing mappings: `govee-artnet mappings list`
-2. Delete the conflicting mapping: `govee-artnet mappings delete <mapping_id>`
+1. List existing mappings: `govee-artnet-cli mappings list`
+2. Delete the conflicting mapping: `govee-artnet-cli mappings delete <mapping_id>`
 3. Or use a different universe for the new mapping
 
 ---
@@ -484,17 +441,17 @@ Device does not support brightness control.
 **Cause**: You're trying to create a brightness mapping on a device that doesn't have the `brightness` capability (e.g., a smart plug).
 
 **Solution**:
-1. Check device capabilities: `govee-artnet devices list`
+1. Check device capabilities: `govee-artnet-cli devices list`
 2. For non-dimmable devices (like plugs), use `--field power` instead for on/off control
 3. Verify you selected the correct device ID
 
 **Example - Controlling a smart plug:**
 ```bash
 # This will FAIL on a plug (no brightness capability)
-govee-artnet mappings create --device-id H5080_PLUG --channel 1 --field brightness
+govee-artnet-cli mappings create --device-id H5080_PLUG --channel 1 --field brightness
 
 # This will WORK on a plug (power is supported by all devices)
-govee-artnet mappings create --device-id H5080_PLUG --channel 1 --field power
+govee-artnet-cli mappings create --device-id H5080_PLUG --channel 1 --field power
 ```
 
 ---
@@ -524,7 +481,7 @@ Mapping overlaps an existing entry
 **Cause**: The DMX channel range you're trying to map overlaps with an existing mapping.
 
 **Solution**:
-1. Check existing mappings: `govee-artnet mappings list`
+1. Check existing mappings: `govee-artnet-cli mappings list`
 2. Use a different channel range, or
 3. Delete the conflicting mapping, or
 4. Use `--allow-overlap` flag if intentional
@@ -545,10 +502,10 @@ govee-artnet status
 
 ```bash
 # List all discovered devices
-govee-artnet devices list
+govee-artnet-cli devices list
 
 # Add a manual device
-govee-artnet devices add \
+govee-artnet-cli devices add \
   --id "AA:BB:CC:DD:EE:FF" \
   --ip "192.168.1.100" \
   --model-number "H6160" \
@@ -557,21 +514,21 @@ govee-artnet devices add \
   --description "Living Room Strip"
 
 # Update a device
-govee-artnet devices update "AA:BB:CC:DD:EE:FF" \
+govee-artnet-cli devices update "AA:BB:CC:DD:EE:FF" \
   --ip "192.168.1.101" \
   --description "Updated description"
 
 # Enable/disable a device
-govee-artnet devices enable "AA:BB:CC:DD:EE:FF"
-govee-artnet devices disable "AA:BB:CC:DD:EE:FF"
+govee-artnet-cli devices enable "AA:BB:CC:DD:EE:FF"
+govee-artnet-cli devices disable "AA:BB:CC:DD:EE:FF"
 
 # Send a test payload to a device
-govee-artnet devices test "AA:BB:CC:DD:EE:FF" \
+govee-artnet-cli devices test "AA:BB:CC:DD:EE:FF" \
   --payload '{"cmd":"turn","turn":"on"}'
 
 # Send a quick command (on/off/brightness/color/kelvin)
-govee-artnet devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
-govee-artnet devices command "AA:BB:CC:DD:EE:FF" --kelvin 32
+govee-artnet-cli devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
+govee-artnet-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 32
 ```
 
 The `devices command` helper accepts the following actions:
@@ -610,20 +567,20 @@ manual_devices = [
 
 ```bash
 # List all mappings
-govee-artnet mappings list
+govee-artnet-cli mappings list
 
 # Get specific mapping
-govee-artnet mappings get <mapping_id>
+govee-artnet-cli mappings get <mapping_id>
 
 # Create mapping with template
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id <device_id> \
   --universe <universe_number> \
   --start-channel <channel_number> \
   --template <template_name>
 
 # Create individual mapping
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id <device_id> \
   --universe <universe_number> \
   --channel <channel_number> \
@@ -632,15 +589,15 @@ govee-artnet mappings create \
   --field <field_name>  # required for discrete type
 
 # Update mapping
-govee-artnet mappings update <mapping_id> \
+govee-artnet-cli mappings update <mapping_id> \
   --channel <new_channel> \
   --universe <new_universe>
 
 # Delete mapping
-govee-artnet mappings delete <mapping_id>
+govee-artnet-cli mappings delete <mapping_id>
 
 # View channel map (universe -> mappings)
-govee-artnet mappings channel-map
+govee-artnet-cli mappings channel-map
 ```
 
 ## Sample Configurations
@@ -649,21 +606,21 @@ govee-artnet mappings channel-map
 
 ```bash
 # Strip 1: Channels 1-3
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
   --universe 0 \
   --start-channel 1 \
   --template RGB
 
 # Strip 2: Channels 4-6
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:02" \
   --universe 0 \
   --start-channel 4 \
   --template RGB
 
 # Strip 3: Channels 7-9
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:03" \
   --universe 0 \
   --start-channel 7 \
@@ -682,21 +639,21 @@ Ch 10-512: Unused
 
 ```bash
 # Living room: RGB+CT strip with master dimmer (5 channels)
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:10" \
   --universe 1 \
   --start-channel 1 \
   --template DimRGBCT
 
 # Bedroom: Tunable white bulb (2 channels - dimmer + color temp)
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:20" \
   --universe 1 \
   --start-channel 10 \
   --template DimCT
 
 # Kitchen: RGB+CT strip (4 channels)
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:30" \
   --universe 1 \
   --start-channel 20 \
@@ -719,7 +676,7 @@ If you need a non-standard layout, use individual mappings:
 
 ```bash
 # Brightness on channel 1
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 1 \
@@ -729,7 +686,7 @@ govee-artnet mappings create \
 # Skip channel 2 (for future use)
 
 # RGB on channels 3-5
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 3 \
@@ -737,7 +694,7 @@ govee-artnet mappings create \
   --type range
 
 # Color temperature on channel 10 (non-consecutive)
-govee-artnet mappings create \
+govee-artnet-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 10 \
