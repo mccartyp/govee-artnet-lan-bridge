@@ -106,27 +106,45 @@ def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
 
     # Handle power/turn commands
     if has_turn:
-        # If brightness is also present with turn, send both commands
-        if has_brightness:
-            turn_cmd = {
-                "msg": {
-                    "cmd": "turn",
-                    "data": {"value": payload["turn"]}
-                }
-            }
-            brightness_cmd = {
-                "msg": {
-                    "cmd": "brightness",
-                    "data": {"value": payload["brightness"]}
-                }
-            }
-            return {"_multiple": [turn_cmd, brightness_cmd]}
-        return {
+        turn_cmd = {
             "msg": {
                 "cmd": "turn",
                 "data": {"value": payload["turn"]}
             }
         }
+
+        # Build list of commands to send alongside turn
+        additional_cmds = []
+
+        # Add color/colorwc command if present
+        if has_color or has_color_temp:
+            data: Dict[str, Any] = {}
+            if has_color:
+                data["color"] = payload["color"]
+            if "color_temp" in payload:
+                data["colorTemInKelvin"] = payload["color_temp"]
+            elif "colorTemInKelvin" in payload:
+                data["colorTemInKelvin"] = payload["colorTemInKelvin"]
+            additional_cmds.append({
+                "msg": {
+                    "cmd": "colorwc",
+                    "data": data
+                }
+            })
+
+        # Add brightness command if present
+        if has_brightness:
+            additional_cmds.append({
+                "msg": {
+                    "cmd": "brightness",
+                    "data": {"value": payload["brightness"]}
+                }
+            })
+
+        # Return turn with additional commands if any
+        if additional_cmds:
+            return {"_multiple": [turn_cmd] + additional_cmds}
+        return turn_cmd
 
     # Brightness-only command (no color or color_temp)
     if has_brightness and not has_color and not has_color_temp:

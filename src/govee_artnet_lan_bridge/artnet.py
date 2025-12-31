@@ -190,7 +190,15 @@ def _payload_from_slice(mapping: DeviceMapping, slice_data: bytes) -> Optional[M
         values[channel_name] = _apply_gamma_dimmer(raw_value, spec.gamma, spec.dimmer)
 
     if spec.mode == "brightness" or spec.order == ("dimmer",):
-        return {"brightness": values.get("dimmer", 0)}
+        brightness_value = values.get("dimmer", 0)
+        # Brightness of 0 sends power off, non-zero sends power on + brightness
+        if brightness_value == 0:
+            return {"turn": "off"}
+        else:
+            return {
+                "turn": "on",
+                "brightness": brightness_value
+            }
 
     color: Dict[str, int] = {}
     for key in ("r", "g", "b"):
