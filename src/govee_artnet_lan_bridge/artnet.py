@@ -189,20 +189,38 @@ def _payload_from_slice(mapping: DeviceMapping, slice_data: bytes) -> Optional[M
         raw_value = slice_data[idx]
         values[channel_name] = _apply_gamma_dimmer(raw_value, spec.gamma, spec.dimmer)
 
+    # Handle brightness-only mode (no RGB)
     if spec.mode == "brightness" or spec.order == ("dimmer",):
-        return {"brightness": values.get("dimmer", 0)}
+        brightness_value = values.get("dimmer", 0)
+        # Brightness of 0 sends power off, non-zero sends power on + brightness
+        if brightness_value == 0:
+            return {"turn": "off"}
+        else:
+            return {"turn": "on", "brightness": brightness_value}
 
+    # Handle RGB mode (with or without dimmer)
     color: Dict[str, int] = {}
     for key in ("r", "g", "b"):
         if key in values:
             color[key] = values[key]
 
-    payload: Dict[str, Any] = {}
-    if color:
-        payload["color"] = color
+    # If dimmer is present in RGB mode
     if "dimmer" in values:
-        payload["brightness"] = values["dimmer"]
-    return payload if payload else None
+        dimmer_value = values["dimmer"]
+        # Dimmer of 0 sends power off, non-zero sends power on + color + brightness
+        if dimmer_value == 0:
+            return {"turn": "off"}
+        else:
+            payload: Dict[str, Any] = {"turn": "on"}
+            if color:
+                payload["color"] = color
+            payload["brightness"] = dimmer_value
+            return payload
+
+    # RGB only (no dimmer)
+    if color:
+        return {"color": color}
+    return None
 
 
 def _payload_from_discrete_slice(
@@ -226,10 +244,7 @@ def _payload_from_discrete_slice(
         if value == 0:
             return {"turn": "off"}
         else:
-            return {"_multiple": [
-                {"turn": "on"},
-                {"brightness": value}
-            ]}
+            return {"turn": "on", "brightness": value}
 
     # Handle color temperature - scale DMX 0-255 to kelvin range
     if field == "ct":
