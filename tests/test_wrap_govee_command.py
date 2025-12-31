@@ -15,9 +15,9 @@ def test_wrap_govee_command_color_and_turn_on() -> None:
     cmds = result["_multiple"]
     assert len(cmds) == 2
 
-    # First command should be turn:on
+    # First command should be turn:on with numeric value 1
     assert cmds[0]["msg"]["cmd"] == "turn"
-    assert cmds[0]["msg"]["data"]["value"] == "on"
+    assert cmds[0]["msg"]["data"]["value"] == 1
 
     # Second command should be colorwc
     assert cmds[1]["msg"]["cmd"] == "colorwc"
@@ -36,9 +36,9 @@ def test_wrap_govee_command_color_and_turn_off() -> None:
     cmds = result["_multiple"]
     assert len(cmds) == 2
 
-    # First command should be turn:off
+    # First command should be turn:off with numeric value 0
     assert cmds[0]["msg"]["cmd"] == "turn"
-    assert cmds[0]["msg"]["data"]["value"] == "off"
+    assert cmds[0]["msg"]["data"]["value"] == 0
 
     # Second command should be colorwc
     assert cmds[1]["msg"]["cmd"] == "colorwc"
@@ -58,9 +58,9 @@ def test_wrap_govee_command_color_turn_brightness() -> None:
     cmds = result["_multiple"]
     assert len(cmds) == 3
 
-    # First: turn
+    # First: turn with numeric value 1
     assert cmds[0]["msg"]["cmd"] == "turn"
-    assert cmds[0]["msg"]["data"]["value"] == "on"
+    assert cmds[0]["msg"]["data"]["value"] == 1
 
     # Second: colorwc
     assert cmds[1]["msg"]["cmd"] == "colorwc"
@@ -84,7 +84,7 @@ def test_wrap_govee_command_turn_brightness_only() -> None:
     assert len(cmds) == 2
 
     assert cmds[0]["msg"]["cmd"] == "turn"
-    assert cmds[0]["msg"]["data"]["value"] == "on"
+    assert cmds[0]["msg"]["data"]["value"] == 1
 
     assert cmds[1]["msg"]["cmd"] == "brightness"
     assert cmds[1]["msg"]["data"]["value"] == 200
@@ -117,4 +117,4 @@ def test_wrap_govee_command_turn_only() -> None:
 
     assert "msg" in result
     assert result["msg"]["cmd"] == "turn"
-    assert result["msg"]["data"]["value"] == "off"
+    assert result["msg"]["data"]["value"] == 0
