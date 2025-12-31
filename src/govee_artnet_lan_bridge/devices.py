@@ -115,7 +115,11 @@ def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
             }
         }
 
-        # Build list of commands to send alongside turn
+        # When turning off, only send the turn command
+        if turn_value == 0:
+            return turn_cmd
+
+        # When turning on, send additional commands alongside turn
         additional_cmds = []
 
         # Add color/colorwc command if present
