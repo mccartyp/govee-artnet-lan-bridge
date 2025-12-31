@@ -56,7 +56,7 @@ def _handle_terminal_resize(signum: int, frame: Any) -> None:
         signum: Signal number
         frame: Current stack frame
     """
-    global _current_config, _auto_pagination
+    global _current_config
 
     if _auto_pagination and _current_config is not None:
         terminal_height = shutil.get_terminal_size().lines
@@ -594,8 +594,6 @@ def _paginate_output(text: str, config: Optional[ClientConfig]) -> None:
         text: Text to print
         config: Client configuration with page_size
     """
-    global _current_config
-
     # Use global config if available (to pick up resize updates), otherwise use passed config
     active_config = _current_config if _current_config is not None else config
 
