@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "govee-artnet-lan-bridge"
-version = "1.0.1"
+version = "1.0.2"
 description = "Asyncio entrypoint, configuration loader, and structured logging for the Govee Artnet LAN bridge."
 readme = "LICENSE"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "Govee Bridge Maintainers" }]
 dependencies = [
-    "fastapi>=0.110.0",
-    "httpx>=0.27.0",
+    "fastapi>=0.101.0",
+    "httpx>=0.26.0",
     "prometheus-client>=0.20.0",
     "PyYAML>=6.0.0",
     "pytest>=8.3.0",

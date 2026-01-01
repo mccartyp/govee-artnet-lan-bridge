@@ -1,5 +1,10 @@
 # Govee ArtNet LAN Bridge
 
+[![Latest Release](https://img.shields.io/github/v/release/mccartyp/govee-artnet-lan-bridge)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
+[![Download DEB](https://img.shields.io/badge/download-.deb-blue)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
+[![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/github/license/mccartyp/govee-artnet-lan-bridge)](LICENSE)
+
 This project bridges ArtNet DMX input to Govee LAN devices, allowing you to control Govee smart lights using standard lighting control software like QLC+, Chamsys MagicQ, or any other ArtNet-compatible controller.
 
 ## Architecture

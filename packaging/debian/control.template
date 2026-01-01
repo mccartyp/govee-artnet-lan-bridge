@@ -1,0 +1,19 @@
+Package: govee-artnet-bridge
+Version: ${VERSION}
+Section: net
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.10), python3-fastapi (>= 0.101.0), python3-httpx (>= 0.26.0), python3-uvicorn (>= 0.23.0), python3-prometheus-client (>= 0.20.0), python3-yaml (>= 6.0.0), python3-rich (>= 13.0.0), python3-pytest (>= 8.0.0), python3-pytest-asyncio (>= 0.23.0), systemd
+Maintainer: Patrick McCarty <mccartyp@gmail.com>
+Description: ArtNet to Govee LAN device bridge
+ Bridges ArtNet DMX input to Govee LAN devices, allowing control of
+ Govee smart lights using standard lighting control software like QLC+,
+ Chamsys MagicQ, or any other ArtNet-compatible controller.
+ .
+ Features:
+  - ArtNet DMX listener (port 6454)
+  - REST API server with WebSocket support (port 8000)
+  - Automatic device discovery via multicast
+  - Device health monitoring and polling
+  - Prometheus metrics endpoint
+  - Systemd service integration

@@ -1,0 +1,46 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    purge)
+        # Remove system user
+        if id govee-bridge >/dev/null 2>&1; then
+            deluser --system govee-bridge || true
+            # Also remove the group if it exists
+            if getent group govee-bridge >/dev/null; then
+                delgroup --system govee-bridge || true
+            fi
+        fi
+
+        # Remove data directory and all contents
+        if [ -d /var/lib/govee-bridge ]; then
+            echo "Removing data directory /var/lib/govee-bridge..."
+            rm -rf /var/lib/govee-bridge || true
+        fi
+
+        # Note: /etc/govee-bridge/config.toml is automatically removed by dpkg
+        # as a conffile, but we should clean up the directory if empty
+        if [ -d /etc/govee-bridge ]; then
+            rmdir --ignore-fail-on-non-empty /etc/govee-bridge || true
+        fi
+
+        # Reload systemd daemon
+        systemctl daemon-reload || true
+
+        echo "Govee ArtNet Bridge completely removed (purged)."
+        ;;
+
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        # On remove (not purge), we keep data and config
+        # Just reload systemd to remove the service unit
+        systemctl daemon-reload || true
+        ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+exit 0

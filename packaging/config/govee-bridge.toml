@@ -1,29 +1,87 @@
-# Default configuration for govee-artnet-lan-bridge.
-# Copy this file to /etc/govee-bridge/config.toml for the system service or to
-# ${XDG_CONFIG_HOME:-$HOME/.config}/govee-bridge/config.toml for the user
-# service and adjust values as needed.
+# ==============================================================================
+# Govee ArtNet LAN Bridge - Configuration File
+# ==============================================================================
+# This is the minimal configuration template. For comprehensive documentation
+# of all options, see: /usr/share/doc/govee-artnet-bridge/govee-bridge.toml.example
+#
+# Location:
+#   System service: /etc/govee-bridge/config.toml
+#   User service: ~/.config/govee-bridge/config.toml
+#
+# Reload after changes:
+#   sudo systemctl reload govee-bridge.service
+#   OR: POST /reload via API
+# ==============================================================================
 
-# UDP port for Art-Net input.
+# ------------------------------------------------------------------------------
+# Network Settings
+# ------------------------------------------------------------------------------
+
+# ArtNet DMX input port (standard ArtNet port)
 artnet_port = 6454
 
-# HTTP API port.
+# HTTP API server port
 api_port = 8000
 
-# Path to the SQLite database that stores devices and state.
-# For the system service the installer sets up /var/lib/govee-bridge.
+# ------------------------------------------------------------------------------
+# Security (Recommended for network-exposed instances)
+# ------------------------------------------------------------------------------
+
+# Uncomment to require API authentication:
+# api_key = "your-secret-api-key-here"
+
+# Disable API docs in production:
+# api_docs = false
+
+# ------------------------------------------------------------------------------
+# Storage
+# ------------------------------------------------------------------------------
+
+# SQLite database path (stores devices, mappings, state)
 db_path = "/var/lib/govee-bridge/bridge.sqlite3"
 
-# Logging verbosity and format. Use "json" for structured logs.
+# ------------------------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------------------------
+
+# Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
 log_level = "INFO"
+
+# Log format: "plain" (human-readable) or "json" (structured)
 log_format = "plain"
 
-# Enable device polling
+# ------------------------------------------------------------------------------
+# Device Polling (Health Monitoring)
+# ------------------------------------------------------------------------------
+
+# Enable periodic device health checks
 device_poll_enabled = true
 
-# Optional: customize polling behavior
-device_poll_interval = 60.0          # Seconds between poll cycles (default: 60.0)
-device_poll_timeout = 1.5            # Seconds to wait for responses (default: 1.5)
-device_poll_rate_per_second = 2.0    # Max poll requests per second (default: 2.0)
-device_poll_rate_burst = 5           # Max burst of poll requests (default: 5)
-device_poll_offline_threshold = 2    # Failures before marking offline (default: 2)
-device_poll_batch_size = 50          # Max devices per cycle (default: 50)
+# Polling interval (seconds between full poll cycles)
+device_poll_interval = 60.0
+
+# Poll timeout (seconds to wait for device responses)
+device_poll_timeout = 1.5
+
+# Poll rate limiting (polls/second across all devices)
+device_poll_rate_per_second = 2.0
+device_poll_rate_burst = 5
+
+# Mark device offline after this many failed polls
+device_poll_offline_threshold = 2
+
+# Maximum devices to poll per cycle
+device_poll_batch_size = 50
+
+# ------------------------------------------------------------------------------
+# Discovery
+# ------------------------------------------------------------------------------
+
+# Device discovery interval (seconds)
+# discovery_interval = 30.0
+
+# ------------------------------------------------------------------------------
+# Advanced Options
+# ------------------------------------------------------------------------------
+# See govee-bridge.toml.example for full list of advanced configuration options
+# including rate limiting, health monitoring, manual device configuration, etc.
