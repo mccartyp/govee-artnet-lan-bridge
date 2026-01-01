@@ -11,7 +11,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import uvicorn
 
 from .capabilities import NormalizedCapabilities, validate_command_payload
@@ -57,7 +57,7 @@ class DeviceCreate(BaseModel):
     id: str
     ip: str
     model_number: Optional[str] = Field(
-        default=None, validation_alias=AliasChoices("model_number", "model")
+        default=None, alias="model"
     )
     device_type: Optional[str] = None
     description: Optional[str] = None
@@ -77,7 +77,7 @@ class DeviceUpdate(BaseModel):
     ip: Optional[str] = None
     name: Optional[str] = None
     model_number: Optional[str] = Field(
-        default=None, validation_alias=AliasChoices("model_number", "model")
+        default=None, alias="model"
     )
     device_type: Optional[str] = None
     description: Optional[str] = None
@@ -633,7 +633,7 @@ def create_app(
         return result
 
     @app.delete("/mappings/{mapping_id}", dependencies=[Depends(auth_dependency)], status_code=status.HTTP_204_NO_CONTENT)
-    async def delete_mapping(mapping_id: int) -> None:
+    async def delete_mapping(mapping_id: int):
         # Get mapping details before deletion for event publishing
         mapping = await store.mapping_by_id(mapping_id)
         if not mapping:
@@ -646,7 +646,6 @@ def create_app(
         # Publish event after successfully deleting mapping
         if event_bus:
             await event_bus.publish(EVENT_MAPPING_DELETED, {"mapping_id": mapping_id, "universe": mapping.universe})
-        return None
 
     @app.post("/reload", dependencies=[Depends(auth_dependency)], status_code=status.HTTP_202_ACCEPTED)
     async def reload_config() -> dict[str, str]:
