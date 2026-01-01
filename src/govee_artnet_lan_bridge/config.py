@@ -120,7 +120,9 @@ class Config:
     event_bus_enabled: bool = True
 
     def __post_init__(self) -> None:
-        _validate_config(self)
+        # Note: Validation is deferred until after config file is loaded
+        # See from_sources() which calls _validate_config() after applying all sources
+        pass
 
     def logging_dict(self) -> Dict[str, Any]:
         """Return a sanitized mapping suitable for structured logging."""
@@ -223,6 +225,8 @@ class Config:
         config = _apply_mapping(config, file_config)
         config = _apply_mapping(config, env_config)
         config = _apply_mapping(config, cli_config)
+        # Validate config after all sources are loaded (not in __post_init__)
+        _validate_config(config)
         return config
 
 
