@@ -232,7 +232,7 @@ jobs:
           echo "✓ Capability catalog found"
           ls -la /usr/share/govee_artnet_lan_bridge/capability_catalog.json
           echo "Verifying config points to it..."
-          grep capability_catalog_path /etc/govee-bridge/config.toml || echo "NOT FOUND IN CONFIG"
+          ${{ matrix.use_sudo && 'sudo' || '' }} grep capability_catalog_path /etc/govee-bridge/config.toml || echo "NOT FOUND IN CONFIG"
         else
           echo "ERROR: Capability catalog not found"
           echo "Contents of /usr/share/:"
@@ -265,7 +265,7 @@ jobs:
         echo "Debug: Checking capability catalog and config..."
         ls -la /usr/share/govee_artnet_lan_bridge/capability_catalog.json || echo "ERROR: Catalog file missing!"
         echo "Config file contents (capability_catalog_path line):"
-        grep capability_catalog /etc/govee-bridge/config.toml || echo "ERROR: Not in config!"
+        sudo grep capability_catalog /etc/govee-bridge/config.toml || echo "ERROR: Not in config!"
         echo ""
 
         # Service should already be started by postinst
