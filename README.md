@@ -295,7 +295,9 @@ See [USAGE.md](USAGE.md#troubleshooting-mapping-errors) for detailed troubleshoo
   <img src="res/images/art-net-logo.svg" alt="Art-Net Logo" width="300">
 </p>
 
-**Art-Net™ Designed by and Copyright Artistic Licence Engineering Ltd**
+<p align="center">
+<strong>Art-Net™ Designed by and Copyright Artistic Licence Engineering Ltd</strong>
+</p>
 
 This project implements the Art-Net protocol. For more information about Art-Net, visit [https://art-net.org.uk/](https://art-net.org.uk/)
 
