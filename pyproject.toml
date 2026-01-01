@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "govee-artnet-lan-bridge"
-version = "1.0.2"
+version = "1.0.3"
 description = "Asyncio entrypoint, configuration loader, and structured logging for the Govee Artnet LAN bridge."
 readme = "LICENSE"
 requires-python = ">=3.10"

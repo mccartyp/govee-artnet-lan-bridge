@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-01-01
+
+### Fixed
+- Config validation timing - now validates after loading config file instead of before
+- Capability catalog file ownership and permissions issues in postinst script
+- Directory permissions for capability catalog to ensure proper access on Ubuntu 24.04
+- Removed ACLs from capability catalog files to fix access issues on Ubuntu 24.04
+- Systemd service check and file ownership issues during package installation
+- typing-extensions dependency conflicts during Debian package installation
+
+### Changed
+- Added capability_catalog_path to system configuration for explicit path management
+- Enhanced GitHub Actions workflow testing with proper sudo permissions for config file access
+- Improved postinst script debugging and verification output
+
 ## [1.0.2] - 2026-01-01
 
 ### Added
