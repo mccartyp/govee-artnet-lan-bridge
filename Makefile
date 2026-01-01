@@ -43,7 +43,6 @@ deb: clean-deb
 	@echo "Building Debian package $(PACKAGE_NAME) $(VERSION)..."
 	@mkdir -p $(DEB_PKG_DIR)/DEBIAN
 	@mkdir -p $(DEB_PKG_DIR)/usr/bin
-	@mkdir -p $(DEB_PKG_DIR)/usr/lib/systemd/system
 	@mkdir -p $(DEB_PKG_DIR)/lib/systemd/system
 	@mkdir -p $(DEB_PKG_DIR)/etc/govee-bridge
 	@mkdir -p $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)
@@ -78,8 +77,7 @@ deb: clean-deb
 	@echo 'exec python3 -c "from govee_artnet_lan_bridge.cli import main; import sys; sys.exit(main())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
 	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
 
-	@# Install systemd service to both locations for compatibility
-	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/usr/lib/systemd/system/
+	@# Install systemd service
 	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/lib/systemd/system/
 
 	@# Install config template as conffile
