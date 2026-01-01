@@ -3,13 +3,14 @@ set -e
 
 case "$1" in
     configure)
-        # Create system user if it doesn't exist
+        # Create system user and group if they don't exist
+        if ! getent group govee-bridge >/dev/null 2>&1; then
+            groupadd --system govee-bridge
+        fi
         if ! id govee-bridge >/dev/null 2>&1; then
-            adduser --system --group --home /var/lib/govee-bridge \
-                    --shell /usr/sbin/nologin \
-                    --disabled-login --quiet \
-                    --gecos "Govee ArtNet Bridge service user" \
-                    govee-bridge
+            useradd --system --gid govee-bridge --home-dir /var/lib/govee-bridge \
+                    --shell /usr/sbin/nologin --comment "Govee ArtNet Bridge service user" \
+                    --no-create-home govee-bridge
         fi
 
         # Ensure data directory exists with correct ownership
