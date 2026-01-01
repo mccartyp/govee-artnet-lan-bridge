@@ -6,17 +6,17 @@ case "$1" in
         export DEBIAN_FRONTEND=noninteractive
 
         # Install pydantic v2 system-wide
-        # (pip is available as a package dependency)
+        # Use --ignore-installed to avoid conflicts with apt-installed packages like typing-extensions
         echo "Installing pydantic v2 system-wide..."
 
-        # Try with --break-system-packages first (Ubuntu 24.04+)
-        if pip3 install --break-system-packages 'pydantic>=2.0.0' 2>&1; then
+        # Try with --break-system-packages and --ignore-installed
+        if pip3 install --break-system-packages --ignore-installed 'pydantic>=2.0.0' 2>&1; then
             echo "✓ Pydantic v2 installed"
-        elif python3 -m pip install --break-system-packages 'pydantic>=2.0.0' 2>&1; then
+        elif python3 -m pip install --break-system-packages --ignore-installed 'pydantic>=2.0.0' 2>&1; then
             echo "✓ Pydantic v2 installed"
-        elif pip3 install 'pydantic>=2.0.0' 2>&1; then
+        elif pip3 install --ignore-installed 'pydantic>=2.0.0' 2>&1; then
             echo "✓ Pydantic v2 installed"
-        elif python3 -m pip install 'pydantic>=2.0.0' 2>&1; then
+        elif python3 -m pip install --ignore-installed 'pydantic>=2.0.0' 2>&1; then
             echo "✓ Pydantic v2 installed"
         else
             echo "ERROR: Failed to install pydantic v2"
