@@ -1,43 +1,25 @@
 #!/bin/bash
-set +e
+set -e
 
 case "$1" in
     install|upgrade)
         export DEBIAN_FRONTEND=noninteractive
 
-        # Update package lists first
-        echo "Updating package lists..."
-        apt-get update -qq 2>&1 | grep -v "^Get:" | head -5 || true
+        # Install pydantic v2 system-wide
+        # (pip is available as a package dependency)
+        echo "Installing pydantic v2 system-wide..."
 
-        # Remove system pydantic v1 package to avoid conflicts
-        echo "Removing system pydantic v1 package..."
-        apt-get remove -y -qq python3-pydantic 2>/dev/null || true
-        apt-get autoremove -y -qq 2>/dev/null || true
-
-        # Install pip if not available
-        if ! command -v pip3 >/dev/null 2>&1 && ! python3 -m pip --version >/dev/null 2>&1; then
-            echo "Installing python3-pip..."
-            apt-get install -y python3-pip 2>&1 | grep -v "^Selecting\|^Preparing\|^Unpacking\|^Setting" | head -10 || true
-        fi
-
-        # Verify pip is now available
-        if command -v pip3 >/dev/null 2>&1 || python3 -m pip --version >/dev/null 2>&1; then
-            echo "Installing pydantic v2 system-wide..."
-            # Try multiple installation methods
-            if pip3 install --break-system-packages 'pydantic>=2.0.0' 2>&1 | grep -q "Successfully installed\|already satisfied"; then
-                echo "✓ Pydantic v2 installed successfully (pip3 --break-system-packages)"
-            elif python3 -m pip install --break-system-packages 'pydantic>=2.0.0' 2>&1 | grep -q "Successfully installed\|already satisfied"; then
-                echo "✓ Pydantic v2 installed successfully (python3 -m pip --break-system-packages)"
-            elif pip3 install 'pydantic>=2.0.0' 2>&1 | grep -q "Successfully installed\|already satisfied"; then
-                echo "✓ Pydantic v2 installed successfully (pip3)"
-            elif python3 -m pip install 'pydantic>=2.0.0' 2>&1 | grep -q "Successfully installed\|already satisfied"; then
-                echo "✓ Pydantic v2 installed successfully (python3 -m pip)"
-            else
-                echo "ERROR: Failed to install pydantic v2"
-                exit 1
-            fi
+        # Try with --break-system-packages first (Ubuntu 24.04+)
+        if pip3 install --break-system-packages 'pydantic>=2.0.0' 2>&1; then
+            echo "✓ Pydantic v2 installed"
+        elif python3 -m pip install --break-system-packages 'pydantic>=2.0.0' 2>&1; then
+            echo "✓ Pydantic v2 installed"
+        elif pip3 install 'pydantic>=2.0.0' 2>&1; then
+            echo "✓ Pydantic v2 installed"
+        elif python3 -m pip install 'pydantic>=2.0.0' 2>&1; then
+            echo "✓ Pydantic v2 installed"
         else
-            echo "ERROR: pip not available after installation attempt"
+            echo "ERROR: Failed to install pydantic v2"
             exit 1
         fi
         ;;
