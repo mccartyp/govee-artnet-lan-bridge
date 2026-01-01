@@ -40,6 +40,9 @@ api_port = 8000
 # SQLite database path (stores devices, mappings, state)
 db_path = "/var/lib/govee-bridge/bridge.sqlite3"
 
+# Capability catalog path (device capabilities definition)
+capability_catalog_path = "/usr/share/govee_artnet_lan_bridge/capability_catalog.json"
+
 # ------------------------------------------------------------------------------
 # Logging
 # ------------------------------------------------------------------------------
