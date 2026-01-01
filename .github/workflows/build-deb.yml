@@ -227,10 +227,16 @@ jobs:
         fi
 
         # Check capability catalog installed
+        echo "Checking for capability catalog..."
         if [ -f /usr/share/govee_artnet_lan_bridge/capability_catalog.json ]; then
-          echo "✓ Capability catalog installed"
+          echo "✓ Capability catalog found"
+          ls -la /usr/share/govee_artnet_lan_bridge/capability_catalog.json
+          echo "Verifying config points to it..."
+          grep capability_catalog_path /etc/govee-bridge/config.toml || echo "NOT FOUND IN CONFIG"
         else
           echo "ERROR: Capability catalog not found"
+          echo "Contents of /usr/share/:"
+          ls -la /usr/share/ | grep govee || echo "No govee directories"
           exit 1
         fi
 
@@ -254,6 +260,13 @@ jobs:
       if: matrix.use_sudo == true
       run: |
         echo "=== Testing systemd service ==="
+
+        # Debug: verify files exist before testing service
+        echo "Debug: Checking capability catalog and config..."
+        ls -la /usr/share/govee_artnet_lan_bridge/capability_catalog.json || echo "ERROR: Catalog file missing!"
+        echo "Config file contents (capability_catalog_path line):"
+        grep capability_catalog /etc/govee-bridge/config.toml || echo "ERROR: Not in config!"
+        echo ""
 
         # Service should already be started by postinst
         # Check if service is active
