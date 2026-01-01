@@ -135,6 +135,7 @@ jobs:
         echo ""
         echo "Installing Python package dependencies from apt..."
         ${{ matrix.use_sudo && 'sudo' || '' }} apt-get install -y \
+          python3-pip \
           python3-fastapi \
           python3-httpx \
           python3-uvicorn \

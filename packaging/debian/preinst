@@ -20,6 +20,7 @@ case "$1" in
             echo "✓ Pydantic v2 installed"
         else
             echo "ERROR: Failed to install pydantic v2"
+            echo "  Ensure python3-pip is installed before installing this package"
             exit 1
         fi
         ;;
