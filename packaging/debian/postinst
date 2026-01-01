@@ -33,6 +33,20 @@ case "$1" in
             chmod 640 /etc/govee-bridge/config.toml
         fi
 
+        # Ensure capability catalog has correct ownership and permissions
+        if [ -f /usr/share/govee_artnet_lan_bridge/capability_catalog.json ]; then
+            chown root:root /usr/share/govee_artnet_lan_bridge/capability_catalog.json
+            chmod 644 /usr/share/govee_artnet_lan_bridge/capability_catalog.json
+        fi
+
+        # Ensure systemd service file has correct ownership
+        for svc_path in /lib/systemd/system/govee-bridge.service /usr/lib/systemd/system/govee-bridge.service; do
+            if [ -f "$svc_path" ]; then
+                chown root:root "$svc_path"
+                chmod 644 "$svc_path"
+            fi
+        done
+
         # Reload systemd daemon
         systemctl daemon-reload || true
 

@@ -210,17 +210,17 @@ jobs:
         echo ""
         echo "Checking systemd service..."
         echo "Debug: Checking for service file on disk..."
-        ls -la /lib/systemd/system/govee-bridge.service 2>&1 || echo "/lib not found"
-        ls -la /usr/lib/systemd/system/govee-bridge.service 2>&1 || echo "/usr/lib not found"
-        echo "Debug: systemctl list-unit-files output:"
-        systemctl list-unit-files 2>&1 | grep -i govee || echo "No govee services found"
 
-        if systemctl list-unit-files 2>&1 | grep -q govee-bridge.service; then
+        # Check if service file exists (works reliably in all environments)
+        if [ -f /lib/systemd/system/govee-bridge.service ] || [ -f /usr/lib/systemd/system/govee-bridge.service ]; then
           echo "✓ Systemd service file installed"
+          ls -la /lib/systemd/system/govee-bridge.service 2>/dev/null || true
+          ls -la /usr/lib/systemd/system/govee-bridge.service 2>/dev/null || true
         else
           echo "ERROR: Systemd service file not found"
-          echo "All systemd directories:"
-          find / -name "systemd" -type d 2>/dev/null | head -20 || true
+          echo "Searched locations:"
+          ls -la /lib/systemd/system/ 2>/dev/null | grep govee || echo "  /lib/systemd/system/ - not found"
+          ls -la /usr/lib/systemd/system/ 2>/dev/null | grep govee || echo "  /usr/lib/systemd/system/ - not found"
           exit 1
         fi
 
