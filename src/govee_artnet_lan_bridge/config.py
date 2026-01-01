@@ -120,9 +120,9 @@ class Config:
     event_bus_enabled: bool = True
 
     def __post_init__(self) -> None:
-        # Note: Validation is deferred until after config file is loaded
-        # See from_sources() which calls _validate_config() after applying all sources
-        pass
+        # Validate all fields except capability_catalog_path
+        # (capability_catalog_path is validated after loading config file in from_sources)
+        _validate_config(self, skip_capability_catalog_check=True)
 
     def logging_dict(self) -> Dict[str, Any]:
         """Return a sanitized mapping suitable for structured logging."""
@@ -230,7 +230,7 @@ class Config:
         return config
 
 
-def _validate_config(config: Config) -> None:
+def _validate_config(config: Config, skip_capability_catalog_check: bool = False) -> None:
     _validate_version(config.config_version)
     _validate_range("artnet_port", config.artnet_port, 1, 65535)
     _validate_range("api_port", config.api_port, 1, 65535)
@@ -266,8 +266,9 @@ def _validate_config(config: Config) -> None:
     _validate_range("subsystem_failure_cooldown", config.subsystem_failure_cooldown, 0.0, 3600.0)
     _validate_range("noisy_log_sample_rate", config.noisy_log_sample_rate, 0.0, 1.0)
     _validate_range("trace_context_sample_rate", config.trace_context_sample_rate, 0.0, 1.0)
-    if not config.capability_catalog_path or not Path(config.capability_catalog_path).exists():
-        raise ValueError("capability_catalog_path must point to an existing file.")
+    if not skip_capability_catalog_check:
+        if not config.capability_catalog_path or not Path(config.capability_catalog_path).exists():
+            raise ValueError("capability_catalog_path must point to an existing file.")
     for field_name, value in (
         ("log_level", config.log_level),
         ("discovery_log_level", config.discovery_log_level),
