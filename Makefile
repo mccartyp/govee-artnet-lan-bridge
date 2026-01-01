@@ -61,15 +61,28 @@ deb: clean-deb
 	@# Install Python source files to /opt/govee-bridge (for venv)
 	@mkdir -p $(DEB_PKG_DIR)/opt/govee-bridge
 	@cp -r src/govee_artnet_lan_bridge $(DEB_PKG_DIR)/opt/govee-bridge/
-	@cp res/capability_catalog.json $(DEB_PKG_DIR)/opt/govee-bridge/
 
-	@# Create executable wrappers that use venv python
+	@# Install capability catalog to standard location
+	@mkdir -p $(DEB_PKG_DIR)/usr/share/govee_artnet_lan_bridge
+	@cp res/capability_catalog.json $(DEB_PKG_DIR)/usr/share/govee_artnet_lan_bridge/
+
+	@# Create executable wrappers with venv fallback
 	@echo '#!/bin/bash' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
-	@echo 'exec /opt/govee-bridge/venv/bin/python3 -c "import sys; sys.path.insert(0, \"/opt/govee-bridge\"); from govee_artnet_lan_bridge.__main__ import run; sys.exit(run())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo 'if [ -x /opt/govee-bridge/venv/bin/python3 ]; then' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo '  exec /opt/govee-bridge/venv/bin/python3 -c "import sys; sys.path.insert(0, \"/opt/govee-bridge\"); from govee_artnet_lan_bridge.__main__ import run; sys.exit(run())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo 'else' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo '  export PYTHONPATH="/opt/govee-bridge:$$PYTHONPATH"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo '  exec python3 -c "from govee_artnet_lan_bridge.__main__ import run; import sys; sys.exit(run())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo 'fi' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
 	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
 
 	@echo '#!/bin/bash' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
-	@echo 'exec /opt/govee-bridge/venv/bin/python3 -c "import sys; sys.path.insert(0, \"/opt/govee-bridge\"); from govee_artnet_lan_bridge.cli import main; sys.exit(main())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo 'if [ -x /opt/govee-bridge/venv/bin/python3 ]; then' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo '  exec /opt/govee-bridge/venv/bin/python3 -c "import sys; sys.path.insert(0, \"/opt/govee-bridge\"); from govee_artnet_lan_bridge.cli import main; sys.exit(main())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo 'else' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo '  export PYTHONPATH="/opt/govee-bridge:$$PYTHONPATH"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo '  exec python3 -c "from govee_artnet_lan_bridge.cli import main; import sys; sys.exit(main())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo 'fi' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
 	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
 
 	@# Install systemd service to /lib/systemd/system (standard location)
