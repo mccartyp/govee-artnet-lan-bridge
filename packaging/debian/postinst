@@ -21,10 +21,6 @@ case "$1" in
             chmod 750 /var/lib/govee-bridge
         fi
 
-        # Install pydantic v2 via pip (not available in Ubuntu 24.04 apt)
-        echo "Installing pydantic>=2.0 via pip..."
-        python3 -m pip install --break-system-packages 'pydantic>=2.0.0' --quiet || true
-
         # Ensure config directory has correct permissions
         if [ -d /etc/govee-bridge ]; then
             chown root:govee-bridge /etc/govee-bridge

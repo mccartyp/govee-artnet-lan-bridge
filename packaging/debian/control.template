@@ -3,7 +3,7 @@ Version: ${VERSION}
 Section: net
 Priority: optional
 Architecture: all
-Depends: python3 (>= 3.10), python3-pip, python3-fastapi (>= 0.101.0), python3-httpx (>= 0.26.0), python3-uvicorn (>= 0.23.0), python3-prometheus-client (>= 0.19.0), python3-yaml (>= 6.0.0), python3-rich (>= 13.0.0), python3-pytest (>= 7.4.0), python3-pytest-asyncio (>= 0.20.0), systemd
+Depends: python3 (>= 3.10), python3-fastapi (>= 0.101.0), python3-httpx (>= 0.26.0), python3-uvicorn (>= 0.23.0), python3-prometheus-client (>= 0.19.0), python3-yaml (>= 6.0.0), python3-rich (>= 13.0.0), python3-pytest (>= 7.4.0), python3-pytest-asyncio (>= 0.20.0), systemd
 Maintainer: Patrick McCarty <mccartyp@gmail.com>
 Description: ArtNet to Govee LAN device bridge
  Bridges ArtNet DMX input to Govee LAN devices, allowing control of

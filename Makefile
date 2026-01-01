@@ -53,11 +53,12 @@ deb: clean-deb
 	@sed "s/\$${VERSION}/$(VERSION)/" packaging/debian/control.template > $(DEB_PKG_DIR)/DEBIAN/control
 
 	@# Copy package scripts
+	@cp packaging/debian/preinst $(DEB_PKG_DIR)/DEBIAN/preinst
 	@cp packaging/debian/postinst $(DEB_PKG_DIR)/DEBIAN/postinst
 	@cp packaging/debian/prerm $(DEB_PKG_DIR)/DEBIAN/prerm
 	@cp packaging/debian/postrm $(DEB_PKG_DIR)/DEBIAN/postrm
 	@cp packaging/debian/conffiles $(DEB_PKG_DIR)/DEBIAN/conffiles
-	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/postinst $(DEB_PKG_DIR)/DEBIAN/prerm $(DEB_PKG_DIR)/DEBIAN/postrm
+	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/preinst $(DEB_PKG_DIR)/DEBIAN/postinst $(DEB_PKG_DIR)/DEBIAN/prerm $(DEB_PKG_DIR)/DEBIAN/postrm
 
 	@# Copy Python source files
 	@cp -r src/govee_artnet_lan_bridge $(DEB_PKG_DIR)/usr/lib/python3/dist-packages/
@@ -108,6 +109,7 @@ deb: clean-deb
 	@find $(DEB_PKG_DIR) -type f -exec chmod 644 {} \;
 	@chmod 755 $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
 	@chmod 755 $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/preinst
 	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/postinst
 	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/prerm
 	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/postrm
