@@ -1,0 +1,30 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    install|upgrade)
+        # Install pip if not available (required for pydantic v2 installation)
+        if ! command -v pip3 >/dev/null 2>&1 && ! python3 -m pip --version >/dev/null 2>&1; then
+            echo "Installing python3-pip..."
+            if command -v apt-get >/dev/null 2>&1; then
+                apt-get update -qq
+                apt-get install -y -qq python3-pip >/dev/null 2>&1 || true
+            fi
+        fi
+
+        # Install pydantic v2 before package files are unpacked
+        # This is necessary because Ubuntu 24.04 only has pydantic v1 in apt
+        echo "Installing pydantic>=2.0 via pip..."
+        if command -v pip3 >/dev/null 2>&1; then
+            pip3 install --break-system-packages 'pydantic>=2.0.0' --quiet 2>/dev/null || \
+            python3 -m pip install --break-system-packages 'pydantic>=2.0.0' --quiet 2>/dev/null || \
+            true
+        elif python3 -m pip --version >/dev/null 2>&1; then
+            python3 -m pip install --break-system-packages 'pydantic>=2.0.0' --quiet 2>/dev/null || \
+            python3 -m pip install 'pydantic>=2.0.0' --quiet 2>/dev/null || \
+            true
+        fi
+        ;;
+esac
+
+exit 0
