@@ -43,10 +43,8 @@ deb: clean-deb
 	@echo "Building Debian package $(PACKAGE_NAME) $(VERSION)..."
 	@mkdir -p $(DEB_PKG_DIR)/DEBIAN
 	@mkdir -p $(DEB_PKG_DIR)/usr/bin
-	@mkdir -p $(DEB_PKG_DIR)/usr/lib/python3/dist-packages
 	@mkdir -p $(DEB_PKG_DIR)/usr/lib/systemd/system
 	@mkdir -p $(DEB_PKG_DIR)/etc/govee-bridge
-	@mkdir -p $(DEB_PKG_DIR)/usr/share/govee_artnet_lan_bridge
 	@mkdir -p $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)
 
 	@# Create control file from template
@@ -60,32 +58,27 @@ deb: clean-deb
 	@cp packaging/debian/conffiles $(DEB_PKG_DIR)/DEBIAN/conffiles
 	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/preinst $(DEB_PKG_DIR)/DEBIAN/postinst $(DEB_PKG_DIR)/DEBIAN/prerm $(DEB_PKG_DIR)/DEBIAN/postrm
 
-	@# Copy Python source files
-	@cp -r src/govee_artnet_lan_bridge $(DEB_PKG_DIR)/usr/lib/python3/dist-packages/
+	@# Install Python source files to /opt/govee-bridge (for venv)
+	@mkdir -p $(DEB_PKG_DIR)/opt/govee-bridge
+	@cp -r src/govee_artnet_lan_bridge $(DEB_PKG_DIR)/opt/govee-bridge/
+	@cp res/capability_catalog.json $(DEB_PKG_DIR)/opt/govee-bridge/
 
-	@# Create executable wrappers
-	@echo '#!/usr/bin/env python3' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
-	@echo 'import sys' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
-	@echo 'from govee_artnet_lan_bridge.__main__ import run' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
-	@echo 'if __name__ == "__main__":' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
-	@echo '    sys.exit(run())' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@# Create executable wrappers that use venv python
+	@echo '#!/bin/bash' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo 'exec /opt/govee-bridge/venv/bin/python3 -c "import sys; sys.path.insert(0, \"/opt/govee-bridge\"); from govee_artnet_lan_bridge.__main__ import run; sys.exit(run())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
 	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
 
-	@echo '#!/usr/bin/env python3' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
-	@echo 'import sys' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
-	@echo 'from govee_artnet_lan_bridge.cli import main' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
-	@echo 'if __name__ == "__main__":' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
-	@echo '    sys.exit(main())' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo '#!/bin/bash' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo 'exec /opt/govee-bridge/venv/bin/python3 -c "import sys; sys.path.insert(0, \"/opt/govee-bridge\"); from govee_artnet_lan_bridge.cli import main; sys.exit(main())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
 	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
 
-	@# Install systemd service (system only, not user)
+	@# Install systemd service to both locations for compatibility
+	@mkdir -p $(DEB_PKG_DIR)/lib/systemd/system
 	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/usr/lib/systemd/system/
+	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/lib/systemd/system/
 
 	@# Install config template as conffile
 	@cp packaging/config/govee-bridge.toml $(DEB_PKG_DIR)/etc/govee-bridge/config.toml
-
-	@# Install capability catalog
-	@cp res/capability_catalog.json $(DEB_PKG_DIR)/usr/share/govee_artnet_lan_bridge/
 
 	@# Install documentation
 	@cp README.md $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
