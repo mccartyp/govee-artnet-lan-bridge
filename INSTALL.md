@@ -30,7 +30,7 @@ Download the latest release from GitHub:
 \`\`\`bash
 # Visit https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest
 # Or use wget/curl:
-wget https://github.com/mccartyp/govee-artnet-lan-bridge/releases/download/v1.0.2/govee-artnet-bridge_1.0.2_all.deb
+wget https://github.com/mccartyp/govee-artnet-lan-bridge/releases/download/v1.0.3/govee-artnet-bridge_1.0.3_all.deb
 \`\`\`
 
 ### 2. Install the Package
