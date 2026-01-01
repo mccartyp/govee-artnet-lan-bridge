@@ -11,7 +11,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import uvicorn
 
 from .capabilities import NormalizedCapabilities, validate_command_payload
@@ -53,9 +53,7 @@ def _build_auth_dependency(config: Config) -> Callable[[Request], None]:
 class DeviceCreate(BaseModel):
     """Payload for creating a manual device."""
 
-    class Config:
-        allow_population_by_field_name = True
-
+    model_config = ConfigDict(populate_by_name=True)
     id: str
     ip: str
     model_number: Optional[str] = Field(
@@ -75,9 +73,7 @@ class DeviceCreate(BaseModel):
 class DeviceUpdate(BaseModel):
     """Partial update payload for a device."""
 
-    class Config:
-        allow_population_by_field_name = True
-
+    model_config = ConfigDict(populate_by_name=True)
     ip: Optional[str] = None
     name: Optional[str] = None
     model_number: Optional[str] = Field(
@@ -97,9 +93,7 @@ class DeviceUpdate(BaseModel):
 class DeviceOut(BaseModel):
     """Device response model."""
 
-    class Config:
-        allow_population_by_field_name = True
-
+    model_config = ConfigDict(populate_by_name=True)
     id: str
     ip: Optional[str]
     model_number: Optional[str]
@@ -129,13 +123,13 @@ class DeviceOut(BaseModel):
     created_at: str
     updated_at: str
 
-    @root_validator()
-    def _backfill_model(cls, values):
-        if values.get("model") is None:
-            values["model"] = values.get("model_number")
-        if values.get("model_number") is None and values.get("model") is not None:
-            values["model_number"] = values.get("model")
-        return values
+    @model_validator(mode="after")
+    def _backfill_model(self) -> "DeviceOut":
+        if self.model is None:
+            self.model = self.model_number
+        if self.model_number is None and self.model is not None:
+            self.model_number = self.model
+        return self
 
 
 class MappingCreate(BaseModel):
@@ -209,7 +203,8 @@ class DeviceCommand(BaseModel):
     color: Optional[str] = None
     kelvin: Optional[int] = Field(default=None, ge=0, le=255)
 
-    @validator("color")
+    @field_validator("color")
+    @classmethod
     def _validate_color(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
@@ -222,21 +217,21 @@ class DeviceCommand(BaseModel):
             raise ValueError("Color must be an RGB hex string like ff3366.")
         return normalized.lower()
 
-    @root_validator()
-    def _validate_actions(cls, values):
-        if values.get("on") and values.get("off"):
+    @model_validator(mode="after")
+    def _validate_actions(self) -> "DeviceCommand":
+        if self.on and self.off:
             raise ValueError("Choose either on or off, not both.")
         if not any(
             [
-                values.get("on"),
-                values.get("off"),
-                values.get("brightness") is not None,
-                values.get("color"),
-                values.get("kelvin") is not None,
+                self.on,
+                self.off,
+                self.brightness is not None,
+                self.color,
+                self.kelvin is not None,
             ]
         ):
             raise ValueError("At least one action is required.")
-        return values
+        return self
 
 
 def _parse_hex_color(value: str) -> Mapping[str, int]:
