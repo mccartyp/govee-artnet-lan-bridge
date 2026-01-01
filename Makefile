@@ -74,6 +74,7 @@ deb: clean-deb
 
 	@# Install systemd service to both locations for compatibility
 	@mkdir -p $(DEB_PKG_DIR)/lib/systemd/system
+	@mkdir -p $(DEB_PKG_DIR)/usr/lib/systemd/system
 	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/usr/lib/systemd/system/
 	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/lib/systemd/system/
 

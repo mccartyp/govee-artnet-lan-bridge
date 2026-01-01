@@ -3,6 +3,19 @@ set -e
 
 case "$1" in
     install|upgrade)
+        # Install python3-venv if not available (required for venv creation)
+        if ! python3 -m venv --help >/dev/null 2>&1; then
+            echo "Installing python3-venv..."
+            if command -v apt-get >/dev/null 2>&1; then
+                apt-get update -qq 2>&1 || true
+                # Try version-specific package first, fall back to generic
+                apt-get install -y -qq python3.13-venv 2>/dev/null || \
+                apt-get install -y -qq python3.12-venv 2>/dev/null || \
+                apt-get install -y -qq python3.11-venv 2>/dev/null || \
+                apt-get install -y -qq python3-venv 2>/dev/null || true
+            fi
+        fi
+
         # Create virtual environment for isolated Python dependencies
         echo "Creating Python virtual environment..."
         python3 -m venv /opt/govee-bridge/venv || true
