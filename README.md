@@ -289,6 +289,12 @@ curl http://localhost:8000/metrics | grep govee_rate_limit
 
 See [USAGE.md](USAGE.md#troubleshooting-mapping-errors) for detailed troubleshooting.
 
+## Credits
+
+**Art-Net™ Designed by and Copyright Artistic Licence Engineering Ltd**
+
+This project implements the Art-Net protocol. For more information about Art-Net, visit [https://art-net.org.uk/](https://art-net.org.uk/)
+
 ## License
 
 See [LICENSE](LICENSE) file for details.
