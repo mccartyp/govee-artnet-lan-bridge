@@ -123,5 +123,5 @@ deb: clean-deb
 # Clean build artifacts
 clean-deb:
 	@echo "Cleaning Debian build artifacts..."
-	rm -rf $(DEB_BUILD_DIR) $(DEB_OUTPUT_DIR)
+	rm -rf $(DEB_PKG_DIR) $(DEB_OUTPUT_DIR)
 	@echo "Clean complete!"
