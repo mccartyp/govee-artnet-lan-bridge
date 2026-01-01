@@ -1,0 +1,328 @@
+name: Build Debian Package
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:  # Allow manual triggers
+
+permissions:
+  contents: write  # Required for creating releases
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-24.04  # Build on Ubuntu 24.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set version from tag or pyproject.toml
+      id: version
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          # Extract version from tag (remove 'v' prefix)
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Building release version: $VERSION"
+        else
+          # Extract version from pyproject.toml
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          # Add dev suffix with commit SHA for non-release builds
+          VERSION="${VERSION}-dev+${GITHUB_SHA::8}"
+          echo "Building development version: $VERSION"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Update Makefile version
+      run: |
+        sed -i "s/^VERSION = .*/VERSION = ${{ steps.version.outputs.version }}/" Makefile
+        echo "Updated Makefile VERSION to: ${{ steps.version.outputs.version }}"
+
+    - name: Build DEB package
+      run: make deb
+
+    - name: List built package
+      run: |
+        echo "Built package:"
+        ls -lh dist/*.deb
+        echo ""
+        echo "Package info:"
+        dpkg-deb --info dist/*.deb
+
+    - name: Upload DEB artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: debian-package-${{ steps.version.outputs.version }}
+        path: dist/*.deb
+        retention-days: 90
+
+    # For tagged releases only: Create GitHub Release
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/*.deb
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+
+  test-installation:
+    needs: build-deb
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            name: "Ubuntu 24.04 LTS"
+            use_sudo: true
+          - os: ubuntu-latest
+            container: "debian:trixie"
+            name: "Debian 13 (Trixie)"
+            use_sudo: false
+
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set version from tag or pyproject.toml
+      id: version
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          # Extract version from tag (remove 'v' prefix)
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Using release version: $VERSION"
+        else
+          # Extract version from pyproject.toml
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          # Add dev suffix with commit SHA for non-release builds
+          VERSION="${VERSION}-dev+${GITHUB_SHA::8}"
+          echo "Using development version: $VERSION"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Download DEB artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: debian-package-${{ steps.version.outputs.version }}
+        path: ./artifacts
+
+    - name: List and validate downloaded artifacts
+      run: |
+        echo "Testing on: ${{ matrix.name }}"
+        echo "=== Downloaded artifacts ==="
+        ls -lh ./artifacts/
+        echo ""
+        echo "=== Validating .deb package ==="
+        dpkg-deb --info ./artifacts/*.deb || echo "ERROR: Invalid .deb package"
+        echo ""
+        echo "=== Package contents (first 30 files) ==="
+        dpkg-deb --contents ./artifacts/*.deb | head -30 || true
+      shell: bash
+
+    - name: Install package dependencies (Debian/Ubuntu)
+      run: |
+        echo "=== Installing dependencies ==="
+        ${{ matrix.use_sudo && 'sudo' || '' }} apt-get update
+
+        echo "Installing base dependencies..."
+        ${{ matrix.use_sudo && 'sudo' || '' }} apt-get install -y python3 systemd curl
+
+        echo ""
+        echo "Installing Python package dependencies from apt..."
+        ${{ matrix.use_sudo && 'sudo' || '' }} apt-get install -y \
+          python3-fastapi \
+          python3-httpx \
+          python3-uvicorn \
+          python3-prometheus-client \
+          python3-yaml \
+          python3-rich \
+          python3-pytest \
+          python3-pytest-asyncio
+
+        echo ""
+        echo "Installed Python packages:"
+        dpkg -l | grep -E "python3-(fastapi|httpx|uvicorn|prometheus-client|yaml|rich|pytest)" || echo "None found"
+      shell: bash
+
+    - name: Install DEB package
+      run: |
+        echo "=== Installing .deb package ==="
+        echo "Running: dpkg -i ./artifacts/*.deb"
+        ${{ matrix.use_sudo && 'sudo' || '' }} dpkg -i ./artifacts/*.deb
+
+        echo ""
+        echo "✓ Package installed successfully"
+      shell: bash
+
+    - name: Verify installation
+      run: |
+        echo "=== Verifying installation ==="
+
+        # Check if package is installed
+        if dpkg -l govee-artnet-bridge 2>/dev/null | grep -q '^ii'; then
+          echo "✓ Package found in dpkg"
+        else
+          echo "ERROR: Package not installed in dpkg"
+          exit 1
+        fi
+
+        # Check if binaries exist
+        echo ""
+        echo "Checking binaries..."
+        if which govee-artnet-bridge; then
+          echo "✓ govee-artnet-bridge found in PATH"
+        else
+          echo "ERROR: govee-artnet-bridge not found in PATH"
+          exit 1
+        fi
+
+        if which govee-artnet-cli; then
+          echo "✓ govee-artnet-cli found in PATH"
+        else
+          echo "ERROR: govee-artnet-cli not found in PATH"
+          exit 1
+        fi
+
+        # Test binaries run
+        echo ""
+        echo "Testing binary execution..."
+        if govee-artnet-bridge --help | head -10; then
+          echo "✓ govee-artnet-bridge --help succeeded"
+        else
+          echo "ERROR: govee-artnet-bridge --help failed"
+          exit 1
+        fi
+
+        if govee-artnet-cli --help | head -10; then
+          echo "✓ govee-artnet-cli --help succeeded"
+        else
+          echo "ERROR: govee-artnet-cli --help failed"
+          exit 1
+        fi
+
+        # Check systemd service installed
+        echo ""
+        echo "Checking systemd service..."
+        if systemctl list-unit-files | grep -q govee-bridge.service; then
+          echo "✓ Systemd service file installed"
+        else
+          echo "ERROR: Systemd service file not found"
+          exit 1
+        fi
+
+        # Check config file installed
+        echo ""
+        echo "Checking configuration files..."
+        if [ -f /etc/govee-bridge/config.toml ]; then
+          echo "✓ Config file installed at /etc/govee-bridge/config.toml"
+        else
+          echo "ERROR: Config file not found"
+          exit 1
+        fi
+
+        # Check capability catalog installed
+        if [ -f /usr/share/govee_artnet_lan_bridge/capability_catalog.json ]; then
+          echo "✓ Capability catalog installed"
+        else
+          echo "ERROR: Capability catalog not found"
+          exit 1
+        fi
+
+        echo ""
+        echo "✓ Installation verified successfully on ${{ matrix.name }}"
+      shell: bash
+
+    - name: Run test suite
+      run: |
+        echo "=== Running pytest on installed package ==="
+        cd $GITHUB_WORKSPACE
+
+        # Run tests (using installed package, not source)
+        python3 -m pytest tests/ -v --tb=short
+
+        echo ""
+        echo "✓ All tests passed on ${{ matrix.name }}"
+      shell: bash
+
+    - name: Test systemd service
+      if: matrix.use_sudo == true
+      run: |
+        echo "=== Testing systemd service ==="
+
+        # Service should already be started by postinst
+        # Check if service is active
+        if sudo systemctl is-active --quiet govee-bridge.service; then
+          echo "✓ Service is running"
+
+          # Check service status
+          sudo systemctl status govee-bridge.service --no-pager -l || true
+
+          # Give it a moment to initialize
+          sleep 3
+
+          # Try to reach API health endpoint
+          if curl -f http://localhost:8000/health 2>/dev/null; then
+            echo "✓ API health endpoint responding"
+          else
+            echo "⚠ API not responding (this may be normal if no devices configured)"
+            echo "Service logs:"
+            sudo journalctl -u govee-bridge.service --no-pager -n 50
+          fi
+
+          # Test restart
+          echo ""
+          echo "Testing service restart..."
+          sudo systemctl restart govee-bridge.service
+          sleep 2
+
+          if sudo systemctl is-active --quiet govee-bridge.service; then
+            echo "✓ Service restart successful"
+          else
+            echo "ERROR: Service failed to restart"
+            sudo systemctl status govee-bridge.service --no-pager -l || true
+            exit 1
+          fi
+
+          # Stop service for cleanup
+          sudo systemctl stop govee-bridge.service
+        else
+          echo "ERROR: Service is not active"
+          sudo systemctl status govee-bridge.service --no-pager -l || true
+          echo ""
+          echo "Service logs:"
+          sudo journalctl -u govee-bridge.service --no-pager -n 100
+          exit 1
+        fi
+
+        echo ""
+        echo "✓ Service start/stop/restart tests passed"
+      shell: bash
+
+    - name: Test uninstallation
+      run: |
+        echo "=== Testing package removal ==="
+        if dpkg -l govee-artnet-bridge 2>/dev/null | grep -q '^ii'; then
+          ${{ matrix.use_sudo && 'sudo' || '' }} dpkg -r govee-artnet-bridge
+          echo "✓ Package removed successfully"
+
+          # Verify binaries are gone
+          if ! which govee-artnet-bridge >/dev/null 2>&1; then
+            echo "✓ Binaries removed"
+          else
+            echo "ERROR: Binaries still present after removal"
+            exit 1
+          fi
+
+          # Verify config is still present (should be kept on remove, not purge)
+          if [ -f /etc/govee-bridge/config.toml ]; then
+            echo "✓ Config file preserved (expected behavior)"
+          fi
+        else
+          echo "⚠ Package not installed, skipping uninstallation test"
+        fi
+      shell: bash

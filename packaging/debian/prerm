@@ -1,0 +1,24 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Stop the service before removal or upgrade
+        if systemctl is-active --quiet govee-bridge.service; then
+            echo "Stopping govee-bridge service..."
+            systemctl stop govee-bridge.service || true
+        fi
+        ;;
+
+    failed-upgrade)
+        # Do nothing
+        ;;
+
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+exit 0

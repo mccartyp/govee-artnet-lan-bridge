@@ -1,0 +1,67 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure)
+        # Create system user if it doesn't exist
+        if ! id govee-bridge >/dev/null 2>&1; then
+            adduser --system --group --home /var/lib/govee-bridge \
+                    --shell /usr/sbin/nologin \
+                    --disabled-login --quiet \
+                    --gecos "Govee ArtNet Bridge service user" \
+                    govee-bridge
+        fi
+
+        # Ensure data directory exists with correct ownership
+        if [ ! -d /var/lib/govee-bridge ]; then
+            install -d -o govee-bridge -g govee-bridge -m 750 /var/lib/govee-bridge
+        else
+            chown govee-bridge:govee-bridge /var/lib/govee-bridge
+            chmod 750 /var/lib/govee-bridge
+        fi
+
+        # Ensure config directory has correct permissions
+        if [ -d /etc/govee-bridge ]; then
+            chown root:govee-bridge /etc/govee-bridge
+            chmod 755 /etc/govee-bridge
+        fi
+
+        # Ensure config file has correct permissions (if it exists)
+        if [ -f /etc/govee-bridge/config.toml ]; then
+            chown root:govee-bridge /etc/govee-bridge/config.toml
+            chmod 640 /etc/govee-bridge/config.toml
+        fi
+
+        # Reload systemd daemon
+        systemctl daemon-reload || true
+
+        # Enable service (but don't start yet if this is initial install)
+        systemctl enable govee-bridge.service || true
+
+        # On upgrade, restart the service if it was running
+        # On fresh install, start the service
+        if systemctl is-active --quiet govee-bridge.service; then
+            echo "Restarting govee-bridge service..."
+            systemctl restart govee-bridge.service || true
+        else
+            echo "Starting govee-bridge service..."
+            systemctl start govee-bridge.service || true
+        fi
+
+        echo ""
+        echo "Govee ArtNet Bridge installed successfully!"
+        echo ""
+        echo "Service status:"
+        systemctl status govee-bridge.service --no-pager -l || true
+        echo ""
+        echo "Configuration: /etc/govee-bridge/config.toml"
+        echo "Documentation: /usr/share/doc/govee-artnet-bridge/"
+        echo ""
+        echo "Check service logs: sudo journalctl -u govee-bridge.service -f"
+        echo "Restart service: sudo systemctl restart govee-bridge.service"
+        echo ""
+        ;;
+esac
+
+#DEBHELPER#
+exit 0

@@ -1,8 +1,27 @@
-.PHONY: install-system install-user uninstall-system uninstall-user installer-help
+.PHONY: install-system install-user uninstall-system uninstall-user installer-help deb clean-deb help
 
 PYTHON ?= python3
 START ?= 1
 SETCAP ?= 0
+
+# Debian package settings
+PACKAGE_NAME = govee-artnet-bridge
+VERSION = 1.0.2
+DEB_BUILD_DIR = packaging/debian
+DEB_PKG_DIR = $(DEB_BUILD_DIR)/$(PACKAGE_NAME)
+DEB_OUTPUT_DIR = dist
+
+help:
+	@echo "Govee ArtNet LAN Bridge - Makefile targets:"
+	@echo ""
+	@echo "  install-system   Install system service (requires root)"
+	@echo "  install-user     Install user service"
+	@echo "  uninstall-system Uninstall system service (requires root)"
+	@echo "  uninstall-user   Uninstall user service"
+	@echo "  deb              Build Debian package"
+	@echo "  clean-deb        Remove Debian build artifacts"
+	@echo "  installer-help   Show installer script help"
+	@echo ""
 
 installer-help:
 	@./scripts/install.sh --help
@@ -18,3 +37,91 @@ uninstall-system:
 
 uninstall-user:
 	./scripts/install.sh uninstall --user --python $(PYTHON)
+
+# Build Debian package
+deb: clean-deb
+	@echo "Building Debian package $(PACKAGE_NAME) $(VERSION)..."
+	@mkdir -p $(DEB_PKG_DIR)/DEBIAN
+	@mkdir -p $(DEB_PKG_DIR)/usr/bin
+	@mkdir -p $(DEB_PKG_DIR)/usr/lib/python3/dist-packages
+	@mkdir -p $(DEB_PKG_DIR)/lib/systemd/system
+	@mkdir -p $(DEB_PKG_DIR)/etc/govee-bridge
+	@mkdir -p $(DEB_PKG_DIR)/usr/share/govee_artnet_lan_bridge
+	@mkdir -p $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)
+
+	@# Create control file from template
+	@sed "s/\$${VERSION}/$(VERSION)/" packaging/debian/control.template > $(DEB_PKG_DIR)/DEBIAN/control
+
+	@# Copy package scripts
+	@cp packaging/debian/postinst $(DEB_PKG_DIR)/DEBIAN/postinst
+	@cp packaging/debian/prerm $(DEB_PKG_DIR)/DEBIAN/prerm
+	@cp packaging/debian/postrm $(DEB_PKG_DIR)/DEBIAN/postrm
+	@cp packaging/debian/conffiles $(DEB_PKG_DIR)/DEBIAN/conffiles
+	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/postinst $(DEB_PKG_DIR)/DEBIAN/prerm $(DEB_PKG_DIR)/DEBIAN/postrm
+
+	@# Copy Python source files
+	@cp -r src/govee_artnet_lan_bridge $(DEB_PKG_DIR)/usr/lib/python3/dist-packages/
+
+	@# Create executable wrappers
+	@echo '#!/usr/bin/env python3' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo 'import sys' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo 'from govee_artnet_lan_bridge.__main__ import run' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo 'if __name__ == "__main__":' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo '    sys.exit(run())' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+
+	@echo '#!/usr/bin/env python3' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo 'import sys' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo 'from govee_artnet_lan_bridge.cli import main' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo 'if __name__ == "__main__":' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo '    sys.exit(main())' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+
+	@# Install systemd service (system only, not user)
+	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/lib/systemd/system/
+
+	@# Install config template as conffile
+	@cp packaging/config/govee-bridge.toml $(DEB_PKG_DIR)/etc/govee-bridge/config.toml
+
+	@# Install capability catalog
+	@cp res/capability_catalog.json $(DEB_PKG_DIR)/usr/share/govee_artnet_lan_bridge/
+
+	@# Install documentation
+	@cp README.md $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
+	@cp LICENSE $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
+	@cp INSTALL.md $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
+	@cp packaging/config/govee-bridge.toml.example $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
+	@gzip -9 -n -c INSTALL.md > $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/INSTALL.md.gz
+
+	@# Create copyright file
+	@echo "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/" > $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
+	@echo "Upstream-Name: $(PACKAGE_NAME)" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
+	@echo "Source: https://github.com/mccartyp/govee-artnet-lan-bridge" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
+	@echo "" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
+	@echo "Files: *" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
+	@echo "Copyright: 2025 Patrick McCarty" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
+	@echo "License: MIT" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
+	@cat LICENSE >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
+
+	@# Set permissions
+	@find $(DEB_PKG_DIR) -type d -exec chmod 755 {} \;
+	@find $(DEB_PKG_DIR) -type f -exec chmod 644 {} \;
+	@chmod 755 $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@chmod 755 $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/postinst
+	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/prerm
+	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/postrm
+	@chmod 755 $(DEB_PKG_DIR)/DEBIAN
+
+	@# Build package
+	@mkdir -p $(DEB_OUTPUT_DIR)
+	@dpkg-deb --build $(DEB_PKG_DIR) $(DEB_OUTPUT_DIR)
+	@echo ""
+	@echo "Debian package built successfully!"
+	@ls -lh $(DEB_OUTPUT_DIR)/$(PACKAGE_NAME)_$(VERSION)_all.deb
+
+# Clean build artifacts
+clean-deb:
+	@echo "Cleaning Debian build artifacts..."
+	rm -rf $(DEB_BUILD_DIR) $(DEB_OUTPUT_DIR)
+	@echo "Clean complete!"
