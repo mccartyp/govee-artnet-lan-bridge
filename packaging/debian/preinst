@@ -3,6 +3,15 @@ set -e
 
 case "$1" in
     install|upgrade)
+        # Remove system python3-pydantic if installed (it's v1, we need v2)
+        # This ensures pip-installed pydantic v2 takes precedence
+        if dpkg -l python3-pydantic 2>/dev/null | grep -q ^ii; then
+            echo "Removing system python3-pydantic (v1) to install pydantic v2..."
+            if command -v apt-get >/dev/null 2>&1; then
+                apt-get remove -y -qq python3-pydantic >/dev/null 2>&1 || true
+            fi
+        fi
+
         # Install pip if not available (required for pydantic v2 installation)
         if ! command -v pip3 >/dev/null 2>&1 && ! python3 -m pip --version >/dev/null 2>&1; then
             echo "Installing python3-pip..."
