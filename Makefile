@@ -44,7 +44,7 @@ deb: clean-deb
 	@mkdir -p $(DEB_PKG_DIR)/DEBIAN
 	@mkdir -p $(DEB_PKG_DIR)/usr/bin
 	@mkdir -p $(DEB_PKG_DIR)/usr/lib/python3/dist-packages
-	@mkdir -p $(DEB_PKG_DIR)/lib/systemd/system
+	@mkdir -p $(DEB_PKG_DIR)/usr/lib/systemd/system
 	@mkdir -p $(DEB_PKG_DIR)/etc/govee-bridge
 	@mkdir -p $(DEB_PKG_DIR)/usr/share/govee_artnet_lan_bridge
 	@mkdir -p $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)
@@ -79,7 +79,7 @@ deb: clean-deb
 	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
 
 	@# Install systemd service (system only, not user)
-	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/lib/systemd/system/
+	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/usr/lib/systemd/system/
 
 	@# Install config template as conffile
 	@cp packaging/config/govee-bridge.toml $(DEB_PKG_DIR)/etc/govee-bridge/config.toml
