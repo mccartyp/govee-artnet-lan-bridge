@@ -1,44 +1,22 @@
 #!/bin/bash
-# Don't exit on error - we want to continue even if venv setup fails
 set +e
 
 case "$1" in
     install|upgrade)
-        # Install python3-venv if needed
-        if ! python3 -m venv --help >/dev/null 2>&1; then
-            echo "Installing python3-venv..."
+        # Install pip if needed
+        if ! command -v pip3 >/dev/null 2>&1 && ! python3 -m pip --version >/dev/null 2>&1; then
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq >/dev/null 2>&1
-
-            # Detect Python version
-            PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
-
-            # Install version-specific venv package
-            apt-get install -y -qq "python${PY_VER}-venv" >/dev/null 2>&1 || \
-            apt-get install -y -qq python3-venv >/dev/null 2>&1
+            apt-get install -y -qq python3-pip >/dev/null 2>&1
         fi
 
-        # Create venv directory
-        mkdir -p /opt/govee-bridge
-
-        # Create virtual environment
-        if python3 -m venv /opt/govee-bridge/venv 2>/dev/null; then
-            echo "Virtual environment created successfully"
-
-            # Install dependencies
-            if [ -x /opt/govee-bridge/venv/bin/pip ]; then
-                /opt/govee-bridge/venv/bin/pip install --quiet \
-                    'pydantic>=2.0.0' \
-                    'fastapi>=0.101.0' \
-                    'httpx>=0.26.0' \
-                    'uvicorn>=0.23.0' \
-                    'prometheus-client>=0.20.0' \
-                    'PyYAML>=6.0.0' \
-                    'rich>=13.0.0' >/dev/null 2>&1 && \
-                echo "Python dependencies installed"
-            fi
-        else
-            echo "Warning: Could not create venv - will use system Python"
+        # Install pydantic v2 system-wide (for pytest and application)
+        echo "Installing pydantic v2 system-wide..."
+        if command -v pip3 >/dev/null 2>&1; then
+            pip3 install --break-system-packages 'pydantic>=2.0.0' >/dev/null 2>&1 || \
+            python3 -m pip install --break-system-packages 'pydantic>=2.0.0' >/dev/null 2>&1 || \
+            pip3 install 'pydantic>=2.0.0' >/dev/null 2>&1 || \
+            python3 -m pip install 'pydantic>=2.0.0' >/dev/null 2>&1
         fi
         ;;
 esac
