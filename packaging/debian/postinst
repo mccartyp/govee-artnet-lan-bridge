@@ -37,6 +37,12 @@ case "$1" in
         if [ -f /usr/share/govee_artnet_lan_bridge/capability_catalog.json ]; then
             chown root:root /usr/share/govee_artnet_lan_bridge/capability_catalog.json
             chmod 644 /usr/share/govee_artnet_lan_bridge/capability_catalog.json
+
+            # Remove ACLs if setfacl is available (Ubuntu 24.04 has ACLs that block access)
+            if command -v setfacl >/dev/null 2>&1; then
+                setfacl -b /usr/share/govee_artnet_lan_bridge/capability_catalog.json 2>/dev/null || true
+                setfacl -b /usr/share/govee_artnet_lan_bridge 2>/dev/null || true
+            fi
         fi
 
         # Ensure systemd service file has correct ownership
