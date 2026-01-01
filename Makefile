@@ -6,7 +6,7 @@ SETCAP ?= 0
 
 # Debian package settings
 PACKAGE_NAME = govee-artnet-bridge
-VERSION = 1.0.2
+VERSION = 1.0.3
 DEB_BUILD_DIR = packaging/debian
 DEB_PKG_DIR = $(DEB_BUILD_DIR)/$(PACKAGE_NAME)
 DEB_OUTPUT_DIR = dist
