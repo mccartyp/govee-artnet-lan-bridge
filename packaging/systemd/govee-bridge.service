@@ -10,6 +10,8 @@ User=govee-bridge
 Group=govee-bridge
 WorkingDirectory=/var/lib/govee-bridge
 EnvironmentFile=-/etc/govee-bridge/environment
+# Debug: Verify files are accessible before starting
+ExecStartPre=/bin/bash -c 'echo "=== Pre-start file accessibility check (as govee-bridge user) ===" && ls -la /usr/share/govee_artnet_lan_bridge/capability_catalog.json && test -r /usr/share/govee_artnet_lan_bridge/capability_catalog.json && echo "✓ Capability catalog is readable" || echo "✗ Capability catalog is NOT readable"'
 ExecStart=/usr/bin/govee-artnet-bridge --config /etc/govee-bridge/config.toml
 StateDirectory=govee-bridge
 StateDirectoryMode=0750

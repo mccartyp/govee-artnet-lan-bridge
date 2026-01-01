@@ -154,10 +154,15 @@ jobs:
       run: |
         echo "=== Installing .deb package ==="
         echo "Running: dpkg -i ./artifacts/*.deb"
-        ${{ matrix.use_sudo && 'sudo' || '' }} dpkg -i ./artifacts/*.deb
+        echo ""
+        echo "Installation output (including postinst debugging):"
+        ${{ matrix.use_sudo && 'sudo' || '' }} dpkg -i ./artifacts/*.deb 2>&1 | tee /tmp/install.log
 
         echo ""
         echo "✓ Package installed successfully"
+        echo ""
+        echo "=== Checking postinst verification output ==="
+        grep -E "(Removing ACLs|Verifying capability|readable by)" /tmp/install.log || echo "No postinst verification output found"
       shell: bash
 
     - name: Verify installation
