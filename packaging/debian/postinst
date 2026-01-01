@@ -33,6 +33,12 @@ case "$1" in
             chmod 640 /etc/govee-bridge/config.toml
         fi
 
+        # Ensure capability catalog directory has correct permissions
+        if [ -d /usr/share/govee_artnet_lan_bridge ]; then
+            chown root:root /usr/share/govee_artnet_lan_bridge
+            chmod 755 /usr/share/govee_artnet_lan_bridge
+        fi
+
         # Ensure capability catalog has correct ownership and permissions
         if [ -f /usr/share/govee_artnet_lan_bridge/capability_catalog.json ]; then
             chown root:root /usr/share/govee_artnet_lan_bridge/capability_catalog.json
@@ -40,8 +46,31 @@ case "$1" in
 
             # Remove ACLs if setfacl is available (Ubuntu 24.04 has ACLs that block access)
             if command -v setfacl >/dev/null 2>&1; then
+                echo "Removing ACLs from capability catalog..."
                 setfacl -b /usr/share/govee_artnet_lan_bridge/capability_catalog.json 2>/dev/null || true
                 setfacl -b /usr/share/govee_artnet_lan_bridge 2>/dev/null || true
+            else
+                echo "Note: setfacl not available, skipping ACL removal"
+            fi
+
+            # Verify file is accessible
+            echo "Verifying capability catalog is accessible..."
+            ls -la /usr/share/govee_artnet_lan_bridge/capability_catalog.json || echo "WARNING: Cannot list file"
+            if [ -r /usr/share/govee_artnet_lan_bridge/capability_catalog.json ]; then
+                echo "✓ Capability catalog is readable by root"
+            else
+                echo "WARNING: Capability catalog is not readable by root!"
+            fi
+
+            # Test if govee-bridge user can read the file
+            if command -v sudo >/dev/null 2>&1 && id govee-bridge >/dev/null 2>&1; then
+                if sudo -u govee-bridge test -r /usr/share/govee_artnet_lan_bridge/capability_catalog.json 2>/dev/null; then
+                    echo "✓ Capability catalog is readable by govee-bridge user"
+                else
+                    echo "WARNING: Capability catalog is NOT readable by govee-bridge user!"
+                    echo "Directory permissions:"
+                    ls -lad /usr/share/govee_artnet_lan_bridge/
+                fi
             fi
         fi
 
