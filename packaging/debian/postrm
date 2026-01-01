@@ -3,13 +3,12 @@ set -e
 
 case "$1" in
     purge)
-        # Remove system user
+        # Remove system user and group
         if id govee-bridge >/dev/null 2>&1; then
-            deluser --system govee-bridge || true
-            # Also remove the group if it exists
-            if getent group govee-bridge >/dev/null; then
-                delgroup --system govee-bridge || true
-            fi
+            userdel govee-bridge || true
+        fi
+        if getent group govee-bridge >/dev/null 2>&1; then
+            groupdel govee-bridge || true
         fi
 
         # Remove data directory and all contents
