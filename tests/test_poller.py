@@ -10,7 +10,7 @@ from govee_artnet_lan_bridge.db import apply_migrations
 from govee_artnet_lan_bridge.devices import DeviceStore
 from govee_artnet_lan_bridge.health import HealthMonitor
 from govee_artnet_lan_bridge.poller import DevicePollerService
-from govee_artnet_lan_bridge.protocol import GoveeProtocol
+from govee_artnet_lan_bridge.udp_protocol import GoveeProtocol
 
 
 class _Responder(asyncio.DatagramProtocol):
