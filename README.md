@@ -1,24 +1,35 @@
-# ArtNet LAN Bridge
+# DMX LAN Bridge
 
 [![Latest Release](https://img.shields.io/github/v/release/mccartyp/govee-artnet-lan-bridge)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
 [![Download DEB](https://img.shields.io/badge/download-.deb-blue)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/github/license/mccartyp/govee-artnet-lan-bridge)](LICENSE)
 
-A multi-protocol ArtNet to LAN device bridge supporting Govee, LIFX, and other smart lighting protocols. Control your smart lights using standard lighting control software like QLC+, Chamsys MagicQ, or any other ArtNet-compatible controller.
+A multi-protocol DMX to LAN device bridge with priority-based source merging. Control smart lights using professional lighting control protocols (ArtNet, sACN) and software like QLC+, Chamsys MagicQ, or any DMX-compatible controller.
+
+**Supported Input Protocols:**
+- ✅ **ArtNet** (fully supported)
+- 🔜 **sACN/E1.31** (coming soon)
+
+**Supported Device Protocols:**
+- ✅ **Govee** (JSON-based LAN control)
+- ✅ **LIFX** (binary LAN protocol)
+- 🔜 **WiZ** (planned)
+- 🔜 **TPLink/Kasa** (planned)
 
 ## Architecture
 
 The bridge consists of two components:
 
-1. **Bridge Server** (`artnet-lan-bridge`) - Runs as a daemon and provides:
-   - ArtNet listener (default port 6454)
+1. **Bridge Server** (`dmx-lan-bridge`) - Runs as a daemon and provides:
+   - **Multi-protocol DMX input** (ArtNet on port 6454, sACN coming)
+   - **Priority-based source merging** (multiple consoles, graceful failover)
    - REST API server (default port 8000)
    - Multi-protocol device support (Govee, LIFX, and more)
    - Automatic device discovery
    - Device health monitoring
 
-2. **CLI Client** (`artnet-lan-cli`) - Command-line tool for managing the bridge:
+2. **CLI Client** (`dmx-lan-cli`) - Command-line tool for managing the bridge:
    - List and manage devices across all supported protocols
    - Create and manage DMX channel mappings
    - Query server status
@@ -34,29 +45,38 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions.
 pip install -e .
 
 # Or install from package
-pip install artnet-lan-bridge
+pip install dmx-lan-bridge
 ```
+
+**Legacy Command Aliases:** For backwards compatibility, `artnet-lan-bridge` and `artnet-lan-cli` commands are still available and work identically to the new `dmx-lan-bridge` and `dmx-lan-cli` commands.
 
 ### 2. Start the Bridge Server
 
 ```bash
 # Start with default settings
-artnet-lan-bridge
+dmx-lan-bridge
 
 # Or with custom configuration
-artnet-lan-bridge --config /path/to/config.toml
+dmx-lan-bridge --config /path/to/config.toml
+
+# Legacy command (still works)
+artnet-lan-bridge
 ```
 
 The server will:
-- Listen for ArtNet packets on port 6454
+- Listen for DMX input protocols (ArtNet on port 6454)
 - Start the REST API on port 8000
 - Automatically discover devices on your network (Govee, LIFX, etc.)
+- Apply priority-based merging if multiple sources detected
 
 ### 3. Discover Devices
 
 Use the CLI to list discovered devices:
 
 ```bash
+dmx-lan-cli devices list
+
+# Or use legacy command
 artnet-lan-cli devices list
 ```
 
@@ -86,27 +106,35 @@ Map DMX channels to your devices using templates:
 
 ```bash
 # Map an RGB light strip to channels 1-3 on universe 0
-artnet-lan-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
   --template RGB
 
 # Map an RGB+CT light to channels 10-13
-artnet-lan-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
   --universe 0 \
   --start-channel 10 \
   --template RGBc
 ```
 
-### 5. Send ArtNet
+**Note:** Mappings are protocol-agnostic. The same mapping works whether you send ArtNet or sACN (when supported) to that universe.
+
+### 5. Send DMX Data
 
 Point your lighting software at the bridge server's IP address and start controlling your lights!
 
+**Priority-Based Source Merging:**
+- If multiple sources send to the same universe, highest priority wins
+- ArtNet: Fixed priority 50 (below sACN default)
+- sACN (future): Uses native priority from packets (0-200, default 100)
+- Graceful failover: If primary source stops, backup takes over automatically
+
 ## Interactive Console
 
-The `artnet-lan-cli` tool provides direct command-line access to the bridge API.
+The `dmx-lan-cli` tool (or legacy `artnet-lan-cli`) provides direct command-line access to the bridge API.
 
 For an interactive shell experience with features like:
 - 📊 **Real-time monitoring** - Live dashboards for devices, ArtNet, queue, and health
