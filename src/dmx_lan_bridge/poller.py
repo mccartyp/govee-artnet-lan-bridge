@@ -129,7 +129,7 @@ class DevicePollerService:
                 govee_handler.register_udp_handlers(
                     self.protocol,
                     self.logger,
-                    self.notify_poll_response,
+                    poller=self,
                 )
             except Exception as exc:
                 self.logger.warning(
@@ -336,7 +336,7 @@ class DevicePollerService:
         proto = protocol or "unknown"
         return f"{proto}:{device_id}"
 
-    def notify_poll_response(self, device_id: str, payload_bytes: bytes, addr: tuple[str, int], protocol: Optional[str] = None) -> None:
+    def notify_poll_response(self, device_id: str, payload_bytes: bytes, addr: tuple[str, int], protocol: Optional[str] = None) -> bool:
         """Resolve any waiting poll future for a device when a shared socket receives a reply."""
         key = self._poll_response_key(device_id, protocol)
         resolved = self._response_bus.resolve(key, payload_bytes)
@@ -349,6 +349,7 @@ class DevicePollerService:
                     "from": addr,
                 },
             )
+        return resolved
 
     async def _acquire_rate_limit(self) -> None:
         if self.config.device_poll_rate_per_second <= 0 or self.config.device_poll_rate_burst <= 0:

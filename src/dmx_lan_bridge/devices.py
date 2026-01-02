@@ -737,6 +737,10 @@ class DeviceStore:
     async def devices(self) -> List[DeviceRow]:
         return await self.db.run(self._devices)
 
+    async def device_id_by_ip(self, ip: str) -> Optional[str]:
+        """Look up a device id by its last known IP address."""
+        return await self.db.run(lambda conn: self._device_id_by_ip(conn, ip))
+
     def _devices(self, conn: sqlite3.Connection) -> List[DeviceRow]:
         rows = conn.execute(
             """
@@ -778,6 +782,19 @@ class DeviceStore:
             """
         ).fetchall()
         return [self._row_to_device(row) for row in rows]
+
+    def _device_id_by_ip(self, conn: sqlite3.Connection, ip: str) -> Optional[str]:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM devices
+            WHERE ip = ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (ip,),
+        ).fetchone()
+        return row["id"] if row else None
 
     async def device(self, device_id: str) -> Optional[DeviceRow]:
         return await self.db.run(lambda conn: self._device(conn, device_id))
