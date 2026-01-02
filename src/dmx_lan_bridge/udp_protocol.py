@@ -13,7 +13,7 @@ from .config import Config
 from .logging import get_logger
 
 
-MessageHandler = Callable[[Mapping[str, Any], Tuple[str, int]], None]
+MessageHandler = Callable[[Mapping[str, Any], Tuple[str, int], bytes], None]
 
 
 def _create_multicast_socket(address: str, port: int) -> socket.socket:
@@ -109,16 +109,16 @@ class GoveeProtocol(asyncio.DatagramProtocol):
                 extra={"cmd": cmd, "from": addr},
             )
             try:
-                self._handlers[cmd](payload, addr)
-            except Exception as exc:
+                self._handlers[cmd](payload, addr, data)
+            except Exception:
                 self.logger.exception(
                     "Handler error",
                     extra={"cmd": cmd, "from": addr},
                 )
         elif self._default_handler:
             try:
-                self._default_handler(payload, addr)
-            except Exception as exc:
+                self._default_handler(payload, addr, data)
+            except Exception:
                 self.logger.exception(
                     "Default handler error",
                     extra={"from": addr},

@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple, TYPE_CHECKING
 
 from .base import ProtocolHandler
 from ..capabilities import CapabilityProvider, CatalogCapabilityProvider
+from ..metrics import record_device_poll_state_update
+
+if TYPE_CHECKING:
+    from ..poller import DevicePollerService
+    from ..devices import DeviceStore
 
 
 class GoveeProtocolHandler(ProtocolHandler):
@@ -335,7 +341,8 @@ class GoveeProtocolHandler(ProtocolHandler):
         self,
         protocol: Any,
         logger: Any,
-        poll_notifier: Optional[Callable[[str, bytes, tuple[str, int], Optional[str]], None]] = None,
+        poller: Optional["DevicePollerService"] = None,
+        poll_notifier: Optional[Callable[[str, bytes, tuple[str, int], Optional[str]], Optional[bool]]] = None,
     ) -> None:
         """Register Govee-specific UDP message handlers with the Govee protocol listener.
 
@@ -346,8 +353,12 @@ class GoveeProtocolHandler(ProtocolHandler):
         Args:
             protocol: The GoveeProtocol instance (listens on port 4002)
             logger: Logger instance for the handler to use
+            poller: Optional poller interface for routing shared responses
+            poll_notifier: Optional callback for resolving poll futures
         """
-        def _handle_devstatus_response(payload: Mapping[str, Any], addr: tuple[str, int]) -> None:
+        loop: Optional[asyncio.AbstractEventLoop] = getattr(protocol, "loop", None)
+
+        def _handle_devstatus_response(payload: Mapping[str, Any], addr: tuple[str, int], raw: bytes) -> None:
             """Handle devStatus responses received on shared protocol port 4002.
 
             Note: The current polling implementation uses ephemeral sockets, so most
@@ -365,23 +376,89 @@ class GoveeProtocolHandler(ProtocolHandler):
                     "payload_keys": list(payload.keys()) if isinstance(payload, dict) else None,
                 },
             )
-            if poll_notifier:
+
+            def _extract_device_id() -> Optional[str]:
+                if not isinstance(payload, Mapping):
+                    return None
+                msg = payload.get("msg")
+                data = msg.get("data") if isinstance(msg, Mapping) else None
+                if isinstance(data, Mapping):
+                    device_val = data.get("device") or data.get("device_id") or data.get("id")
+                    if device_val is not None:
+                        return str(device_val)
+                return None
+
+            payload_bytes = raw
+            if not payload_bytes:
                 try:
-                    device_id = None
-                    if isinstance(payload, Mapping):
-                        msg = payload.get("msg")
-                        data = msg.get("data") if isinstance(msg, Mapping) else None
-                        if isinstance(data, Mapping):
-                            device_id = data.get("device")
-                    if device_id:
-                        payload_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-                        poll_notifier(str(device_id), payload_bytes, addr, self.protocol_name)
+                    payload_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                except Exception:
+                    payload_bytes = b""
+
+            async def _process_response() -> None:
+                # Determine device ID from payload or fallback to source IP
+                device_id = _extract_device_id()
+                device_id_source = "payload"
+
+                if not device_id and poller and addr and addr[0]:
+                    try:
+                        device_id = await poller.store.device_id_by_ip(addr[0])
+                        device_id_source = "source_ip"
+                    except Exception:
+                        logger.debug(
+                            "Failed to resolve device id from source IP",
+                            extra={"from": addr},
+                            exc_info=True,
+                        )
+
+                resolved = False
+                notifier = poller.notify_poll_response if poller else poll_notifier
+
+                if notifier and device_id and payload_bytes:
+                    try:
+                        resolved = bool(notifier(device_id, payload_bytes, addr, self.protocol_name))
+                    except Exception:
+                        logger.debug(
+                            "Failed to forward devStatus to poll notifier",
+                            extra={"from": addr, "device_id": device_id},
+                            exc_info=True,
+                        )
+
+                logger.debug(
+                    "Routed shared devStatus response",
+                    extra={
+                        "from": addr,
+                        "device_id": device_id,
+                        "device_id_source": device_id_source if device_id else None,
+                        "resolved": resolved,
+                    },
+                )
+
+                if not poller or not device_id or not payload_bytes:
+                    return
+
+                state = self.parse_poll_response(payload_bytes)
+                if state:
+                    record_device_poll_state_update()
+                try:
+                    await poller.store.record_poll_success(
+                        device_id,
+                        state,
+                        ip=addr[0] if addr else None,
+                        protocol=self.protocol_name,
+                        port=addr[1] if addr else None,
+                    )
                 except Exception:
                     logger.debug(
-                        "Failed to forward devStatus to poll notifier",
-                        extra={"from": addr},
+                        "Failed to record poll success from shared response",
+                        extra={"device_id": device_id, "from": addr},
                         exc_info=True,
                     )
+
+            if loop:
+                loop.create_task(_process_response())
+            else:
+                asyncio.create_task(_process_response())
 
         protocol.register_handler("devStatus", _handle_devstatus_response)
         logger.debug("Registered Govee devStatus handler with shared protocol")

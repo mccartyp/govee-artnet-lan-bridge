@@ -183,7 +183,7 @@ class DiscoveryService:
         except RuntimeError:
             asyncio.create_task(_wrapper())
 
-    def _handle_scan_response(self, payload: Mapping[str, Any], addr: Tuple[str, int]) -> None:
+    def _handle_scan_response(self, payload: Mapping[str, Any], addr: Tuple[str, int], raw: bytes) -> None:
         """Handle scan responses from the shared protocol."""
         self.logger.debug("Received scan response", extra={"from": addr, "payload": payload})
 

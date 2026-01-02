@@ -121,6 +121,7 @@ class ProtocolHandler(ABC):
         self,
         protocol: Any,
         logger: Any,
+        poller: Optional[Any] = None,
         poll_notifier: Optional[Callable[[str, bytes, tuple[str, int], Optional[str]], None]] = None,
     ) -> None:
         """Register protocol-specific UDP message handlers with the protocol's UDP listener.
@@ -137,6 +138,8 @@ class ProtocolHandler(ABC):
         Args:
             protocol: The protocol-specific UDP protocol instance (e.g., GoveeProtocol)
             logger: Logger instance for the handler to use
+            poller: Optional poller interface (e.g., DevicePollerService) for routing shared
+                responses back to awaiting polls and recording success.
             poll_notifier: Optional callback to notify the poller when a poll response is received
                 on a shared protocol socket. Signature: (device_id, payload_bytes, addr, protocol)
 
