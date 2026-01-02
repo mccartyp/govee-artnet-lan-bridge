@@ -1,8 +1,9 @@
-"""Discovery service for Govee devices."""
+"""Multi-protocol discovery service for smart lighting devices."""
 
 from __future__ import annotations
 
 import asyncio
+import socket
 import time
 from typing import Any, Coroutine, Dict, Mapping, Optional, Tuple
 
@@ -10,7 +11,8 @@ from .config import Config
 from .devices import DeviceStore, DiscoveryResult
 from .logging import get_logger
 from .metrics import observe_discovery_cycle, record_discovery_error, record_discovery_response
-from .protocol import GoveeProtocol
+from .protocol import get_protocol_handler
+from .udp_protocol import GoveeProtocol
 
 
 def _parse_payload(
@@ -104,7 +106,7 @@ class DiscoveryProtocol(GoveeProtocol):
 
 
 class DiscoveryService:
-    """High-level discovery coordinator using shared protocol."""
+    """High-level discovery coordinator using shared protocol (multi-protocol support)."""
 
     def __init__(self, config: Config, store: DeviceStore, protocol: Optional[GoveeProtocol] = None) -> None:
         self.config = config
@@ -113,9 +115,11 @@ class DiscoveryService:
         self.logger = get_logger("artnet.discovery")
         self._seen: Dict[str, str] = {}
         self._probe_payload = self.config.discovery_probe_payload.encode("utf-8")
+        self._lifx_socket: Optional[socket.socket] = None
+        self._lifx_task: Optional[asyncio.Task] = None
 
     async def start(self) -> None:
-        """Register handler with shared protocol."""
+        """Register handler with shared protocol and start LIFX discovery listener."""
         if self.config.dry_run:
             self.logger.info("Discovery service running in dry-run mode.")
             return
@@ -123,19 +127,40 @@ class DiscoveryService:
         if not self.protocol:
             raise RuntimeError("Discovery service requires a GoveeProtocol instance")
 
-        # Register handler for "scan" command responses
+        # Register handler for "scan" command responses (Govee)
         self.protocol.register_handler("scan", self._handle_scan_response)
-        self.logger.info(
-            "Discovery service registered with protocol",
-            extra={
-                "multicast": self.config.discovery_multicast_address,
-                "probe_port": self.config.discovery_multicast_port,
-                "reply_port": self.config.discovery_reply_port,
-            },
-        )
+
+        # Start LIFX discovery listener
+        try:
+            self._start_lifx_listener()
+            self.logger.info(
+                "Multi-protocol discovery service started",
+                extra={
+                    "govee_multicast": self.config.discovery_multicast_address,
+                    "govee_port": self.config.discovery_multicast_port,
+                    "lifx_port": 56700,
+                },
+            )
+        except Exception as e:
+            self.logger.warning(
+                "Failed to start LIFX discovery listener",
+                extra={"error": str(e)},
+            )
 
     async def stop(self) -> None:
         """Service cleanup (handler remains registered with protocol)."""
+        # Stop LIFX listener
+        if self._lifx_task:
+            self._lifx_task.cancel()
+            try:
+                await self._lifx_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._lifx_socket:
+            self._lifx_socket.close()
+            self._lifx_socket = None
+
         self.logger.info("Discovery service stopped")
 
     def _schedule(self, coro: asyncio.Future | Coroutine[Any, Any, Any]) -> None:
@@ -180,7 +205,7 @@ class DiscoveryService:
         self._seen.clear()
 
     async def run_cycle(self) -> None:
-        """Run a discovery cycle by sending probes."""
+        """Run a discovery cycle by sending probes for all protocols."""
         started = time.perf_counter()
         result = "ok"
         try:
@@ -195,11 +220,15 @@ class DiscoveryService:
 
             self.reset_cycle()
 
+            # Send Govee multicast discovery
             target = (
                 self.config.discovery_multicast_address,
                 self.config.discovery_multicast_port,
             )
             self.protocol.send_to(self._probe_payload, target)
+
+            # Send LIFX broadcast discovery
+            self._send_lifx_discovery()
 
             if self.config.manual_unicast_probes:
                 for device_id, ip in await self.store.manual_probe_targets():
@@ -218,3 +247,136 @@ class DiscoveryService:
             raise
         finally:
             observe_discovery_cycle(result, time.perf_counter() - started)
+
+    # ===== LIFX Discovery Methods =====
+
+    def _start_lifx_listener(self) -> None:
+        """Create LIFX UDP socket and start listener task."""
+        try:
+            # Create UDP socket for LIFX discovery
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.setblocking(False)
+
+            # Bind to LIFX port (56700)
+            sock.bind(("", 56700))
+
+            self._lifx_socket = sock
+
+            # Start listener task
+            self._lifx_task = asyncio.create_task(self._lifx_listener())
+
+            self.logger.debug("LIFX discovery listener started on port 56700")
+        except Exception as e:
+            self.logger.warning(
+                "Failed to create LIFX discovery socket",
+                extra={"error": str(e)},
+            )
+            if self._lifx_socket:
+                self._lifx_socket.close()
+                self._lifx_socket = None
+
+    async def _lifx_listener(self) -> None:
+        """Listen for LIFX StateService discovery responses."""
+        if not self._lifx_socket:
+            return
+
+        loop = asyncio.get_event_loop()
+
+        while True:
+            try:
+                # Wait for data to be available
+                data, addr = await loop.sock_recvfrom(self._lifx_socket, 1024)
+
+                # Handle response in background
+                self._handle_lifx_response(data, addr)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.debug(
+                    "Error in LIFX listener",
+                    extra={"error": str(e)},
+                )
+
+    def _send_lifx_discovery(self) -> None:
+        """Send LIFX GetService broadcast discovery packet."""
+        if not self._lifx_socket:
+            self.logger.debug("LIFX socket not available, skipping LIFX discovery")
+            return
+
+        try:
+            # Get LIFX protocol handler
+            lifx_handler = get_protocol_handler("lifx")
+
+            # Build GetService broadcast packet
+            discovery_packet = lifx_handler.build_discovery_request()
+
+            # Send broadcast to 255.255.255.255:56700
+            self._lifx_socket.sendto(discovery_packet, ("255.255.255.255", 56700))
+
+            self.logger.debug("Sent LIFX GetService broadcast")
+        except Exception as e:
+            self.logger.warning(
+                "Failed to send LIFX discovery broadcast",
+                extra={"error": str(e)},
+            )
+
+    def _handle_lifx_response(self, data: bytes, addr: Tuple[str, int]) -> None:
+        """Handle LIFX StateService discovery response."""
+        try:
+            # Get LIFX protocol handler
+            lifx_handler = get_protocol_handler("lifx")
+
+            # Parse discovery response
+            parsed = lifx_handler.parse_discovery_response(data)
+
+            if parsed is None:
+                # Not a StateService response, ignore
+                return
+
+            # Extract device info
+            device_id = parsed["mac_str"]
+            ip = addr[0]
+            port = parsed.get("port", 56700)
+
+            # Check if already seen
+            previous_ip = self._seen.get(device_id)
+            self._seen[device_id] = ip
+            if previous_ip and previous_ip == ip:
+                self.logger.debug(
+                    "Ignoring duplicate LIFX discovery response",
+                    extra={"device_id": device_id, "ip": ip},
+                )
+                return
+
+            # Create discovery result
+            discovery_result = DiscoveryResult(
+                id=device_id,
+                ip=ip,
+                protocol="lifx",
+                model_number=None,  # LIFX doesn't provide model in discovery
+                device_type="light",  # LIFX devices are lights
+                length_meters=None,
+                led_count=None,
+                led_density_per_meter=None,
+                has_segments=None,
+                segment_count=None,
+                description=None,
+                capabilities={"port": port, "service": parsed.get("service", 1)},
+                manual=False,
+            )
+
+            self.logger.info(
+                "Discovered LIFX device",
+                extra={"device_id": device_id, "ip": ip, "port": port},
+            )
+            record_discovery_response("lifx_broadcast")
+            self._schedule(self.store.record_discovery(discovery_result))
+
+        except Exception as e:
+            record_discovery_error("lifx_parse_error")
+            self.logger.debug(
+                "Failed to parse LIFX discovery response",
+                extra={"from": addr, "error": str(e)},
+            )

@@ -19,7 +19,7 @@ from .artnet import ArtNetService
 from .discovery import DiscoveryService
 from .health import BackoffPolicy, HealthMonitor
 from .poller import DevicePollerService
-from .protocol import GoveeProtocolService
+from .udp_protocol import GoveeProtocolService
 from .sender import DeviceSenderService
 from .logging import configure_logging, get_logger
 
