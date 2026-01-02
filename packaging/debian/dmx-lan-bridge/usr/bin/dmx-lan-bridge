@@ -1,3 +1,0 @@
-#!/bin/bash
-export PYTHONPATH="/opt/dmx-lan-bridge:$PYTHONPATH"
-exec python3 -c "from dmx_lan_bridge.__main__ import run; import sys; sys.exit(run())" "$@"
