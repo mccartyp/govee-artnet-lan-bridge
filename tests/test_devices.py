@@ -342,3 +342,33 @@ async def test_template_validation_rejects_incompatible_device(tmp_path) -> None
 
     # Template should be rejected due to missing capabilities (either brightness or color)
     assert "incompatible" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_set_last_seen_recovers_poll_offline(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-last-seen",
+            ip="127.0.0.1",
+            capabilities={"color_modes": ["color"], "brightness": True},
+        )
+    )
+
+    await store.record_poll_failure("dev-last-seen", offline_threshold=1)
+    device = await store.device("dev-last-seen")
+    assert device is not None
+    assert device.offline is True
+    assert device.poll_health == "offline"
+    assert device.poll_failure_count >= 1
+
+    await store.set_last_seen(["dev-last-seen"], mark_online=True)
+
+    device = await store.device("dev-last-seen")
+    assert device is not None
+    assert device.offline is False
+    assert device.poll_health == "healthy"
+    assert device.poll_failure_count == 0
+    assert device.last_seen is not None

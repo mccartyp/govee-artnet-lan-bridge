@@ -2147,23 +2147,50 @@ class DeviceStore:
         )
 
     async def set_last_seen(
-        self, device_ids: Iterable[str], timestamp: Optional[str] = None
+        self, device_ids: Iterable[str], timestamp: Optional[str] = None, mark_online: bool = False
     ) -> None:
-        await self.db.run(lambda conn: self._set_last_seen(conn, device_ids, timestamp))
+        await self.db.run(lambda conn: self._set_last_seen(conn, device_ids, timestamp, mark_online))
 
     def _set_last_seen(
-        self, conn: sqlite3.Connection, device_ids: Iterable[str], timestamp: Optional[str] = None
+        self,
+        conn: sqlite3.Connection,
+        device_ids: Iterable[str],
+        timestamp: Optional[str] = None,
+        mark_online: bool = False,
     ) -> None:
+        ids = list(device_ids)
+        if not ids:
+            return
         ts = timestamp or _now_iso()
-        conn.executemany(
-            """
-            UPDATE devices
-            SET last_seen = ?, stale = 0
-            WHERE id = ?
-            """,
-            [(ts, device_id) for device_id in device_ids],
-        )
-        conn.commit()
+        params = [(ts, device_id) for device_id in ids]
+
+        if mark_online:
+            conn.executemany(
+                """
+                UPDATE devices
+                SET
+                    last_seen = ?,
+                    stale = 0,
+                    offline = 0,
+                    poll_failure_count = 0,
+                    poll_health = 'healthy',
+                    poll_last_failure_at = NULL
+                WHERE id = ?
+                """,
+                params,
+            )
+            conn.commit()
+            self._update_offline_metric(conn)
+        else:
+            conn.executemany(
+                """
+                UPDATE devices
+                SET last_seen = ?, stale = 0
+                WHERE id = ?
+                """,
+                params,
+            )
+            conn.commit()
 
     async def pending_device_ids(self) -> List[str]:
         return await self.db.run(self._pending_device_ids)
