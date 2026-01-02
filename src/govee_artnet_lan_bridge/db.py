@@ -357,6 +357,15 @@ MIGRATIONS: List[Tuple[int, Migration]] = [
             """
         ),
     ),
+    (
+        11,
+        lambda conn: conn.executescript(
+            """
+            ALTER TABLE devices ADD COLUMN protocol TEXT NOT NULL DEFAULT 'govee';
+            CREATE INDEX IF NOT EXISTS idx_devices_protocol ON devices (protocol);
+            """
+        ),
+    ),
 ]
 
 

@@ -28,6 +28,7 @@ class DeviceTarget:
 
     id: str
     ip: str
+    protocol: str
     port: int
     transport: str
     capabilities: Any
@@ -59,11 +60,19 @@ def _coerce_port(capabilities: Any, default: int) -> int:
 def _derive_target(config: Config, device: DeviceInfo) -> Optional[DeviceTarget]:
     if not device.ip:
         return None
-    transport = _coerce_transport(device.capabilities, config.device_default_transport)
-    port = _coerce_port(device.capabilities, config.device_default_port)
+
+    # Get protocol-specific defaults
+    from .protocol import get_protocol_handler
+    handler = get_protocol_handler(device.protocol)
+
+    # Use protocol handler defaults, but allow capability overrides
+    transport = _coerce_transport(device.capabilities, handler.get_default_transport())
+    port = _coerce_port(device.capabilities, handler.get_default_port())
+
     return DeviceTarget(
         id=device.id,
         ip=device.ip,
+        protocol=device.protocol,
         port=port,
         transport=transport,
         capabilities=device.capabilities,

@@ -79,6 +79,7 @@ def _parse_payload(
     return DiscoveryResult(
         id=str(device_id),
         ip=str(ip),
+        protocol="govee",  # Govee discovery - explicitly mark as govee protocol
         model_number=str(model_number) if model_number is not None else None,
         device_type=str(device_type) if device_type is not None else None,
         length_meters=length_meters,

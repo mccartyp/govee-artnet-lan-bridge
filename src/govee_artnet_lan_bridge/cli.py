@@ -674,6 +674,7 @@ def _print_device_cards(devices: list[dict[str, Any]], console: Console, config:
         key_fields = [
             ("ID", "id"),
             ("IP", "ip"),
+            ("Protocol", "protocol"),
             ("Model", "model_number"),
             ("Type", "device_type"),
             ("Description", "description"),
