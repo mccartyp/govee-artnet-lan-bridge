@@ -6,6 +6,7 @@ import json
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .base import ProtocolHandler
+from ..capabilities import CapabilityProvider, CatalogCapabilityProvider
 
 
 class GoveeProtocolHandler(ProtocolHandler):
@@ -325,3 +326,7 @@ class GoveeProtocolHandler(ProtocolHandler):
             normalized[key] = value
 
         return normalized or None
+
+    def get_capability_provider(self) -> CapabilityProvider:
+        """Get catalog-based capability provider for Govee devices."""
+        return CatalogCapabilityProvider("govee")

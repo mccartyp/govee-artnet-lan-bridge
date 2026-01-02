@@ -28,14 +28,21 @@ def _default_db_path() -> Path:
     return base / "artnet-lan-bridge" / "bridge.sqlite3"
 
 
-def _default_capability_catalog_path() -> Path:
-    repo_path = Path(__file__).resolve().parents[2] / "res" / "capability_catalog.json"
+def _default_capability_catalog_dir() -> Path:
+    """Get the directory containing protocol-specific capability catalogs."""
+    repo_path = Path(__file__).resolve().parents[2] / "res"
     data_base = Path(sysconfig.get_path("data") or "").expanduser()
-    share_path = data_base / "share" / "artnet_lan_bridge" / "capability_catalog.json"
+    share_path = data_base / "share" / "artnet_lan_bridge"
+    # Return first existing directory, or repo path as default
     for path in (repo_path, share_path):
-        if path.exists():
+        if path.exists() and path.is_dir():
             return path
     return repo_path
+
+
+def _default_capability_catalog_path() -> Path:
+    """Legacy function for backwards compatibility - returns directory now."""
+    return _default_capability_catalog_dir()
 
 
 @dataclass(frozen=True)
@@ -44,6 +51,7 @@ class ManualDevice:
 
     id: str
     ip: str
+    protocol: str = "govee"
     model_number: Optional[str] = None
     device_type: Optional[str] = None
     description: Optional[str] = None
@@ -51,8 +59,8 @@ class ManualDevice:
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -65,7 +73,7 @@ class Config:
     api_bearer_token: Optional[str] = None
     api_docs: bool = True
     db_path: Path = _default_db_path()
-    capability_catalog_path: Path = _default_capability_catalog_path()
+    capability_catalog_dir: Path = _default_capability_catalog_dir()
     discovery_interval: float = 30.0
     rate_limit_per_second: float = 10.0
     rate_limit_burst: int = 20

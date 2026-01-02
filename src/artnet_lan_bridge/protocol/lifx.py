@@ -11,6 +11,7 @@ import struct
 from typing import Any, Mapping, Optional
 
 from .base import ProtocolHandler
+from ..capabilities import CapabilityProvider, DeviceReportedCapabilityProvider
 
 
 class LifxProtocolHandler(ProtocolHandler):
@@ -573,3 +574,21 @@ class LifxProtocolHandler(ProtocolHandler):
             "port": port,        # Usually 56700
             "protocol": "lifx"
         }
+
+    def get_capability_provider(self) -> CapabilityProvider:
+        """Get device-reported capability provider for LIFX devices.
+
+        LIFX devices report their full state, so no catalog is needed.
+        Default capabilities assume all LIFX devices support HSBK color model,
+        brightness control, and color temperature (2500-9000K).
+        """
+        defaults = {
+            "color_modes": ["color", "ct"],
+            "brightness": True,
+            "color": True,
+            "color_temperature": True,
+            "color_temp_range": [2500, 9000],
+            "white": True,
+            "color_model": "hsbk"
+        }
+        return DeviceReportedCapabilityProvider(defaults)

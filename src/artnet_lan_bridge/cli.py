@@ -220,17 +220,17 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
     )
     add.add_argument(
         "--has-segments",
-        dest="has_segments",
+        dest="has_zones",
         action="store_true",
         help="Mark the device as segmented (overrides catalog default)",
     )
     add.add_argument(
         "--no-segments",
-        dest="has_segments",
+        dest="has_zones",
         action="store_false",
         help="Mark the device as non-segmented",
     )
-    add.set_defaults(has_segments=None)
+    add.set_defaults(has_zones=None)
     add.add_argument("--segment-count", type=int, help="Number of segments when segmented control is available")
     add.add_argument(
         "--capabilities",
@@ -279,17 +279,17 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
     update.add_argument("--led-density-per-meter", type=float, help="LED density per meter")
     update.add_argument(
         "--has-segments",
-        dest="has_segments",
+        dest="has_zones",
         action="store_true",
         help="Mark the device as segmented",
     )
     update.add_argument(
         "--no-segments",
-        dest="has_segments",
+        dest="has_zones",
         action="store_false",
         help="Mark the device as not segmented",
     )
-    update.set_defaults(has_segments=None)
+    update.set_defaults(has_zones=None)
     update.add_argument("--segment-count", type=int, help="Segment count when segmented control is supported")
     update.add_argument(
         "--capabilities",
@@ -711,7 +711,7 @@ def _print_device_cards(devices: list[dict[str, Any]], console: Console, config:
         metadata_fields = [
             ("LED Count", "led_count"),
             ("Length (m)", "length_meters"),
-            ("Segments", "segment_count"),
+            ("Segments", "zone_count"),
             ("Last Seen", "last_seen"),
             ("First Seen", "first_seen"),
         ]
@@ -958,10 +958,10 @@ def _cmd_devices_add(config: ClientConfig, client: httpx.Client, args: argparse.
         payload["led_count"] = args.led_count
     if args.led_density_per_meter is not None:
         payload["led_density_per_meter"] = args.led_density_per_meter
-    if args.has_segments is not None:
-        payload["has_segments"] = args.has_segments
-    if args.segment_count is not None:
-        payload["segment_count"] = args.segment_count
+    if args.has_zones is not None:
+        payload["has_zones"] = args.has_zones
+    if args.zone_count is not None:
+        payload["zone_count"] = args.zone_count
     if enabled is not None:
         payload["enabled"] = enabled
 
@@ -986,10 +986,10 @@ def _cmd_devices_update(config: ClientConfig, client: httpx.Client, args: argpar
         payload["led_count"] = args.led_count
     if args.led_density_per_meter is not None:
         payload["led_density_per_meter"] = args.led_density_per_meter
-    if args.has_segments is not None:
-        payload["has_segments"] = args.has_segments
-    if args.segment_count is not None:
-        payload["segment_count"] = args.segment_count
+    if args.has_zones is not None:
+        payload["has_zones"] = args.has_zones
+    if args.zone_count is not None:
+        payload["zone_count"] = args.zone_count
     if args.capabilities is not None:
         capabilities = _parse_json_arg(args.capabilities)
         payload["capabilities"] = _validate_capabilities(capabilities)
@@ -1216,8 +1216,8 @@ def _validate_device_payload(payload: dict[str, Any], operation: str = "create")
         if payload["led_density_per_meter"] <= 0:
             raise CliError("LED density must be greater than 0")
 
-    if "segment_count" in payload and payload["segment_count"] is not None:
-        if payload["segment_count"] <= 0:
+    if "zone_count" in payload and payload["zone_count"] is not None:
+        if payload["zone_count"] <= 0:
             raise CliError("Segment count must be greater than 0")
 
 

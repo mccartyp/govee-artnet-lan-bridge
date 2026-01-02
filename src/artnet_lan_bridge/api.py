@@ -66,8 +66,8 @@ class DeviceCreate(BaseModel):
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[int] = None
     enabled: bool = True
 
     @field_validator("protocol")
@@ -98,8 +98,8 @@ class DeviceUpdate(BaseModel):
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[int] = None
     enabled: Optional[bool] = None
 
 
@@ -116,8 +116,8 @@ class DeviceOut(BaseModel):
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[str] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[str] = None
     description: Optional[str]
     capabilities: Optional[Any]
     manual: bool
@@ -461,8 +461,8 @@ def create_app(
             length_meters=payload.length_meters,
             led_count=payload.led_count,
             led_density_per_meter=payload.led_density_per_meter,
-            has_segments=payload.has_segments,
-            segment_count=payload.segment_count,
+            has_zones=payload.has_zones,
+            zone_count=payload.zone_count,
         )
         device = await store.create_manual_device(manual)
         if payload.enabled is not None and not payload.enabled:
@@ -487,8 +487,8 @@ def create_app(
             length_meters=payload.length_meters,
             led_count=payload.led_count,
             led_density_per_meter=payload.led_density_per_meter,
-            has_segments=payload.has_segments,
-            segment_count=payload.segment_count,
+            has_zones=payload.has_zones,
+            zone_count=payload.zone_count,
             description=payload.description,
             capabilities=payload.capabilities,
             enabled=payload.enabled,
