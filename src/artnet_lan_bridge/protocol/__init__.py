@@ -6,6 +6,7 @@ from typing import Dict
 
 from .base import ProtocolHandler
 from .govee import GoveeProtocolHandler
+from .lifx import LifxProtocolHandler
 
 # Default protocol for new devices
 DEFAULT_PROTOCOL = "govee"
@@ -13,6 +14,7 @@ DEFAULT_PROTOCOL = "govee"
 # Registry of available protocol handlers
 _PROTOCOL_HANDLERS: Dict[str, ProtocolHandler] = {
     "govee": GoveeProtocolHandler(),
+    "lifx": LifxProtocolHandler(),
 }
 
 
@@ -48,6 +50,7 @@ def get_supported_protocols() -> list[str]:
 __all__ = [
     "ProtocolHandler",
     "GoveeProtocolHandler",
+    "LifxProtocolHandler",
     "get_protocol_handler",
     "get_supported_protocols",
     "DEFAULT_PROTOCOL",
