@@ -116,3 +116,25 @@ class ProtocolHandler(ABC):
             May be catalog-based (for Govee, WiZ) or device-reported (for LIFX).
         """
         pass
+
+    def register_udp_handlers(self, protocol: Any, logger: Any) -> None:
+        """Register protocol-specific UDP message handlers with the protocol's UDP listener.
+
+        This method is called during poller startup to allow protocols to register handlers
+        for incoming UDP messages on their protocol-specific port. For example, Govee
+        registers handlers for 'devStatus' responses on its port 4002 UDP listener.
+
+        Each protocol has its own UDP listener on its own port:
+        - Govee: port 4002
+        - LIFX: port 56700
+        - etc.
+
+        Args:
+            protocol: The protocol-specific UDP protocol instance (e.g., GoveeProtocol)
+            logger: Logger instance for the handler to use
+
+        Note:
+            This is optional - protocols that don't need to handle incoming UDP messages
+            can use the default implementation which does nothing.
+        """
+        pass  # Default implementation does nothing

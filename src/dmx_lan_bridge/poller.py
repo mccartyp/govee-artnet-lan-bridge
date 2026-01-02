@@ -19,6 +19,7 @@ from .metrics import (
     set_device_polling_enabled,
 )
 from .protocol import get_protocol_handler
+from .udp_protocol import GoveeProtocol
 
 
 @dataclass(frozen=True)
@@ -53,10 +54,11 @@ class DevicePollerService:
     """Periodically poll devices for reachability and lightweight state."""
 
     def __init__(
-        self, config: Config, store: DeviceStore, health: Optional[HealthMonitor] = None
+        self, config: Config, store: DeviceStore, protocol: Optional[GoveeProtocol] = None, health: Optional[HealthMonitor] = None
     ) -> None:
         self.config = config
         self.store = store
+        self.protocol = protocol
         self.logger = get_logger("artnet.poller")
         self._health = health or HealthMonitor(
             ("poller",),
@@ -81,6 +83,19 @@ class DevicePollerService:
             if not self.config.device_poll_enabled:
                 self.logger.info("Device polling disabled; skipping poller startup.")
             return
+
+        # Register Govee-specific UDP handlers with the Govee protocol listener (port 4002)
+        # The protocol instance here is GoveeProtocol which listens on Govee's multicast port
+        if self.protocol:
+            self.logger.info("Registering Govee protocol UDP handlers")
+            try:
+                govee_handler = get_protocol_handler("govee")
+                govee_handler.register_udp_handlers(self.protocol, self.logger)
+            except Exception as exc:
+                self.logger.warning(
+                    "Could not register Govee UDP handlers",
+                    exc_info=exc
+                )
 
         self._stop_event.clear()
         set_device_polling_enabled(True)

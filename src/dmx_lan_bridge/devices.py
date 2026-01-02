@@ -2297,6 +2297,13 @@ class DeviceStore:
         # Publish device_online event if device transitioned from offline to online
         if self._event_bus and event_data and event_data.get("went_online"):
             from .events import EVENT_DEVICE_ONLINE
+            self.logger.info(
+                "Device came online",
+                extra={
+                    "device_id": device_id,
+                    "previous_offline_reason": "send_failures",
+                },
+            )
             await self._event_bus.publish(EVENT_DEVICE_ONLINE, {
                 "device_id": device_id,
                 "previous_offline_reason": "send_failures",
@@ -2335,6 +2342,13 @@ class DeviceStore:
         # Publish device_online event if device transitioned from offline to online
         if self._event_bus and event_data and event_data.get("went_online"):
             from .events import EVENT_DEVICE_ONLINE
+            self.logger.info(
+                "Device came online",
+                extra={
+                    "device_id": device_id,
+                    "previous_offline_reason": "poll_failures",
+                },
+            )
             await self._event_bus.publish(EVENT_DEVICE_ONLINE, {
                 "device_id": device_id,
                 "previous_offline_reason": "poll_failures",
@@ -2431,6 +2445,14 @@ class DeviceStore:
         # Publish device_offline event if device transitioned to offline
         if self._event_bus and event_data and event_data.get("went_offline"):
             from .events import EVENT_DEVICE_OFFLINE
+            self.logger.info(
+                "Device went offline",
+                extra={
+                    "device_id": device_id,
+                    "reason": "poll_failures",
+                    "failure_count": event_data.get("failure_count", 0),
+                },
+            )
             await self._event_bus.publish(EVENT_DEVICE_OFFLINE, {
                 "device_id": device_id,
                 "reason": "poll_failures",
@@ -2485,6 +2507,14 @@ class DeviceStore:
         # Publish device_offline event if device transitioned to offline
         if self._event_bus and event_data and event_data.get("went_offline"):
             from .events import EVENT_DEVICE_OFFLINE
+            self.logger.info(
+                "Device went offline",
+                extra={
+                    "device_id": device_id,
+                    "reason": "send_failures",
+                    "failure_count": event_data.get("failure_count", 0),
+                },
+            )
             await self._event_bus.publish(EVENT_DEVICE_OFFLINE, {
                 "device_id": device_id,
                 "reason": "send_failures",

@@ -439,7 +439,8 @@ async def _poller_loop(
     services: Optional[RunningServices] = None,
 ) -> None:
     logger = get_logger("artnet.poller")
-    service = DevicePollerService(config, store, health=health)
+    proto_inst = protocol.protocol if protocol else None
+    service = DevicePollerService(config, store, protocol=proto_inst, health=health)
     if services is not None:
         services.poller = service
     await service.start()
