@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import socket
 import contextlib
@@ -245,7 +246,15 @@ class DeviceSenderService:
             return
 
         await self._acquire_rate_limit(state.device_id, state.context_id)
-        payload = state.payload.encode("utf-8")
+
+        # Decode binary payloads (LIFX) or encode text payloads (Govee)
+        if state.payload.startswith("base64:"):
+            # Binary payload - decode from base64
+            payload = base64.b64decode(state.payload[7:])  # Strip "base64:" prefix
+        else:
+            # Text payload - encode to UTF-8 (Govee JSON)
+            payload = state.payload.encode("utf-8")
+
         transport_label = target.transport
         try:
             success = await self._send_with_retries(target, payload, payload_hash, state.context_id)
