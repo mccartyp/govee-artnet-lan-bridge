@@ -50,6 +50,41 @@ class _PollProtocol(asyncio.DatagramProtocol):
             self.response_future.set_exception(exc)
 
 
+class _PollResponseBus:
+    """Lightweight bus for delivering poll responses received on shared sockets."""
+
+    def __init__(self) -> None:
+        self._waiters: Dict[str, list[asyncio.Future[bytes]]] = {}
+
+    def register(self, key: str) -> asyncio.Future[bytes]:
+        future: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
+        self._waiters.setdefault(key, []).append(future)
+        return future
+
+    def resolve(self, key: str, payload: bytes) -> bool:
+        waiters = self._waiters.pop(key, [])
+        if not waiters:
+            return False
+
+        for future in waiters:
+            if not future.done():
+                future.set_result(payload)
+        return True
+
+    def discard(self, key: str, future: asyncio.Future[bytes]) -> None:
+        waiters = self._waiters.get(key)
+        if not waiters:
+            return
+
+        try:
+            waiters.remove(future)
+        except ValueError:
+            return
+
+        if not waiters:
+            self._waiters.pop(key, None)
+
+
 class DevicePollerService:
     """Periodically poll devices for reachability and lightweight state."""
 
@@ -76,6 +111,7 @@ class DevicePollerService:
         self._rate_last_refill = time.perf_counter()
         self._rate_lock = asyncio.Lock()
         self._batch_cursor = 0
+        self._response_bus = _PollResponseBus()
 
     async def start(self) -> None:
         if self._task or not self.config.device_poll_enabled:
@@ -90,7 +126,11 @@ class DevicePollerService:
             self.logger.info("Registering Govee protocol UDP handlers")
             try:
                 govee_handler = get_protocol_handler("govee")
-                govee_handler.register_udp_handlers(self.protocol, self.logger)
+                govee_handler.register_udp_handlers(
+                    self.protocol,
+                    self.logger,
+                    self.notify_poll_response,
+                )
             except Exception as exc:
                 self.logger.warning(
                     "Could not register Govee UDP handlers",
@@ -292,6 +332,24 @@ class DevicePollerService:
             record_device_poll(status)
             observe_device_poll_duration(status, duration)
 
+    def _poll_response_key(self, device_id: str, protocol: Optional[str]) -> str:
+        proto = protocol or "unknown"
+        return f"{proto}:{device_id}"
+
+    def notify_poll_response(self, device_id: str, payload_bytes: bytes, addr: tuple[str, int], protocol: Optional[str] = None) -> None:
+        """Resolve any waiting poll future for a device when a shared socket receives a reply."""
+        key = self._poll_response_key(device_id, protocol)
+        resolved = self._response_bus.resolve(key, payload_bytes)
+        if resolved:
+            self.logger.debug(
+                "Resolved poll response from shared socket",
+                extra={
+                    "device_id": device_id,
+                    "protocol": protocol,
+                    "from": addr,
+                },
+            )
+
     async def _acquire_rate_limit(self) -> None:
         if self.config.device_poll_rate_per_second <= 0 or self.config.device_poll_rate_burst <= 0:
             return
@@ -333,18 +391,40 @@ class DevicePollerService:
                 remote_addr=(target.ip, target.port)
             )
 
+            key = self._poll_response_key(target.id, target.protocol)
+            bus_future: Optional[asyncio.Future[bytes]] = None
+            pending: set[asyncio.Future[Any]] = set()
             try:
+                bus_future = self._response_bus.register(key)
+                socket_future = protocol.response_future
+
                 # Send poll request
                 transport.sendto(poll_request)
 
                 # Wait for response with timeout
                 timeout = self.config.device_poll_timeout
-                response = await asyncio.wait_for(
-                    protocol.response_future,
-                    timeout=timeout
+                done, pending = await asyncio.wait(
+                    {socket_future, bus_future},
+                    timeout=timeout,
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-                return response
+
+                if not done:
+                    return None
+
+                for fut in done:
+                    if fut.cancelled():
+                        continue
+                    if fut.exception():
+                        raise fut.exception()
+                    response = fut.result()
+                    return response
+                return None
             finally:
+                if bus_future is not None:
+                    self._response_bus.discard(key, bus_future)
+                for fut in pending:
+                    fut.cancel()
                 transport.close()
 
         except asyncio.TimeoutError:

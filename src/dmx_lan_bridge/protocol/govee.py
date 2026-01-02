@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 from .base import ProtocolHandler
 from ..capabilities import CapabilityProvider, CatalogCapabilityProvider
@@ -331,7 +331,12 @@ class GoveeProtocolHandler(ProtocolHandler):
         """Get catalog-based capability provider for Govee devices."""
         return CatalogCapabilityProvider("govee")
 
-    def register_udp_handlers(self, protocol: Any, logger: Any) -> None:
+    def register_udp_handlers(
+        self,
+        protocol: Any,
+        logger: Any,
+        poll_notifier: Optional[Callable[[str, bytes, tuple[str, int], Optional[str]], None]] = None,
+    ) -> None:
         """Register Govee-specific UDP message handlers with the Govee protocol listener.
 
         Registers a handler for 'devStatus' responses on Govee's UDP port 4002.
@@ -360,6 +365,23 @@ class GoveeProtocolHandler(ProtocolHandler):
                     "payload_keys": list(payload.keys()) if isinstance(payload, dict) else None,
                 },
             )
+            if poll_notifier:
+                try:
+                    device_id = None
+                    if isinstance(payload, Mapping):
+                        msg = payload.get("msg")
+                        data = msg.get("data") if isinstance(msg, Mapping) else None
+                        if isinstance(data, Mapping):
+                            device_id = data.get("device")
+                    if device_id:
+                        payload_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                        poll_notifier(str(device_id), payload_bytes, addr, self.protocol_name)
+                except Exception:
+                    logger.debug(
+                        "Failed to forward devStatus to poll notifier",
+                        extra={"from": addr},
+                        exc_info=True,
+                    )
 
         protocol.register_handler("devStatus", _handle_devstatus_response)
         logger.debug("Registered Govee devStatus handler with shared protocol")
