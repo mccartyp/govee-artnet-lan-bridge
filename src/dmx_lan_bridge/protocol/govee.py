@@ -390,10 +390,11 @@ class GoveeProtocolHandler(ProtocolHandler):
 
             payload_bytes = raw
             if not payload_bytes:
-                try:
-                    payload_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-                except Exception:
-                    payload_bytes = b""
+                logger.debug(
+                    "Received empty devStatus payload from shared protocol",
+                    extra={"from": addr},
+                )
+                return
 
             async def _process_response() -> None:
                 # Determine device ID from payload or fallback to source IP
