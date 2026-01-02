@@ -1029,6 +1029,7 @@ class DeviceStore:
 
     def _upsert_manual(self, conn: sqlite3.Connection, device: ManualDevice) -> None:
         now = _now_iso()
+        cache = self._get_capability_cache(device.protocol)
         metadata_input = _extract_metadata(device)
         normalized = None
         if (
@@ -1036,7 +1037,7 @@ class DeviceStore:
             or metadata_input
             or cache.has_provider_entry(device.model_number)
         ):
-            normalized = self._capability_cache.normalize(
+            normalized = cache.normalize(
                 device.model_number, device.capabilities, metadata=metadata_input
             )
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
@@ -1125,6 +1126,7 @@ class DeviceStore:
         is_new = existing is None
         old_ip = existing["ip"] if existing else None
 
+        cache = self._get_capability_cache(result.protocol)
         metadata_input = _extract_metadata(result)
         normalized = None
         if (
@@ -1132,7 +1134,7 @@ class DeviceStore:
             or metadata_input
             or cache.has_provider_entry(result.model_number)
         ):
-            normalized = self._capability_cache.normalize(
+            normalized = cache.normalize(
                 result.model_number, result.capabilities, metadata=metadata_input
             )
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None

@@ -51,6 +51,7 @@ class ManualDevice:
 
     id: str
     ip: str
+    protocol: str = "govee"
     model_number: Optional[str] = None
     device_type: Optional[str] = None
     description: Optional[str] = None
