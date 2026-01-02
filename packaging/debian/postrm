@@ -23,6 +23,12 @@ case "$1" in
             rmdir --ignore-fail-on-non-empty /etc/dmx-bridge || true
         fi
 
+        # Remove application directory
+        if [ -d /opt/dmx-lan-bridge ]; then
+            echo "Removing application directory /opt/dmx-lan-bridge..."
+            rm -rf /opt/dmx-lan-bridge || true
+        fi
+
         # Reload systemd daemon
         systemctl daemon-reload || true
 
@@ -30,7 +36,13 @@ case "$1" in
         ;;
 
     remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
-        # On remove (not purge), we keep data and config
+        # On remove (not purge), we keep data and config but remove application files
+        # Remove application directory
+        if [ -d /opt/dmx-lan-bridge ]; then
+            echo "Removing application directory /opt/dmx-lan-bridge..."
+            rm -rf /opt/dmx-lan-bridge || true
+        fi
+
         # Just reload systemd to remove the service unit
         systemctl daemon-reload || true
         ;;
