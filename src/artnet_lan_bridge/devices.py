@@ -1345,7 +1345,8 @@ class DeviceStore:
                 m.fields,
                 d.model,
                 d.model_number,
-                d.capabilities
+                d.capabilities,
+                d.protocol
             FROM mappings m
             JOIN devices d ON d.id = m.device_id
             WHERE d.enabled = 1
@@ -1354,7 +1355,9 @@ class DeviceStore:
         ).fetchall()
         results: List[MappingRecord] = []
         for row in rows:
-            normalized = self._capability_cache.normalize(
+            protocol = row["protocol"] if "protocol" in row.keys() else "govee"
+            cache = self._get_capability_cache(protocol)
+            normalized = cache.normalize(
                 row["model_number"] or row["model"],
                 _deserialize_capabilities(row["capabilities"]),
             )
@@ -2010,13 +2013,16 @@ class DeviceStore:
         self, conn: sqlite3.Connection, device_id: str, capabilities: Mapping[str, Any]
     ) -> None:
         device_row = conn.execute(
-            "SELECT model, model_number FROM devices WHERE id = ?",
+            "SELECT model, model_number, protocol FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         model = None
+        protocol = "govee"
         if device_row:
             model = device_row["model_number"] or device_row["model"]
-        normalized = self._capability_cache.normalize(model, capabilities)
+            protocol = device_row["protocol"] if "protocol" in device_row.keys() else "govee"
+        cache = self._get_capability_cache(protocol)
+        normalized = cache.normalize(model, capabilities)
         serialized = _serialize_capabilities(normalized.as_mapping())
         metadata = _coerce_metadata_for_db(normalized.metadata)
         conn.execute(
@@ -2674,8 +2680,10 @@ class DeviceStore:
             model = row["model_number"]
         elif "model" in row.keys():
             model = row["model"]
+        protocol = row["protocol"] if "protocol" in row.keys() else "govee"
+        cache = self._get_capability_cache(protocol)
         raw_caps = _deserialize_capabilities(row["capabilities"])
-        return self._capability_cache.normalize(model, raw_caps)
+        return cache.normalize(model, raw_caps)
 
     def _normalized_capabilities_from_row(self, row: sqlite3.Row) -> Any:
         return self._normalized_capabilities_obj(row).as_mapping()
