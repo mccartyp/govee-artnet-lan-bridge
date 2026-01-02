@@ -126,6 +126,7 @@ class DeviceOut(BaseModel):
     enabled: bool
     stale: bool
     offline: bool
+    poll_health: str = "healthy"
     last_seen: Optional[str]
     first_seen: Optional[str]
     poll_last_success_at: Optional[str] = None

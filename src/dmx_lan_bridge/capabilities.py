@@ -63,6 +63,9 @@ def _capabilities_missing(capabilities: Any) -> bool:
             "effects",
             "scenes",
             "scene_modes",
+            "port",
+            "device_port",
+            "control_port",
         }
         return not any(key in capabilities for key in meaningful_keys)
     return False

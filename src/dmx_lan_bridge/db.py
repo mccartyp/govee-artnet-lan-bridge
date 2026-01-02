@@ -366,6 +366,20 @@ MIGRATIONS: List[Tuple[int, Migration]] = [
             """
         ),
     ),
+    (
+        12,
+        lambda conn: conn.executescript(
+            """
+            ALTER TABLE devices ADD COLUMN poll_health TEXT NOT NULL DEFAULT 'healthy';
+            UPDATE devices
+            SET poll_health = CASE
+                WHEN offline = 1 THEN 'offline'
+                WHEN poll_failure_count > 0 THEN 'degraded'
+                ELSE 'healthy'
+            END;
+            """
+        ),
+    ),
 ]
 
 
