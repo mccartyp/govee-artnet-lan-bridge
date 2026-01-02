@@ -25,14 +25,14 @@ MIN_SUPPORTED_CONFIG_VERSION = 1
 
 def _default_db_path() -> Path:
     base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return base / "artnet-lan-bridge" / "bridge.sqlite3"
+    return base / "dmx-lan-bridge" / "bridge.sqlite3"
 
 
 def _default_capability_catalog_dir() -> Path:
     """Get the directory containing protocol-specific capability catalogs."""
     repo_path = Path(__file__).resolve().parents[2] / "res"
     data_base = Path(sysconfig.get_path("data") or "").expanduser()
-    share_path = data_base / "share" / "artnet_lan_bridge"
+    share_path = data_base / "share" / "dmx_lan_bridge"
     # Return first existing directory, or repo path as default
     for path in (repo_path, share_path):
         if path.exists() and path.is_dir():
@@ -67,7 +67,16 @@ class ManualDevice:
 class Config:
     """Application configuration."""
 
+    # Input Protocol Configuration
+    artnet_enabled: bool = True
     artnet_port: int = 6454
+    artnet_priority: int = 25  # Fixed priority for ArtNet (0-200, below sACN default)
+    sacn_enabled: bool = False  # sACN disabled by default (new feature)
+    sacn_port: int = 5568
+    sacn_multicast: bool = True
+    sacn_universes: Sequence[int] = (1,)  # Universes to listen on (multicast mode)
+
+    # API Configuration
     api_port: int = 8000
     api_key: Optional[str] = None
     api_bearer_token: Optional[str] = None
@@ -157,7 +166,13 @@ class Config:
         ]
         base: Dict[str, Any] = {
             "config_version": self.config_version,
+            "artnet_enabled": self.artnet_enabled,
             "artnet_port": self.artnet_port,
+            "artnet_priority": self.artnet_priority,
+            "sacn_enabled": self.sacn_enabled,
+            "sacn_port": self.sacn_port,
+            "sacn_multicast": self.sacn_multicast,
+            "sacn_universes": list(self.sacn_universes),
             "api_port": self.api_port,
             "api_docs": self.api_docs,
             "db_path": str(self.db_path),
@@ -241,6 +256,7 @@ class Config:
 def _validate_config(config: Config, skip_capability_catalog_check: bool = False) -> None:
     _validate_version(config.config_version)
     _validate_range("artnet_port", config.artnet_port, 1, 65535)
+    _validate_range("artnet_priority", config.artnet_priority, 0, 200)
     _validate_range("api_port", config.api_port, 1, 65535)
     _validate_range("discovery_interval", config.discovery_interval, 1.0, 3600.0)
     _validate_range(
@@ -647,6 +663,7 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             data[key] = _coerce_path(value)
         elif key in {
             "artnet_port",
+            "artnet_priority",
             "api_port",
             "rate_limit_burst",
             "device_max_queue_depth",

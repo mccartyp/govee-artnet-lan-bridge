@@ -355,54 +355,39 @@ class ArtNetProtocol(asyncio.DatagramProtocol):
 
 
 class ArtNetService:
-    """High-level ArtNet listener with mapping and change detection."""
+    """ArtNet input protocol listener.
+
+    Receives ArtNet packets, converts them to unified DMX frames,
+    and forwards to the DmxMappingService for device mapping.
+
+    This service is now protocol-specific (ArtNet only) while mapping
+    logic is handled by the protocol-agnostic DmxMappingService.
+    """
 
     def __init__(
         self,
         config: Config,
-        store: DeviceStore,
-        initial_last_payloads: Optional[Mapping[str, Mapping[str, Any]]] = None,
-        event_bus: Optional[Any] = None,
+        dmx_mapper: Optional[Any] = None,  # DmxMappingService (imported late to avoid circular)
     ) -> None:
         self.config = config
-        self.store = store
-        self.event_bus = event_bus
-        self.logger = get_logger("artnet.artnet")
+        self.dmx_mapper = dmx_mapper
+        self.logger = get_logger("artnet.input")
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._protocol: Optional[ArtNetProtocol] = None
-        self._universe_mappings: Dict[int, UniverseMapping] = {}
-        self._last_payloads: MutableMapping[str, Mapping[str, Any]] = (
-            copy.deepcopy(initial_last_payloads) if initial_last_payloads else {}
-        )
-        self._pending_updates: MutableMapping[str, DeviceStateUpdate] = {}
-        self._debounce_tasks: MutableMapping[str, asyncio.Task[None]] = {}
-        self._debounce_seconds = DEFAULT_DEBOUNCE_SECONDS
         self._error_event: asyncio.Event = asyncio.Event()
-        self._trace_context_ids = config.trace_context_ids
-        self._trace_context_sample_rate = max(0.0, min(1.0, config.trace_context_sample_rate))
         self._log_sample_rate = max(0.0, min(1.0, config.noisy_log_sample_rate))
-        self._reload_lock = asyncio.Lock()
-        self._unsubscribe_handlers: list[Callable[[], None]] = []
+        self._source_id = f"artnet-{id(self)}"  # Unique source identifier
 
     async def start(self) -> None:
+        """Start ArtNet listener on configured port."""
         self._error_event.clear()
-        await self._reload_mappings()
-        if not self._universe_mappings:
-            self.logger.warning("No ArtNet mappings configured; listener will still start.")
-
-        # Subscribe to mapping events for automatic reload
-        if self.event_bus:
-            for event_type in [EVENT_MAPPING_CREATED, EVENT_MAPPING_UPDATED, EVENT_MAPPING_DELETED]:
-                unsubscribe = await self.event_bus.subscribe(event_type, self._handle_mapping_event)
-                self._unsubscribe_handlers.append(unsubscribe)
-            self.logger.info("Subscribed to mapping events for automatic reload")
 
         if self.config.dry_run:
-            self.logger.info(
-                "ArtNet service running in dry-run mode; listener not started.",
-                extra={"universes": sorted(self._universe_mappings.keys())},
-            )
+            self.logger.info("ArtNet input running in dry-run mode; listener not started.")
             return
+
+        if not self.dmx_mapper:
+            raise RuntimeError("ArtNet service requires a DmxMappingService instance")
 
         loop = asyncio.get_running_loop()
         sock = _create_artnet_socket(self.config.artnet_port)
@@ -413,214 +398,70 @@ class ArtNetService:
         self._transport = transport  # type: ignore[assignment]
         self._protocol = protocol  # type: ignore[assignment]
         self.logger.info(
-            "ArtNet service started",
+            "ArtNet input protocol started",
             extra={
                 "port": self.config.artnet_port,
-                "universes": sorted(self._universe_mappings.keys()),
+                "priority": self.config.artnet_priority,
             },
         )
 
     async def stop(self) -> None:
-        # Unsubscribe from mapping events
-        for unsubscribe in self._unsubscribe_handlers:
-            unsubscribe()
-        self._unsubscribe_handlers.clear()
-
+        """Stop ArtNet listener."""
         if self._transport:
             self._transport.close()
         self._transport = None
         self._protocol = None
-        await self._flush_pending()
-        self.logger.info("ArtNet service stopped")
+        self.logger.info("ArtNet input protocol stopped")
         self._error_event.set()
 
-    async def _reload_mappings(self) -> None:
-        """Reload mappings from the database. Thread-safe using lock."""
-        async with self._reload_lock:
-            records = await self.store.mappings()
-            universes: Dict[int, List[DeviceMapping]] = {}
-            for record in records:
-                if record.channel <= 0 or record.length <= 0:
-                    self.logger.warning(
-                        "Skipping mapping; invalid channel or length",
-                        extra={
-                            "device_id": record.device_id,
-                            "universe": record.universe,
-                            "channel": record.channel,
-                            "length": record.length,
-                        },
-                    )
-                    continue
-                spec = _build_spec(record)
-                if record.mapping_type == "discrete" and not record.field:
-                    self.logger.warning(
-                        "Skipping mapping; discrete mapping missing field",
-                        extra={
-                            "device_id": record.device_id,
-                            "universe": record.universe,
-                            "channel": record.channel,
-                        },
-                    )
-                    continue
-                if record.length < spec.required_channels:
-                    self.logger.warning(
-                        "Skipping mapping; insufficient length for required channels",
-                        extra={
-                            "device_id": record.device_id,
-                            "universe": record.universe,
-                            "channel": record.channel,
-                            "length": record.length,
-                            "required_channels": spec.required_channels,
-                        },
-                    )
-                    continue
-                universes.setdefault(record.universe, []).append(DeviceMapping(record=record, spec=spec))
-            self._universe_mappings = {
-                universe: UniverseMapping(universe, mappings, self._log_sample_rate)
-                for universe, mappings in universes.items()
-            }
-            self.logger.info(
-                "Reloaded mappings",
-                extra={"universes": sorted(self._universe_mappings.keys()), "mapping_count": len(records)},
-            )
-
-    async def _handle_mapping_event(self, event: SystemEvent) -> None:
-        """Handle mapping events by reloading mappings."""
-        self.logger.info(
-            "Mapping changed, reloading mappings",
-            extra={"event_type": event.event_type, "data": event.data},
-        )
-        await self._reload_mappings()
-
     def handle_packet(self, packet: ArtNetPacket, addr: Tuple[str, int]) -> None:
-        started = time.perf_counter()
-        status = "ok"
-        context_id: Optional[str] = None
-        if self._trace_context_ids and random.random() <= self._trace_context_sample_rate:
-            context_id = self._build_context_id(packet)
-        try:
-            record_artnet_packet(packet.universe)
-            mapping = self._universe_mappings.get(packet.universe)
-            if mapping is None:
-                if random.random() <= self._log_sample_rate:
-                    self.logger.debug(
-                        "Ignoring ArtNet packet for unconfigured universe",
-                        extra={
-                            "universe": packet.universe,
-                            "sequence": packet.sequence,
-                            "data_length": packet.length,
-                            "from": addr,
-                        },
-                    )
-                status = "unmapped"
-                return
+        """Handle incoming ArtNet packet by converting to DMX frame.
 
-            updates = mapping.apply(packet.data, context_id=context_id)
-            if not updates:
-                status = "no_updates"
-                if random.random() <= self._log_sample_rate:
-                    self.logger.debug(
-                        "ArtNet packet generated no device updates",
-                        extra={
-                            "universe": packet.universe,
-                            "sequence": packet.sequence,
-                            "data_length": packet.length,
-                            "from": addr,
-                            "context_id": context_id,
-                        },
-                    )
-            else:
-                if random.random() <= self._log_sample_rate:
-                    self.logger.debug(
-                        "ArtNet packet received",
-                        extra={
-                            "universe": packet.universe,
-                            "sequence": packet.sequence,
-                            "data_length": packet.length,
-                            "updates_count": len(updates),
-                            "from": addr,
-                            "context_id": context_id,
-                        },
-                    )
-            for update in updates:
-                self._schedule_update(update)
-        except Exception:
-            status = "error"
-            raise
-        finally:
-            observe_artnet_ingest(packet.universe, status, time.perf_counter() - started)
-
-    def _schedule_update(self, update: DeviceStateUpdate) -> None:
-        previous = self._last_payloads.get(update.device_id)
-        if previous is not None and previous == update.payload:
-            if random.random() <= self._log_sample_rate:
-                self.logger.debug(
-                    "Skipping duplicate device update",
-                    extra={
-                        "device_id": update.device_id,
-                        "payload": update.payload,
-                        "context_id": update.context_id,
-                    },
-                )
-            return
+        Converts ArtNet-specific packet format to protocol-agnostic DmxFrame
+        and forwards to DmxMappingService for processing.
+        """
         if random.random() <= self._log_sample_rate:
             self.logger.debug(
-                "Scheduling device update",
+                "Received ArtNet packet",
                 extra={
-                    "device_id": update.device_id,
-                    "payload": update.payload,
-                    "previous_payload": previous,
-                    "context_id": update.context_id,
+                    "universe": packet.universe,
+                    "sequence": packet.sequence,
+                    "data_length": packet.length,
+                    "from": addr,
                 },
             )
-        self._last_payloads[update.device_id] = update.payload
-        self._pending_updates[update.device_id] = update
-        record_artnet_update(update.device_id)
-        if update.device_id not in self._debounce_tasks:
-            self._debounce_tasks[update.device_id] = asyncio.create_task(
-                self._flush_after(update.device_id)
-            )
 
-    async def _flush_after(self, device_id: str) -> None:
-        try:
-            await asyncio.sleep(self._debounce_seconds)
-            update = self._pending_updates.pop(device_id, None)
-            if update:
-                await self.store.enqueue_state(update)
-                self.logger.debug(
-                    "Enqueued device update",
-                    extra={
-                        "device_id": device_id,
-                        "payload": update.payload,
-                        "context_id": update.context_id,
-                    },
-                )
-        finally:
-            self._debounce_tasks.pop(device_id, None)
+        # Ensure packet has exactly 512 DMX channels
+        # ArtNet may send shorter packets, pad with zeros
+        dmx_data = packet.data
+        if len(dmx_data) < 512:
+            dmx_data = dmx_data + b"\x00" * (512 - len(dmx_data))
+        elif len(dmx_data) > 512:
+            dmx_data = dmx_data[:512]
 
-    async def _flush_pending(self) -> None:
-        pending = list(self._debounce_tasks.values())
-        for task in pending:
-            task.cancel()
-        if pending:
-            with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.gather(*pending)
-        for device_id, update in list(self._pending_updates.items()):
-            await self.store.enqueue_state(update)
-            self._pending_updates.pop(device_id, None)
+        # Convert ArtNet packet to unified DMX frame
+        from .dmx import DmxFrame
+
+        frame = DmxFrame(
+            universe=packet.universe,
+            data=dmx_data,
+            sequence=packet.sequence,
+            source_protocol="artnet",
+            priority=self.config.artnet_priority,  # Configurable priority for ArtNet
+            timestamp=time.perf_counter(),
+            source_id=self._source_id,
+        )
+
+        # Forward to DMX mapping service (async call from sync context)
+        if self.dmx_mapper:
+            asyncio.create_task(self.dmx_mapper.process_dmx_frame(frame))
 
     @property
     def error_event(self) -> asyncio.Event:
+        """Event set when ArtNet listener encounters an error."""
         return self._error_event
 
     def notify_error(self, exc: Exception) -> None:
+        """Called by protocol when error occurs."""
         self.logger.warning("ArtNet listener reported error", extra={"error": str(exc)})
         self._error_event.set()
-
-    def _build_context_id(self, packet: ArtNetPacket) -> str:
-        return f"artnet-{packet.universe}-{packet.sequence}-{uuid4().hex}"
-
-    def snapshot_last_payloads(self) -> Dict[str, Mapping[str, Any]]:
-        """Return a copy of the last delivered payloads for reuse across restarts."""
-
-        return copy.deepcopy(self._last_payloads)

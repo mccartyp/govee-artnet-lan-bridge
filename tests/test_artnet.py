@@ -2,7 +2,7 @@ import asyncio
 import struct
 from pathlib import Path
 
-from govee_artnet_lan_bridge.artnet import (
+from dmx_lan_bridge.artnet import (
     ARTNET_HEADER,
     ArtNetPacket,
     ArtNetService,
@@ -12,9 +12,9 @@ from govee_artnet_lan_bridge.artnet import (
     _apply_gamma_dimmer,
     _parse_artnet_packet,
 )
-from govee_artnet_lan_bridge.config import Config, ManualDevice
-from govee_artnet_lan_bridge.db import apply_migrations
-from govee_artnet_lan_bridge.devices import DeviceStore, MappingRecord
+from dmx_lan_bridge.config import Config, ManualDevice
+from dmx_lan_bridge.db import apply_migrations
+from dmx_lan_bridge.devices import DeviceStore, MappingRecord
 
 
 def build_artnet_packet(universe: int, payload: bytes) -> bytes:

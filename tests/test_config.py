@@ -1,6 +1,6 @@
 import pytest
 
-from govee_artnet_lan_bridge.config import (
+from dmx_lan_bridge.config import (
     CONFIG_VERSION,
     MIN_SUPPORTED_CONFIG_VERSION,
     Config,
