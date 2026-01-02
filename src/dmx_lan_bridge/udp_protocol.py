@@ -150,11 +150,13 @@ class GoveeProtocolService:
         self._protocol: Optional[GoveeProtocol] = None
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket: Optional[socket.socket] = None
+        self._ready_event = asyncio.Event()
 
     async def start(self) -> None:
         """Start the shared UDP listener on port 4002."""
         if self.config.dry_run:
             self.logger.info("Protocol service running in dry-run mode; socket not opened.")
+            self._ready_event.set()
             return
 
         loop = asyncio.get_running_loop()
@@ -176,6 +178,7 @@ class GoveeProtocolService:
                 "port": self.config.discovery_reply_port,
             },
         )
+        self._ready_event.set()
 
     async def stop(self) -> None:
         """Stop the shared UDP listener."""
@@ -186,7 +189,24 @@ class GoveeProtocolService:
         self._protocol = None
         self._transport = None
         self._socket = None
+        self._ready_event.clear()
         self.logger.info("Protocol service stopped")
+
+    async def wait_ready(self, timeout: float = 5.0) -> None:
+        """Wait for the protocol service to be ready.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+
+        Raises:
+            TimeoutError: If protocol doesn't become ready within timeout
+        """
+        try:
+            await asyncio.wait_for(self._ready_event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"Protocol service failed to start within {timeout} seconds"
+            )
 
     @property
     def protocol(self) -> Optional[GoveeProtocol]:
