@@ -554,8 +554,10 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
 
         # Start protocol service first (provides shared UDP listener for devices)
         protocol_task = asyncio.create_task(_protocol_loop(stop_event, current_config, services))
-        # Wait for protocol to be ready
-        await asyncio.sleep(0.1)
+        # Wait for protocol to be ready using event-based signaling
+        while not services.protocol:
+            await asyncio.sleep(0.01)  # Wait for service object to be set
+        await services.protocol.wait_ready(timeout=5.0)
         protocol_service = services.protocol
 
         # Build task list (conditionally add input protocols)
