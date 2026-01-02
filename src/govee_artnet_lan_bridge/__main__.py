@@ -272,8 +272,7 @@ async def _poller_loop(
     services: Optional[RunningServices] = None,
 ) -> None:
     logger = get_logger("govee.poller")
-    proto_inst = protocol.protocol if protocol else None
-    service = DevicePollerService(config, store, protocol=proto_inst, health=health)
+    service = DevicePollerService(config, store, health=health)
     if services is not None:
         services.poller = service
     await service.start()
