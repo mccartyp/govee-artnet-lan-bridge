@@ -19,6 +19,7 @@ from .metrics import (
     set_device_polling_enabled,
 )
 from .protocol import get_protocol_handler
+from .protocol.govee import GoveeProtocolHandler
 from .udp_protocol import GoveeProtocol
 
 
@@ -84,12 +85,13 @@ class DevicePollerService:
                 self.logger.info("Device polling disabled; skipping poller startup.")
             return
 
-        # Register handler for devStatus responses with the shared protocol
-        # Devices send devStatus responses back to port 4002 (the multicast discovery port)
+        # Register Govee devStatus handler with the shared protocol
+        # Govee devices send devStatus responses back to port 4002 (the multicast discovery port)
         # even though polls are sent from ephemeral ports
         if self.protocol:
-            self.logger.info("Registering devStatus handler with shared protocol")
-            self.protocol.register_handler("devStatus", self._handle_devstatus_response)
+            self.logger.info("Registering Govee devStatus handler with shared protocol")
+            devstatus_handler = GoveeProtocolHandler.create_devstatus_handler(self.logger)
+            self.protocol.register_handler("devStatus", devstatus_handler)
         else:
             self.logger.warning("No shared protocol available; devStatus responses may be lost")
 
@@ -283,23 +285,3 @@ class DevicePollerService:
             await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
         except asyncio.TimeoutError:
             return
-
-    def _handle_devstatus_response(self, payload: Mapping[str, Any], addr: tuple[str, int]) -> None:
-        """Handle devStatus responses received on the shared protocol port 4002.
-
-        Note: This handler logs devStatus responses that come to the shared protocol dispatcher.
-        The current polling implementation uses ephemeral sockets, so responses going there
-        are handled by _PollProtocol. This handler catches any responses that Govee devices
-        send back to port 4002 instead of the ephemeral port.
-
-        Args:
-            payload: The devStatus message payload
-            addr: Source address (ip, port) of the response
-        """
-        self.logger.debug(
-            "Received devStatus response on shared protocol port",
-            extra={
-                "from": addr,
-                "payload_keys": list(payload.keys()) if isinstance(payload, dict) else None,
-            }
-        )
