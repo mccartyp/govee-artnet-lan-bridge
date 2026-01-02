@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Mapping, MutableMapping, Optional, Sequence, Set, Tuple
 
-from .config import _default_capability_catalog_path
+from .config import _default_capability_catalog_dir
 from .logging import get_logger
 
 
@@ -148,7 +148,19 @@ class CapabilityCatalog:
 
     @classmethod
     def from_embedded(cls) -> "CapabilityCatalog":
-        return cls.from_path(_default_capability_catalog_path())
+        """Load capability catalog from the default embedded location."""
+        catalog_dir = _default_capability_catalog_dir()
+        # Try protocol-specific file first (multi-protocol), then fall back to legacy
+        govee_catalog = catalog_dir / "capability_catalog_govee.json"
+        if govee_catalog.exists():
+            return cls.from_path(govee_catalog)
+        legacy_catalog = catalog_dir / "capability_catalog.json"
+        if legacy_catalog.exists():
+            return cls.from_path(legacy_catalog)
+        # If neither exists, try the directory itself as a file (very legacy)
+        if catalog_dir.is_file():
+            return cls.from_path(catalog_dir)
+        raise FileNotFoundError(f"No capability catalog found in {catalog_dir}")
 
     def lookup(self, model_number: Optional[str]) -> Optional[CapabilityCatalogEntry]:
         normalized = _normalize_model_number(model_number)

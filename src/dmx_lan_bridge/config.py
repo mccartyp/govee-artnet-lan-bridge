@@ -137,8 +137,8 @@ class Config:
     event_bus_enabled: bool = True
 
     def __post_init__(self) -> None:
-        # Validate all fields except capability_catalog_path
-        # (capability_catalog_path is validated after loading config file in from_sources)
+        # Validate all fields except capability_catalog_dir
+        # (capability_catalog_dir is validated after loading config file in from_sources)
         _validate_config(self, skip_capability_catalog_check=True)
 
     def logging_dict(self) -> Dict[str, Any]:
@@ -176,7 +176,7 @@ class Config:
             "api_port": self.api_port,
             "api_docs": self.api_docs,
             "db_path": str(self.db_path),
-            "capability_catalog_path": str(self.capability_catalog_path),
+            "capability_catalog_dir": str(self.capability_catalog_dir),
             "discovery_interval": self.discovery_interval,
             "discovery_multicast_address": self.discovery_multicast_address,
             "discovery_multicast_port": self.discovery_multicast_port,
@@ -291,8 +291,10 @@ def _validate_config(config: Config, skip_capability_catalog_check: bool = False
     _validate_range("noisy_log_sample_rate", config.noisy_log_sample_rate, 0.0, 1.0)
     _validate_range("trace_context_sample_rate", config.trace_context_sample_rate, 0.0, 1.0)
     if not skip_capability_catalog_check:
-        if not config.capability_catalog_path or not Path(config.capability_catalog_path).exists():
-            raise ValueError("capability_catalog_path must point to an existing file.")
+        if not config.capability_catalog_dir or not Path(config.capability_catalog_dir).exists():
+            raise ValueError("capability_catalog_dir must point to an existing directory.")
+        if not Path(config.capability_catalog_dir).is_dir():
+            raise ValueError("capability_catalog_dir must be a directory, not a file.")
     for field_name, value in (
         ("log_level", config.log_level),
         ("discovery_log_level", config.discovery_log_level),
@@ -659,8 +661,12 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
     for key, value in overrides.items():
         if value is None:
             continue
-        if key in {"db_path", "capability_catalog_path"}:
-            data[key] = _coerce_path(value)
+        if key in {"db_path", "capability_catalog_dir", "capability_catalog_path"}:
+            # capability_catalog_path is legacy name, map to capability_catalog_dir
+            if key == "capability_catalog_path":
+                data["capability_catalog_dir"] = _coerce_path(value)
+            else:
+                data[key] = _coerce_path(value)
         elif key in {
             "artnet_port",
             "artnet_priority",

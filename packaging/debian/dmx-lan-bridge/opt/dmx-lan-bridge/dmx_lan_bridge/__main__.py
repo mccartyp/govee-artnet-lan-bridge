@@ -485,23 +485,37 @@ def _load_reloaded_config(
             extra={"current_db_path": str(current_config.db_path), "new_db_path": str(new_config.db_path)},
         )
         return None
-    if new_config.capability_catalog_path != current_config.capability_catalog_path:
+    if new_config.capability_catalog_dir != current_config.capability_catalog_dir:
         logger.error(
-            "Config reload rejected because capability_catalog_path changed; restart required",
+            "Config reload rejected because capability_catalog_dir changed; restart required",
             extra={
-                "current_catalog_path": str(current_config.capability_catalog_path),
-                "new_catalog_path": str(new_config.capability_catalog_path),
+                "current_catalog_dir": str(current_config.capability_catalog_dir),
+                "new_catalog_dir": str(new_config.capability_catalog_dir),
             },
         )
         return None
     return new_config
 
 
-def _load_capability_catalog(path: Path, logger: logging.Logger) -> CapabilityCatalog:
+def _load_capability_catalog(catalog_dir: Path, logger: logging.Logger) -> CapabilityCatalog:
+    """Load capability catalog from directory containing protocol-specific catalog files."""
     try:
-        return CapabilityCatalog.from_path(path)
+        # For now, load the Govee catalog (multi-protocol merging can be added later)
+        if catalog_dir.is_file():
+            # Backward compatibility: if a file path is given, load it directly
+            return CapabilityCatalog.from_path(catalog_dir)
+        else:
+            # Directory: look for govee catalog file
+            govee_catalog = catalog_dir / "capability_catalog_govee.json"
+            if govee_catalog.exists():
+                return CapabilityCatalog.from_path(govee_catalog)
+            # Fallback to legacy single-file name
+            legacy_catalog = catalog_dir / "capability_catalog.json"
+            if legacy_catalog.exists():
+                return CapabilityCatalog.from_path(legacy_catalog)
+            raise FileNotFoundError(f"No capability catalog found in {catalog_dir}")
     except Exception:
-        logger.exception("Failed to load capability catalog", extra={"path": str(path)})
+        logger.exception("Failed to load capability catalog", extra={"catalog_dir": str(catalog_dir)})
         raise
 
 
@@ -523,7 +537,7 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
         event_bus = EventBus()
         logger.info("Event bus enabled")
 
-    catalog = _load_capability_catalog(config.capability_catalog_path, logger)
+    catalog = _load_capability_catalog(config.capability_catalog_dir, logger)
     store = DeviceStore(config.db_path, capability_catalog=catalog, event_bus=event_bus)
     await store.start()
     await store.refresh_metrics()

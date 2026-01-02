@@ -96,15 +96,15 @@ api_docs = true
 # ------------------------------------------------------------------------------
 
 # SQLite database path (stores devices, mappings, queue state, health metrics)
-# System service default: /var/lib/govee-bridge/bridge.sqlite3
-# User service default: ~/.local/share/govee-artnet-lan-bridge/bridge.sqlite3
-db_path = "/var/lib/govee-bridge/bridge.sqlite3"
+# System service default: /var/lib/dmx-bridge/bridge.sqlite3
+# User service default: ~/.local/share/dmx-lan-bridge/bridge.sqlite3
+db_path = "/var/lib/dmx-bridge/bridge.sqlite3"
 
-# Capability catalog JSON path (device feature definitions and capabilities)
+# Capability catalog directory (contains protocol-specific catalog files)
 # Auto-detected from installation location if not specified
-# Development: <repo>/res/capability_catalog.json
-# System install: /usr/share/govee_artnet_lan_bridge/capability_catalog.json
-# capability_catalog_path = "/usr/share/govee_artnet_lan_bridge/capability_catalog.json"
+# Development: <repo>/res/
+# System install: /usr/share/dmx_lan_bridge/
+# capability_catalog_dir = "/usr/share/dmx_lan_bridge"
 
 # ------------------------------------------------------------------------------
 # Device Discovery
