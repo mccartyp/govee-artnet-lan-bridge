@@ -506,6 +506,7 @@ class DiscoveryResult:
 
     id: str
     ip: str
+    protocol: str = "govee"
     model_number: Optional[str] = None
     device_type: Optional[str] = None
     length_meters: Optional[float] = None
@@ -574,6 +575,7 @@ class DeviceInfo:
 
     id: str
     ip: Optional[str]
+    protocol: str
     capabilities: Any
     model_number: Optional[str]
     device_type: Optional[str]
@@ -599,6 +601,7 @@ class DeviceRow:
 
     id: str
     ip: Optional[str]
+    protocol: str
     name: Optional[str]
     model_number: Optional[str]
     device_type: Optional[str]
@@ -1017,14 +1020,15 @@ class DeviceStore:
         conn.execute(
             """
             INSERT INTO devices (
-                id, ip, model, model_number, device_type, length_meters, led_count,
+                id, ip, protocol, model, model_number, device_type, length_meters, led_count,
                 led_density_per_meter, has_segments, segment_count, description, capabilities, manual,
                 configured, enabled, discovered, first_seen, last_seen,
                 stale, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
+                protocol=excluded.protocol,
                 model=COALESCE(excluded.model, devices.model),
                 model_number=COALESCE(excluded.model_number, devices.model_number, devices.model),
                 device_type=COALESCE(excluded.device_type, devices.device_type),
@@ -1044,6 +1048,7 @@ class DeviceStore:
             (
                 device.id,
                 device.ip,
+                device.protocol,
                 model_number,
                 model_number,
                 metadata.get("device_type"),
@@ -1112,14 +1117,15 @@ class DeviceStore:
         conn.execute(
             """
             INSERT INTO devices (
-                id, ip, model, model_number, device_type, length_meters, led_count,
+                id, ip, protocol, model, model_number, device_type, length_meters, led_count,
                 led_density_per_meter, has_segments, segment_count, description, capabilities, manual, discovered,
                 configured, enabled, first_seen, last_seen, stale,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
+                protocol=excluded.protocol,
                 model=COALESCE(excluded.model, devices.model),
                 model_number=COALESCE(excluded.model_number, devices.model_number, devices.model),
                 device_type=COALESCE(excluded.device_type, devices.device_type),
@@ -1143,6 +1149,7 @@ class DeviceStore:
             (
                 result.id,
                 result.ip,
+                result.protocol,
                 model_number,
                 model_number,
                 metadata.get("device_type"),
@@ -2003,10 +2010,19 @@ class DeviceStore:
         await self.db.run(lambda conn: self._enqueue_state(conn, update))
 
     def _enqueue_state(self, conn: sqlite3.Connection, update: DeviceStateUpdate) -> None:
-        # Wrap payload in Govee LAN API format
-        wrapped_payload = wrap_govee_command(update.payload)
+        # Get device protocol
+        device_row = conn.execute(
+            "SELECT protocol FROM devices WHERE id = ?",
+            (update.device_id,)
+        ).fetchone()
+        protocol = device_row["protocol"] if device_row else "govee"
 
-        # Handle multiple commands (e.g., color + brightness)
+        # Use protocol-specific handler to wrap payload
+        from .protocol import get_protocol_handler
+        handler = get_protocol_handler(protocol)
+        wrapped_payload = handler.wrap_command(update.payload)
+
+        # Handle multiple commands (e.g., color + brightness for Govee)
         if isinstance(wrapped_payload, dict) and "_multiple" in wrapped_payload:
             payloads = wrapped_payload["_multiple"]
         else:
@@ -2029,6 +2045,7 @@ class DeviceStore:
             "Enqueued device update",
             extra={
                 "device_id": update.device_id,
+                "protocol": protocol,
                 "context_id": update.context_id,
                 "command_count": len(payloads)
             },
@@ -2135,6 +2152,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                protocol,
                 model,
                 model_number,
                 device_type,
@@ -2169,6 +2187,7 @@ class DeviceStore:
         return DeviceInfo(
             id=row["id"],
             ip=row["ip"],
+            protocol=row["protocol"] or "govee",
             capabilities=normalized.as_mapping(),
             model_number=model_number,
             device_type=metadata.get("device_type"),
@@ -2579,6 +2598,7 @@ class DeviceStore:
         return DeviceRow(
             id=row["id"],
             ip=row["ip"],
+            protocol=row["protocol"] if "protocol" in row.keys() else "govee",
             name=row["name"] if "name" in row.keys() else None,
             model_number=model_number,
             device_type=metadata.get("device_type"),

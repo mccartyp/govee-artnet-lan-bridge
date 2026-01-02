@@ -56,6 +56,7 @@ class DeviceCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     id: str
     ip: str
+    protocol: str = "govee"
     model_number: Optional[str] = Field(
         default=None, alias="model"
     )
@@ -96,6 +97,7 @@ class DeviceOut(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     id: str
     ip: Optional[str]
+    protocol: str
     model_number: Optional[str]
     model: Optional[str] = None
     device_type: Optional[str] = None
@@ -103,7 +105,7 @@ class DeviceOut(BaseModel):
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
     has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    segment_count: Optional[str] = None
     description: Optional[str]
     capabilities: Optional[Any]
     manual: bool
