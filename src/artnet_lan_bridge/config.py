@@ -25,13 +25,13 @@ MIN_SUPPORTED_CONFIG_VERSION = 1
 
 def _default_db_path() -> Path:
     base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return base / "govee-artnet-lan-bridge" / "bridge.sqlite3"
+    return base / "artnet-lan-bridge" / "bridge.sqlite3"
 
 
 def _default_capability_catalog_path() -> Path:
     repo_path = Path(__file__).resolve().parents[2] / "res" / "capability_catalog.json"
     data_base = Path(sysconfig.get_path("data") or "").expanduser()
-    share_path = data_base / "share" / "govee_artnet_lan_bridge" / "capability_catalog.json"
+    share_path = data_base / "share" / "artnet_lan_bridge" / "capability_catalog.json"
     for path in (repo_path, share_path):
         if path.exists():
             return path
@@ -305,8 +305,8 @@ def _validate_log_level_value(value: Optional[str], name: str) -> None:
 
 def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="govee-artnet-bridge",
-        description="Run the Govee Artnet LAN bridge.",
+        prog="artnet-lan-bridge",
+        description="Run the ArtNet LAN bridge (multi-protocol support).",
     )
     parser.add_argument("--config", type=Path, help="Path to TOML config file.")
     parser.add_argument("--artnet-port", type=int, help="UDP port for Artnet traffic.")

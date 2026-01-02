@@ -110,7 +110,7 @@ class DiscoveryService:
         self.config = config
         self.store = store
         self.protocol = protocol
-        self.logger = get_logger("govee.discovery")
+        self.logger = get_logger("artnet.discovery")
         self._seen: Dict[str, str] = {}
         self._probe_payload = self.config.discovery_probe_payload.encode("utf-8")
 

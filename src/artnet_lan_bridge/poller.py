@@ -57,7 +57,7 @@ class DevicePollerService:
     ) -> None:
         self.config = config
         self.store = store
-        self.logger = get_logger("govee.poller")
+        self.logger = get_logger("artnet.poller")
         self._health = health or HealthMonitor(
             ("poller",),
             failure_threshold=self.config.subsystem_failure_threshold,

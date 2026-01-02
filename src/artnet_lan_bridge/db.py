@@ -372,7 +372,7 @@ MIGRATIONS: List[Tuple[int, Migration]] = [
 def apply_migrations(db_path: Path) -> None:
     """Apply any pending migrations to the SQLite database."""
 
-    logger = get_logger("govee.migrations")
+    logger = get_logger("artnet.migrations")
     _ensure_parent_dir(db_path)
     conn = sqlite3.connect(db_path, check_same_thread=False)
     _configure_connection(conn)
@@ -406,7 +406,7 @@ class DatabaseManager:
         integrity_check_interval: float = DEFAULT_INTEGRITY_CHECK_INTERVAL,
     ) -> None:
         self.db_path = db_path
-        self.logger = get_logger("govee.db")
+        self.logger = get_logger("artnet.db")
         self._conn: Optional[sqlite3.Connection] = None
         self._lock = asyncio.Lock()
         self._integrity_task: Optional[asyncio.Task[None]] = None

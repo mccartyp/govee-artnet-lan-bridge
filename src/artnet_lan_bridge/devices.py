@@ -676,7 +676,7 @@ class DeviceStore:
         event_bus: Optional[Any] = None
     ) -> None:
         self.db = DatabaseManager(db_path)
-        self.logger = get_logger("govee.devices")
+        self.logger = get_logger("artnet.devices")
         self._capability_catalog = capability_catalog or load_embedded_catalog()
         self._capability_cache = CapabilityCache(self._capability_catalog)
         self._event_bus = event_bus

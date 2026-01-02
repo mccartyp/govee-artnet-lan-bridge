@@ -87,7 +87,7 @@ class DeviceSenderService:
     ) -> None:
         self.config = config
         self.store = store
-        self.logger = get_logger("govee.sender")
+        self.logger = get_logger("artnet.sender")
         self._stop_event = asyncio.Event()
         self._poll_task: Optional[asyncio.Task[None]] = None
         self._device_tasks: Dict[str, asyncio.Task[None]] = {}

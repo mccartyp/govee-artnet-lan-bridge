@@ -41,7 +41,7 @@ async def _protocol_loop(
     config: Config,
     services: Optional[RunningServices] = None,
 ) -> None:
-    logger = get_logger("govee.protocol")
+    logger = get_logger("artnet.protocol")
     service = GoveeProtocolService(config)
     if services is not None:
         services.protocol = service
@@ -64,7 +64,7 @@ async def _discovery_loop(
     protocol: Optional[GoveeProtocolService] = None,
     services: Optional[RunningServices] = None,
 ) -> None:
-    logger = get_logger("govee.discovery")
+    logger = get_logger("artnet.discovery")
     backoff = BackoffPolicy(
         base=config.device_backoff_base,
         factor=config.device_backoff_factor,
@@ -132,7 +132,7 @@ async def _discovery_loop(
 
 
 async def _rate_limit_monitor(stop_event: asyncio.Event, config: Config) -> None:
-    logger = get_logger("govee.rate_limit")
+    logger = get_logger("artnet.rate_limit")
     logger.info(
         "Rate limit monitor starting",
         extra={
@@ -163,7 +163,7 @@ async def _artnet_loop(
     artnet_state: Optional[Mapping[str, Mapping[str, Any]]] = None,
     event_bus: Optional[Any] = None,
 ) -> None:
-    logger = get_logger("govee.artnet")
+    logger = get_logger("artnet.artnet")
     service = ArtNetService(config, store, initial_last_payloads=artnet_state, event_bus=event_bus)
     if services is not None:
         services.artnet = service
@@ -218,7 +218,7 @@ async def _sender_loop(
     health: HealthMonitor,
     services: Optional[RunningServices] = None,
 ) -> None:
-    logger = get_logger("govee.sender")
+    logger = get_logger("artnet.sender")
     service = DeviceSenderService(config, store, health=health)
     if services is not None:
         services.sender = service
@@ -242,7 +242,7 @@ async def _api_loop(
     log_buffer: Optional[Any] = None,
     event_bus: Optional[Any] = None,
 ) -> None:
-    logger = get_logger("govee.api")
+    logger = get_logger("artnet.api")
     service = ApiService(
         config,
         store,
@@ -271,7 +271,7 @@ async def _poller_loop(
     protocol: Optional[GoveeProtocolService] = None,
     services: Optional[RunningServices] = None,
 ) -> None:
-    logger = get_logger("govee.poller")
+    logger = get_logger("artnet.poller")
     service = DevicePollerService(config, store, health=health)
     if services is not None:
         services.poller = service

@@ -353,11 +353,12 @@ def create_app(
 ) -> FastAPI:
     """Create and configure a FastAPI application."""
 
-    logger = get_logger("govee.api")
-    request_logger = get_logger("govee.api.middleware")
+    logger = get_logger("artnet.api")
+    request_logger = get_logger("artnet.api.middleware")
     auth_dependency = _build_auth_dependency(config)
     app = FastAPI(
-        title="Govee Artnet LAN Bridge API",
+        title="ArtNet LAN Bridge API",
+        description="Multi-protocol ArtNet to LAN device bridge (Govee, LIFX, and more)",
         docs_url="/docs" if config.api_docs else None,
         redoc_url="/redoc" if config.api_docs else None,
         openapi_url="/openapi.json" if config.api_docs else None,
@@ -911,7 +912,7 @@ class ApiService:
         self._reload_callback = reload_callback
         self.log_buffer = log_buffer
         self.event_bus = event_bus
-        self.logger = get_logger("govee.api")
+        self.logger = get_logger("artnet.api")
         self._server: Optional[uvicorn.Server] = None
         self._server_task: Optional[Any] = None
 
