@@ -26,6 +26,20 @@ class _Responder(asyncio.DatagramProtocol):
             self.transport.sendto(self.payload, addr)
 
 
+class _RedirectResponder(asyncio.DatagramProtocol):
+    def __init__(self, payload: dict[str, object], reply_port: int) -> None:
+        self.payload = json.dumps(payload).encode("utf-8")
+        self.reply_port = reply_port
+        self.transport: Optional[asyncio.DatagramTransport] = None
+
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        self.transport = transport  # type: ignore[assignment]
+
+    def datagram_received(self, data: bytes, addr) -> None:  # type: ignore[override]
+        if self.transport:
+            self.transport.sendto(self.payload, ("127.0.0.1", self.reply_port))
+
+
 @pytest.mark.asyncio
 async def test_poller_marks_device_online_with_state(tmp_path: Path) -> None:
     reply_port = 49001
@@ -115,6 +129,70 @@ async def test_poller_marks_device_online_with_state(tmp_path: Path) -> None:
         "color": {"r": 12, "g": 34, "b": 56, "w": 78},
         "ext": {"seg": 1},
     }
+
+
+@pytest.mark.asyncio
+async def test_poller_receives_response_on_shared_bus(tmp_path: Path) -> None:
+    reply_port = 49007
+    device_port = 49008
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    store = DeviceStore(db_path)
+    await store.create_manual_device(
+        ManualDevice(
+            id="poll-bus",
+            ip="127.0.0.1",
+            model_number="MOCK",
+            capabilities={"device_port": device_port},
+        )
+    )
+    loop = asyncio.get_running_loop()
+
+    config = Config(
+        db_path=db_path,
+        device_poll_enabled=True,
+        device_poll_interval=0.1,
+        device_poll_timeout=0.2,
+        device_poll_rate_per_second=100.0,
+        device_poll_rate_burst=10,
+        device_poll_port=device_port,
+        discovery_reply_port=reply_port,
+        discovery_multicast_address="239.255.255.250",
+    )
+
+    protocol = GoveeProtocol(config, loop)
+    protocol_transport, _ = await loop.create_datagram_endpoint(
+        lambda: protocol, local_addr=("127.0.0.1", reply_port)
+    )
+
+    responder_payload = {
+        "msg": {
+            "cmd": "devStatus",
+            "data": {
+                "device": "poll-bus",
+                "state": {"onOff": 1},
+            },
+        }
+    }
+    device_transport, _ = await loop.create_datagram_endpoint(
+        lambda: _RedirectResponder(responder_payload, reply_port),
+        local_addr=("127.0.0.1", device_port),
+    )
+
+    health = HealthMonitor(("poller",), failure_threshold=2, cooldown_seconds=0.1)
+    poller = DevicePollerService(config, store, protocol=protocol, health=health)
+
+    await poller.start()
+    await asyncio.sleep(0.3)
+    await poller.stop()
+    protocol_transport.close()
+    device_transport.close()
+
+    device = await store.device("poll-bus")
+    assert device is not None
+    assert device.offline is False
+    assert device.poll_health == "healthy"
+    assert device.poll_last_success_at is not None
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Mapping, Optional, TYPE_CHECKING
+from typing import Any, Callable, Mapping, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..capabilities import CapabilityProvider
@@ -117,7 +117,12 @@ class ProtocolHandler(ABC):
         """
         pass
 
-    def register_udp_handlers(self, protocol: Any, logger: Any) -> None:
+    def register_udp_handlers(
+        self,
+        protocol: Any,
+        logger: Any,
+        poll_notifier: Optional[Callable[[str, bytes, tuple[str, int], Optional[str]], None]] = None,
+    ) -> None:
         """Register protocol-specific UDP message handlers with the protocol's UDP listener.
 
         This method is called during poller startup to allow protocols to register handlers
@@ -132,6 +137,8 @@ class ProtocolHandler(ABC):
         Args:
             protocol: The protocol-specific UDP protocol instance (e.g., GoveeProtocol)
             logger: Logger instance for the handler to use
+            poll_notifier: Optional callback to notify the poller when a poll response is received
+                on a shared protocol socket. Signature: (device_id, payload_bytes, addr, protocol)
 
         Note:
             This is optional - protocols that don't need to handle incoming UDP messages
