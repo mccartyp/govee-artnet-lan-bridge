@@ -1,4 +1,4 @@
-"""Configuration loading for the Govee Artnet LAN bridge."""
+"""Configuration loading for the DMX LAN bridge."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreter
     import tomli as tomllib  # type: ignore
 
 
-CONFIG_ENV_PREFIX = "GOVEE_ARTNET_"
-CONFIG_VERSION = 1
+CONFIG_ENV_PREFIX = "DMX_BRIDGE_"
+CONFIG_VERSION = 2
 MIN_SUPPORTED_CONFIG_VERSION = 1
 
 

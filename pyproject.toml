@@ -27,9 +27,11 @@ dependencies = [
 dmx-lan-bridge = "dmx_lan_bridge.__main__:run"
 dmx-lan-cli = "dmx_lan_bridge.cli:main"
 
-# Legacy aliases for backwards compatibility
+# Legacy aliases for backwards compatibility (deprecated, will be removed in 3.0)
 artnet-lan-bridge = "dmx_lan_bridge.__main__:run"
 artnet-lan-cli = "dmx_lan_bridge.cli:main"
+govee-artnet-bridge = "dmx_lan_bridge.__main__:run"
+govee-artnet-cli = "dmx_lan_bridge.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -38,4 +40,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.data-files]
-"share/dmx_lan_bridge" = ["res/capability_catalog.json"]
+"share/dmx_lan_bridge" = ["res/capability_catalog_govee.json"]

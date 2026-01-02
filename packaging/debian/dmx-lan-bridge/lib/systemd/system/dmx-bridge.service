@@ -1,6 +1,6 @@
 [Unit]
 Description=DMX LAN Bridge (system)
-Documentation=https://github.com/mccartyp//govee-artnet-lan-bridge
+Documentation=https://github.com/mccartyp/govee-artnet-lan-bridge
 Wants=network-online.target
 After=network-online.target
 
