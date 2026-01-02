@@ -12,6 +12,8 @@ from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional,
 
 from .capabilities import (
     CapabilityCache,
+    CapabilityCatalog,
+    CapabilityProvider,
     NormalizedCapabilities,
     validate_mapping_mode,
 )
@@ -683,11 +685,13 @@ class DeviceStore:
     def __init__(
         self,
         db_path: Path,
-        event_bus: Optional[Any] = None
+        event_bus: Optional[Any] = None,
+        capability_catalog: Optional[CapabilityCatalog] = None,
     ) -> None:
         self.db = DatabaseManager(db_path)
         self.logger = get_logger("devices.store")
         self._event_bus = event_bus
+        self._capability_catalog = capability_catalog
         # Cache capability caches per protocol
         self._capability_caches: Dict[str, CapabilityCache] = {}
 
@@ -701,9 +705,26 @@ class DeviceStore:
             CapabilityCache instance for this protocol
         """
         if protocol not in self._capability_caches:
-            from .protocol import get_protocol_handler
-            handler = get_protocol_handler(protocol)
-            provider = handler.get_capability_provider()
+            provider: Optional[CapabilityProvider] = None
+            if self._capability_catalog is not None:
+                class _InjectedCatalogProvider(CapabilityProvider):
+                    def __init__(self, catalog: CapabilityCatalog):
+                        self._catalog = catalog
+
+                    def get_capabilities(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+                        entry = self._catalog.lookup(model) if self._catalog else None
+                        return dict(entry.capabilities) if entry else None
+
+                    def get_metadata(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+                        entry = self._catalog.lookup(model) if self._catalog else None
+                        return dict(entry.metadata) if entry else None
+
+                provider = _InjectedCatalogProvider(self._capability_catalog)
+
+            if provider is None:
+                from .protocol import get_protocol_handler
+                handler = get_protocol_handler(protocol)
+                provider = handler.get_capability_provider()
             self._capability_caches[protocol] = CapabilityCache(provider)
         return self._capability_caches[protocol]
 
@@ -2409,8 +2430,25 @@ class DeviceStore:
         # Return event data if status changed
         return {"went_online": was_offline}
 
-    async def record_poll_success(self, device_id: str, state: Optional[Mapping[str, Any]]) -> None:
-        event_data = await self.db.run(lambda conn: self._record_poll_success(conn, device_id, state))
+    async def record_poll_success(
+        self,
+        device_id: str,
+        state: Optional[Mapping[str, Any]],
+        *,
+        ip: Optional[str] = None,
+        protocol: Optional[str] = None,
+        port: Optional[int] = None,
+    ) -> None:
+        event_data = await self.db.run(
+            lambda conn: self._record_poll_success(
+                conn,
+                device_id,
+                state,
+                ip=ip,
+                protocol=protocol,
+                port=port,
+            )
+        )
 
         # Publish device_online event if device transitioned from offline to online
         if self._event_bus and event_data and event_data.get("went_online"):
@@ -2420,6 +2458,13 @@ class DeviceStore:
                 extra={
                     "device_id": device_id,
                     "previous_offline_reason": "poll_failures",
+                    "protocol": event_data.get("protocol"),
+                    "ip": event_data.get("ip"),
+                    "port": event_data.get("port"),
+                    "poll_failure_count_before": event_data.get("poll_failure_count_before"),
+                    "poll_failure_count_after": event_data.get("poll_failure_count_after"),
+                    "offline_before": event_data.get("offline_before"),
+                    "offline_after": event_data.get("offline_after"),
                 },
             )
             await self._event_bus.publish(EVENT_DEVICE_ONLINE, {
@@ -2428,14 +2473,41 @@ class DeviceStore:
             })
 
     def _record_poll_success(
-        self, conn: sqlite3.Connection, device_id: str, state: Optional[Mapping[str, Any]]
+        self,
+        conn: sqlite3.Connection,
+        device_id: str,
+        state: Optional[Mapping[str, Any]],
+        *,
+        ip: Optional[str] = None,
+        protocol: Optional[str] = None,
+        port: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         # Get current device info for capability refinement
         device_row = conn.execute(
-            "SELECT offline, capabilities, protocol, model, model_number FROM devices WHERE id = ?",
+            """
+            SELECT offline, capabilities, protocol, model, model_number, ip, poll_failure_count
+            FROM devices
+            WHERE id = ?
+            """,
             (device_id,)
         ).fetchone()
         was_offline = device_row["offline"] if device_row else False
+        failure_count_before = int(device_row["poll_failure_count"]) if device_row else 0
+        protocol = protocol or (device_row["protocol"] if device_row and "protocol" in device_row.keys() else None)
+        ip = ip or (device_row["ip"] if device_row and "ip" in device_row.keys() else None)
+
+        self.logger.debug(
+            "Recording poll success",
+            extra={
+                "device_id": device_id,
+                "protocol": protocol,
+                "ip": ip,
+                "port": port,
+                "poll_failure_count_before": failure_count_before,
+                "offline_before": was_offline,
+                "state_present": state is not None,
+            },
+        )
 
         # Refine capabilities additively from observed state
         refined_capabilities = None
@@ -2512,10 +2584,53 @@ class DeviceStore:
         conn.commit()
         self._update_offline_metric(conn)
 
-        return {"went_online": was_offline}
+        self.logger.debug(
+            "Recorded poll success",
+            extra={
+                "device_id": device_id,
+                "protocol": protocol,
+                "ip": ip,
+                "port": port,
+                "poll_failure_count_before": failure_count_before,
+                "poll_failure_count_after": 0,
+                "offline_before": was_offline,
+                "offline_after": False,
+                "state_present": state is not None,
+            },
+        )
 
-    async def record_poll_failure(self, device_id: str, offline_threshold: int) -> None:
-        event_data = await self.db.run(lambda conn: self._record_poll_failure(conn, device_id, offline_threshold))
+        return {
+            "went_online": was_offline,
+            "protocol": protocol,
+            "ip": ip,
+            "port": port,
+            "poll_failure_count_before": failure_count_before,
+            "poll_failure_count_after": 0,
+            "offline_before": was_offline,
+            "offline_after": False,
+        }
+
+    async def record_poll_failure(
+        self,
+        device_id: str,
+        offline_threshold: int,
+        *,
+        failure_reason: Optional[str] = None,
+        ip: Optional[str] = None,
+        protocol: Optional[str] = None,
+        port: Optional[int] = None,
+    ) -> None:
+        event_data = await self.db.run(
+            lambda conn: self._record_poll_failure(
+                conn,
+                device_id,
+                offline_threshold,
+                failure_reason=failure_reason,
+                ip=ip,
+                protocol=protocol,
+                port=port,
+            )
+        )
 
         # Publish device_offline event if device transitioned to offline
         if self._event_bus and event_data and event_data.get("went_offline"):
@@ -2526,6 +2641,14 @@ class DeviceStore:
                     "device_id": device_id,
                     "reason": "poll_failures",
                     "failure_count": event_data.get("failure_count", 0),
+                    "protocol": event_data.get("protocol"),
+                    "ip": event_data.get("ip"),
+                    "port": event_data.get("port"),
+                    "poll_failure_count_before": event_data.get("poll_failure_count_before"),
+                    "poll_failure_count_after": event_data.get("poll_failure_count_after"),
+                    "offline_before": event_data.get("offline_before"),
+                    "offline_after": event_data.get("offline_after"),
+                    "failure_reason": event_data.get("failure_reason"),
                 },
             )
             await self._event_bus.publish(EVENT_DEVICE_OFFLINE, {
@@ -2535,15 +2658,38 @@ class DeviceStore:
             })
 
     def _record_poll_failure(
-        self, conn: sqlite3.Connection, device_id: str, offline_threshold: int
+        self,
+        conn: sqlite3.Connection,
+        device_id: str,
+        offline_threshold: int,
+        *,
+        failure_reason: Optional[str] = None,
+        ip: Optional[str] = None,
+        protocol: Optional[str] = None,
+        port: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         # Check current status before update
         row = conn.execute(
-            "SELECT offline, poll_failure_count FROM devices WHERE id = ?",
+            "SELECT offline, poll_failure_count, protocol, ip FROM devices WHERE id = ?",
             (device_id,)
         ).fetchone()
         was_offline = row["offline"] if row else False
         old_failure_count = row["poll_failure_count"] if row else 0
+        protocol = protocol or (row["protocol"] if row and "protocol" in row.keys() else None)
+        ip = ip or (row["ip"] if row and "ip" in row.keys() else None)
+
+        self.logger.debug(
+            "Recording poll failure",
+            extra={
+                "device_id": device_id,
+                "protocol": protocol,
+                "ip": ip,
+                "port": port,
+                "poll_failure_count_before": old_failure_count,
+                "offline_before": was_offline,
+                "failure_reason": failure_reason or "unknown",
+            },
+        )
 
         now = _now_iso()
         conn.execute(
@@ -2572,9 +2718,34 @@ class DeviceStore:
         new_failure_count = old_failure_count + 1
         went_offline = not was_offline and new_failure_count >= offline_threshold
 
+        offline_after = bool(was_offline or new_failure_count >= offline_threshold)
+
+        self.logger.debug(
+            "Recorded poll failure",
+            extra={
+                "device_id": device_id,
+                "protocol": protocol,
+                "ip": ip,
+                "port": port,
+                "poll_failure_count_before": old_failure_count,
+                "poll_failure_count_after": new_failure_count,
+                "offline_before": was_offline,
+                "offline_after": offline_after,
+                "failure_reason": failure_reason or "unknown",
+            },
+        )
+
         return {
             "went_offline": went_offline,
             "failure_count": new_failure_count,
+            "protocol": protocol,
+            "ip": ip,
+            "port": port,
+            "poll_failure_count_before": old_failure_count,
+            "poll_failure_count_after": new_failure_count,
+            "offline_before": was_offline,
+            "offline_after": offline_after,
+            "failure_reason": failure_reason or "unknown",
         }
 
     async def record_send_failure(
