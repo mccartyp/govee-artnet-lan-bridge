@@ -175,6 +175,18 @@ class DevicePollerService:
             # Get protocol handler for this device
             handler = get_protocol_handler(target.protocol)
 
+            self.logger.debug(
+                "Polling device",
+                extra={
+                    "device_id": target.id,
+                    "protocol": target.protocol,
+                    "ip": target.ip,
+                    "port": target.port,
+                    "poll_failure_count": target.poll_failure_count,
+                    "offline": target.offline,
+                },
+            )
+
             # Skip if protocol doesn't support polling
             if not handler.supports_polling():
                 self.logger.debug(
@@ -186,17 +198,77 @@ class DevicePollerService:
             await self._acquire_rate_limit()
             response_data = await self._send_poll(target, handler)
             if response_data is None:
+                self.logger.debug(
+                    "Poll timed out waiting for response",
+                    extra={
+                        "device_id": target.id,
+                        "protocol": target.protocol,
+                        "ip": target.ip,
+                        "port": target.port,
+                        "poll_failure_count": target.poll_failure_count,
+                        "offline": target.offline,
+                        "status": "timeout",
+                    },
+                )
                 await self.store.record_poll_failure(
-                    target.id, self.config.device_poll_offline_threshold
+                    target.id,
+                    self.config.device_poll_offline_threshold,
+                    failure_reason="timeout",
+                    ip=target.ip,
+                    protocol=target.protocol,
+                    port=target.port,
                 )
                 status = "timeout"
                 return
 
             # Parse response using protocol handler
+            self.logger.debug(
+                "Poll response received",
+                extra={
+                    "device_id": target.id,
+                    "protocol": target.protocol,
+                    "ip": target.ip,
+                    "port": target.port,
+                    "poll_failure_count": target.poll_failure_count,
+                    "offline": target.offline,
+                    "response_bytes": len(response_data),
+                },
+            )
             state = handler.parse_poll_response(response_data)
             if state:
                 record_device_poll_state_update()
-            await self.store.record_poll_success(target.id, state)
+                self.logger.debug(
+                    "Poll response parsed",
+                    extra={
+                        "device_id": target.id,
+                        "protocol": target.protocol,
+                        "ip": target.ip,
+                        "port": target.port,
+                        "poll_failure_count": target.poll_failure_count,
+                        "offline": target.offline,
+                        "state_keys": sorted(state.keys()),
+                    },
+                )
+            else:
+                self.logger.debug(
+                    "Poll response parsed empty state",
+                    extra={
+                        "device_id": target.id,
+                        "protocol": target.protocol,
+                        "ip": target.ip,
+                        "port": target.port,
+                        "poll_failure_count": target.poll_failure_count,
+                        "offline": target.offline,
+                        "parse_status": "no_state",
+                    },
+                )
+            await self.store.record_poll_success(
+                target.id,
+                state,
+                ip=target.ip,
+                protocol=target.protocol,
+                port=target.port,
+            )
             status = "success_state" if state else "success"
         except asyncio.CancelledError:
             raise
@@ -207,7 +279,12 @@ class DevicePollerService:
                 exc_info=(type(exc), exc, exc.__traceback__),
             )
             await self.store.record_poll_failure(
-                target.id, self.config.device_poll_offline_threshold
+                target.id,
+                self.config.device_poll_offline_threshold,
+                failure_reason="error",
+                ip=target.ip,
+                protocol=target.protocol,
+                port=target.port,
             )
             status = "error"
         finally:
