@@ -20,7 +20,7 @@
 #
 # Priority Merging:
 #   - When multiple sources send to the same universe, highest priority wins
-#   - ArtNet: Configurable priority (default 50, below sACN default)
+#   - ArtNet: Configurable priority (default 25, well below sACN default)
 #   - sACN: Native priority 0-200 (default 100)
 #   - Automatic failover: If primary source stops, backup takes over (2.5s timeout)
 # ------------------------------------------------------------------------------
@@ -34,11 +34,11 @@ artnet_enabled = true
 # This is where the bridge listens for ArtNet packets from lighting controllers
 artnet_port = 6454
 
-# ArtNet priority for source merging (default: 50)
+# ArtNet priority for source merging (default: 25)
 # Range: 0-200 (higher priority wins)
-# Default 50 puts ArtNet below sACN default (100) but above sACN minimum
+# Default 25 puts ArtNet well below sACN default (100) and backup consoles (50)
 # Adjust to control priority when mixing ArtNet and sACN sources
-artnet_priority = 50
+artnet_priority = 25
 
 ## sACN (Streaming ACN / ANSI E1.31)
 # Enable sACN/E1.31 input protocol (default: false)

@@ -70,7 +70,7 @@ class Config:
     # Input Protocol Configuration
     artnet_enabled: bool = True
     artnet_port: int = 6454
-    artnet_priority: int = 50  # Fixed priority for ArtNet (0-200, below sACN default)
+    artnet_priority: int = 25  # Fixed priority for ArtNet (0-200, below sACN default)
     sacn_enabled: bool = False  # sACN disabled by default (new feature)
     sacn_port: int = 5568
     sacn_multicast: bool = True

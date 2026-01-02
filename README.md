@@ -128,7 +128,7 @@ Point your lighting software at the bridge server's IP address and start control
 
 **Priority-Based Source Merging:**
 - If multiple sources send to the same universe, highest priority wins
-- ArtNet: Configurable priority (default 50, below sACN default)
+- ArtNet: Configurable priority (default 25, well below sACN default)
 - sACN: Uses native priority from packets (0-200, default 100)
 - Graceful failover: If primary source stops, backup takes over automatically (2.5s timeout)
 

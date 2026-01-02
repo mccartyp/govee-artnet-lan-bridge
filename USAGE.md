@@ -57,8 +57,8 @@ Priority Levels (0-200, higher wins):
   200: Emergency override (sACN)
   150: Primary console (sACN)
   100: sACN default         ← Wins over ArtNet
-   50: ArtNet (default)     ← Configurable (artnet_priority)
-   25: Backup console (sACN)
+   50: Backup console (sACN)
+   25: ArtNet (default)     ← Configurable (artnet_priority)
     0: Lowest (sACN)
 ```
 
@@ -73,15 +73,15 @@ Priority Levels (0-200, higher wins):
 **Scenario 1: sACN beats ArtNet (default)**
 ```
 Console A (sACN, priority 100) → Universe 0
-Console B (ArtNet, priority 50) → Universe 0
+Console B (ArtNet, priority 25) → Universe 0
 
-Result: Console A controls devices (100 > 50)
+Result: Console A controls devices (100 > 25)
 ```
 
 **Scenario 2: Graceful failover**
 ```
 Primary (sACN, priority 150) → Universe 0
-Backup (sACN, priority 100) → Universe 0
+Backup (sACN, priority 50) → Universe 0
 
 Primary active: Devices controlled by Primary
 Primary stops: Backup takes over automatically after 2.5s timeout
@@ -100,7 +100,7 @@ Result: No conflict, both active simultaneously
 
 | Protocol | Status | Port | Priority | Notes |
 |----------|--------|------|----------|-------|
-| **ArtNet** | ✅ Supported | 6454 | Configurable (default: 50) | Universal support, simple setup |
+| **ArtNet** | ✅ Supported | 6454 | Configurable (default: 25) | Universal support, simple setup |
 | **sACN/E1.31** | ✅ Supported | 5568 | 0-200 (native) | Professional standard, priority control, multicast |
 
 ## CLI Overview
