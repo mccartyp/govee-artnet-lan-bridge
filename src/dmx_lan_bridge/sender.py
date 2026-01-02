@@ -274,7 +274,7 @@ class DeviceSenderService:
         if success:
             await self._health.record_success("sender")
             await self.store.record_send_success(state.device_id, payload_hash)
-            await self.store.set_last_seen([state.device_id])
+            await self.store.set_last_seen([state.device_id], mark_online=True)
             await self.store.delete_state(state.id)
             _finalize("success" if not self._dry_run else "dry_run")
         else:
