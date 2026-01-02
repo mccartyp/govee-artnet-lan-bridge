@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Mapping
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .base import ProtocolHandler
 
@@ -160,3 +160,168 @@ class GoveeProtocolHandler(ProtocolHandler):
                 "data": dict(payload)
             }
         }
+
+    def supports_polling(self) -> bool:
+        """Govee devices support polling via devStatus command."""
+        return True
+
+    def build_poll_request(self) -> bytes:
+        """Build Govee devStatus poll request.
+
+        Returns:
+            JSON-encoded devStatus command as bytes
+        """
+        poll_command = {"msg": {"cmd": "devStatus", "data": {}}}
+        return json.dumps(poll_command, separators=(",", ":")).encode("utf-8")
+
+    def parse_poll_response(self, data: bytes) -> Optional[Mapping[str, Any]]:
+        """Parse Govee devStatus response and extract normalized state.
+
+        Args:
+            data: Raw JSON response from device
+
+        Returns:
+            Normalized state dict or None if parsing fails
+        """
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+
+        return self._extract_state(payload)
+
+    def _extract_state(self, payload: Any) -> Optional[Mapping[str, Any]]:
+        """Extract and normalize state from Govee poll response.
+
+        Args:
+            payload: Decoded JSON response from device
+
+        Returns:
+            Normalized state dict with standard keys
+        """
+        if not isinstance(payload, Mapping):
+            return None
+
+        def _coerce_int(value: Any) -> Optional[int]:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        def _coerce_number(value: Any) -> Optional[float]:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        def _normalize_power(value: Any) -> Optional[bool]:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return bool(int(value))
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in {"on", "1", "true"}:
+                    return True
+                if lowered in {"off", "0", "false"}:
+                    return False
+            return None
+
+        def _normalize_color(value: Any) -> Optional[Dict[str, int]]:
+            if not isinstance(value, Mapping):
+                return None
+            channels = {}
+            for channel in ("r", "g", "b", "w"):
+                coerced = _coerce_int(value.get(channel))
+                if coerced is not None:
+                    channels[channel] = coerced
+            return channels or None
+
+        def _pop_first(keys: Tuple[str, ...], source: Dict[str, Any]) -> Any:
+            for key in keys:
+                if key in source:
+                    return source.pop(key)
+            return None
+
+        envelope = payload["msg"] if isinstance(payload.get("msg"), Mapping) else payload
+        data_block = envelope.get("data") if isinstance(envelope.get("data"), Mapping) else envelope
+        if not isinstance(data_block, Mapping):
+            return None
+
+        merged: Dict[str, Any] = {}
+        merged.update({k: v for k, v in data_block.items() if k not in {"state", "property", "properties"}})
+
+        # Merge nested state/property blocks from devStatus responses
+        for key in ("state", "property", "properties"):
+            nested = data_block.get(key)
+            if isinstance(nested, Mapping):
+                merged.update(nested)
+            elif isinstance(nested, list):
+                for entry in nested:
+                    if isinstance(entry, Mapping):
+                        merged.update(entry)
+
+        normalized: Dict[str, Any] = {}
+
+        device_id = _pop_first(("device", "device_id", "id"), merged)
+        if device_id is not None:
+            normalized["device"] = str(device_id)
+
+        model = _pop_first(("model", "model_number", "sku"), merged)
+        if model is not None:
+            normalized["model"] = str(model)
+
+        firmware = _pop_first(("firmware", "fwVersion", "fw_version", "version"), merged)
+        if firmware is not None:
+            normalized["firmware"] = str(firmware)
+
+        power = _normalize_power(_pop_first(("power", "powerState", "onOff", "switch"), merged))
+        if power is not None:
+            normalized["power"] = power
+
+        brightness = _coerce_int(_pop_first(("brightness", "bright", "level"), merged))
+        if brightness is not None:
+            normalized["brightness"] = brightness
+
+        color_temp = _coerce_int(
+            _pop_first(
+                (
+                    "color_temperature",
+                    "colorTemp",
+                    "colorTem",
+                    "colorTempInKelvin",
+                    "colorTemInKelvin",
+                    "color_temp",
+                    "ct",
+                ),
+                merged,
+            )
+        )
+        if color_temp is not None:
+            normalized["color_temperature"] = color_temp
+
+        temperature = _coerce_number(_pop_first(("temperature", "temp", "tem"), merged))
+        if temperature is not None:
+            normalized["temperature"] = temperature
+
+        mode = _pop_first(("mode", "workMode", "scene", "sceneId", "sceneNum"), merged)
+        if mode is not None:
+            normalized["mode"] = mode
+
+        effects = _pop_first(("effects", "lightingEffects", "sceneMode", "scene_modes"), merged)
+        if effects is not None:
+            normalized["effects"] = effects
+
+        color = _normalize_color(_pop_first(("color", "colors", "rgb"), merged))
+        if color is not None:
+            normalized["color"] = color
+
+        ext = _pop_first(("ext",), merged)
+        if isinstance(ext, Mapping):
+            normalized["ext"] = ext
+
+        # Preserve any remaining fields
+        for key, value in merged.items():
+            normalized[key] = value
+
+        return normalized or None

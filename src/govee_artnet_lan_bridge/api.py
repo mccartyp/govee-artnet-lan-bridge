@@ -70,6 +70,18 @@ class DeviceCreate(BaseModel):
     segment_count: Optional[int] = None
     enabled: bool = True
 
+    @field_validator("protocol")
+    @classmethod
+    def validate_protocol(cls, v: str) -> str:
+        """Validate that protocol is supported."""
+        from .protocol import get_supported_protocols
+        supported = get_supported_protocols()
+        if v not in supported:
+            raise ValueError(
+                f"Unsupported protocol '{v}'. Supported protocols: {', '.join(supported)}"
+            )
+        return v
+
 
 class DeviceUpdate(BaseModel):
     """Partial update payload for a device."""
@@ -424,6 +436,7 @@ def create_app(
         payload: dict[str, Any] = dict(await store.stats())
         payload.update(await store.polling_stats())
         payload["device_polling_enabled"] = config.device_poll_enabled
+        payload["protocols"] = await store.protocol_stats()
         return payload
 
     @app.get("/metrics")

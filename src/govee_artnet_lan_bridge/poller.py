@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional
 
 from .config import Config
 from .devices import DeviceStore, PollTarget
@@ -19,7 +18,7 @@ from .metrics import (
     record_device_poll_state_update,
     set_device_polling_enabled,
 )
-from .protocol import GoveeProtocol
+from .protocol import get_protocol_handler
 
 
 @dataclass(frozen=True)
@@ -31,146 +30,33 @@ class PollResult:
     status: str
 
 
-def _extract_state(payload: Any) -> Optional[Mapping[str, Any]]:
-    """Attempt to extract and normalize a state snapshot from a poll response."""
+class _PollProtocol(asyncio.DatagramProtocol):
+    """Simple UDP protocol for receiving poll responses."""
 
-    if not isinstance(payload, Mapping):
-        return None
+    def __init__(self) -> None:
+        self.response_future: asyncio.Future[bytes] = asyncio.Future()
+        self.transport: Optional[asyncio.DatagramTransport] = None
 
-    def _coerce_int(value: Any) -> Optional[int]:
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        self.transport = transport  # type: ignore
 
-    def _coerce_number(value: Any) -> Optional[float]:
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        if not self.response_future.done():
+            self.response_future.set_result(data)
 
-    def _normalize_power(value: Any) -> Optional[bool]:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return bool(int(value))
-        if isinstance(value, str):
-            lowered = value.strip().lower()
-            if lowered in {"on", "1", "true"}:
-                return True
-            if lowered in {"off", "0", "false"}:
-                return False
-        return None
-
-    def _normalize_color(value: Any) -> Optional[Dict[str, int]]:
-        if not isinstance(value, Mapping):
-            return None
-        channels = {}
-        for channel in ("r", "g", "b", "w"):
-            coerced = _coerce_int(value.get(channel))
-            if coerced is not None:
-                channels[channel] = coerced
-        return channels or None
-
-    def _pop_first(keys: Tuple[str, ...], source: Dict[str, Any]) -> Any:
-        for key in keys:
-            if key in source:
-                return source.pop(key)
-        return None
-
-    envelope = payload["msg"] if isinstance(payload.get("msg"), Mapping) else payload
-    data = envelope.get("data") if isinstance(envelope.get("data"), Mapping) else envelope
-    if not isinstance(data, Mapping):
-        return None
-
-    merged: Dict[str, Any] = {}
-    merged.update({k: v for k, v in data.items() if k not in {"state", "property", "properties"}})
-
-    # Merge nested state/property blocks commonly present in devStatus responses
-    for key in ("state", "property", "properties"):
-        nested = data.get(key)
-        if isinstance(nested, Mapping):
-            merged.update(nested)
-        elif isinstance(nested, list):
-            for entry in nested:
-                if isinstance(entry, Mapping):
-                    merged.update(entry)
-
-    normalized: Dict[str, Any] = {}
-
-    device_id = _pop_first(("device", "device_id", "id"), merged)
-    if device_id is not None:
-        normalized["device"] = str(device_id)
-
-    model = _pop_first(("model", "model_number", "sku"), merged)
-    if model is not None:
-        normalized["model"] = str(model)
-
-    firmware = _pop_first(("firmware", "fwVersion", "fw_version", "version"), merged)
-    if firmware is not None:
-        normalized["firmware"] = str(firmware)
-
-    power = _normalize_power(_pop_first(("power", "powerState", "onOff", "switch"), merged))
-    if power is not None:
-        normalized["power"] = power
-
-    brightness = _coerce_int(_pop_first(("brightness", "bright", "level"), merged))
-    if brightness is not None:
-        normalized["brightness"] = brightness
-
-    color_temp = _coerce_int(
-        _pop_first(
-            (
-                "color_temperature",
-                "colorTemp",
-                "colorTem",
-                "colorTempInKelvin",
-                "colorTemInKelvin",
-                "color_temp",
-                "ct",
-            ),
-            merged,
-        )
-    )
-    if color_temp is not None:
-        normalized["color_temperature"] = color_temp
-
-    temperature = _coerce_number(_pop_first(("temperature", "temp", "tem"), merged))
-    if temperature is not None:
-        normalized["temperature"] = temperature
-
-    mode = _pop_first(("mode", "workMode", "scene", "sceneId", "sceneNum"), merged)
-    if mode is not None:
-        normalized["mode"] = mode
-
-    effects = _pop_first(("effects", "lightingEffects", "sceneMode", "scene_modes"), merged)
-    if effects is not None:
-        normalized["effects"] = effects
-
-    color = _normalize_color(_pop_first(("color", "colors", "rgb"), merged))
-    if color is not None:
-        normalized["color"] = color
-
-    ext = _pop_first(("ext",), merged)
-    if isinstance(ext, Mapping):
-        normalized["ext"] = ext
-
-    # Preserve any remaining fields that we haven't normalized explicitly
-    for key, value in merged.items():
-        normalized[key] = value
-
-    return normalized or None
+    def error_received(self, exc: Exception) -> None:
+        if not self.response_future.done():
+            self.response_future.set_exception(exc)
 
 
 class DevicePollerService:
     """Periodically poll devices for reachability and lightweight state."""
 
     def __init__(
-        self, config: Config, store: DeviceStore, protocol: Optional[GoveeProtocol] = None, health: Optional[HealthMonitor] = None
+        self, config: Config, store: DeviceStore, health: Optional[HealthMonitor] = None
     ) -> None:
         self.config = config
         self.store = store
-        self.protocol = protocol
         self.logger = get_logger("govee.poller")
         self._health = health or HealthMonitor(
             ("poller",),
@@ -179,7 +65,6 @@ class DevicePollerService:
         )
         self._stop_event = asyncio.Event()
         self._task: Optional[asyncio.Task[None]] = None
-        self._payload = self.config.device_poll_payload.encode("utf-8")
         self._backoff = BackoffPolicy(
             base=self.config.device_poll_backoff_base,
             factor=self.config.device_poll_backoff_factor,
@@ -189,7 +74,6 @@ class DevicePollerService:
         self._rate_last_refill = time.perf_counter()
         self._rate_lock = asyncio.Lock()
         self._batch_cursor = 0
-        self._pending_polls: Dict[str, asyncio.Future[Optional[Mapping[str, Any]]]] = {}  # keyed by IP address
 
     async def start(self) -> None:
         if self._task or not self.config.device_poll_enabled:
@@ -197,12 +81,6 @@ class DevicePollerService:
             if not self.config.device_poll_enabled:
                 self.logger.info("Device polling disabled; skipping poller startup.")
             return
-
-        if not self.protocol:
-            raise RuntimeError("Device poller requires a GoveeProtocol instance")
-
-        # Register handler for devStatus responses
-        self.protocol.register_handler("devStatus", self._handle_poll_response)
 
         self._stop_event.clear()
         set_device_polling_enabled(True)
@@ -279,15 +157,28 @@ class DevicePollerService:
         status = "failure"
         state: Optional[Mapping[str, Any]] = None
         try:
+            # Get protocol handler for this device
+            handler = get_protocol_handler(target.protocol)
+
+            # Skip if protocol doesn't support polling
+            if not handler.supports_polling():
+                self.logger.debug(
+                    "Protocol does not support polling",
+                    extra={"device_id": target.id, "protocol": target.protocol}
+                )
+                return
+
             await self._acquire_rate_limit()
-            payload = await self._send_poll(target)
-            if payload is None:
+            response_data = await self._send_poll(target, handler)
+            if response_data is None:
                 await self.store.record_poll_failure(
                     target.id, self.config.device_poll_offline_threshold
                 )
                 status = "timeout"
                 return
-            state = _extract_state(payload)
+
+            # Parse response using protocol handler
+            state = handler.parse_poll_response(response_data)
             if state:
                 record_device_poll_state_update()
             await self.store.record_poll_success(target.id, state)
@@ -297,7 +188,7 @@ class DevicePollerService:
         except Exception as exc:  # pragma: no cover - defensive
             self.logger.warning(
                 "Poll failed",
-                extra={"device_id": target.id, "ip": target.ip},
+                extra={"device_id": target.id, "ip": target.ip, "protocol": target.protocol},
                 exc_info=(type(exc), exc, exc.__traceback__),
             )
             await self.store.record_poll_failure(
@@ -329,52 +220,49 @@ class DevicePollerService:
                 )
             await self._sleep_with_stop(wait_seconds)
 
-    def _handle_poll_response(self, payload: Mapping[str, Any], addr: Tuple[str, int]) -> None:
-        """Handle devStatus responses from the shared protocol."""
-        # Correlate response by source IP address (devices don't include device ID in devStatus responses)
-        source_ip = addr[0]
+    async def _send_poll(self, target: PollTarget, handler: Any) -> Optional[bytes]:
+        """Send poll request directly via UDP and wait for response.
 
-        self.logger.debug(
-            "Poller received devStatus response",
-            extra={"from_ip": source_ip, "pending_ips": list(self._pending_polls.keys())},
-        )
+        Args:
+            target: Poll target with device info
+            handler: Protocol handler for building request
 
-        # Find pending poll for this IP
-        future = self._pending_polls.pop(source_ip, None)
-        if not future or future.done():
-            self.logger.debug(
-                "No pending poll for IP",
-                extra={"ip": source_ip, "has_future": future is not None, "is_done": future.done() if future else None},
-            )
-            return
-
-        # Resolve the future with the payload
-        self.logger.debug("Resolving poll future for IP", extra={"ip": source_ip})
-        future.set_result(payload)
-
-    async def _send_poll(self, target: PollTarget) -> Optional[Mapping[str, Any]]:
-        """Send poll request and wait for response via protocol handler."""
-        if not self.protocol:
-            return None
-
-        timeout = self.config.device_poll_timeout
-        port = self.config.device_poll_port or self.config.device_default_port
-
-        # Create future for this poll, keyed by IP address (not device ID)
-        future: asyncio.Future[Optional[Mapping[str, Any]]] = asyncio.Future()
-        self._pending_polls[target.ip] = future
-
+        Returns:
+            Raw response bytes or None if timeout
+        """
         try:
-            # Send poll request via protocol
-            self.protocol.send_to(self._payload, (target.ip, port))
+            # Build poll request from protocol handler
+            poll_request = handler.build_poll_request()
 
-            # Wait for response with timeout
-            return await asyncio.wait_for(future, timeout=timeout)
+            # Create UDP socket
+            loop = asyncio.get_event_loop()
+            transport, protocol = await loop.create_datagram_endpoint(
+                lambda: _PollProtocol(),
+                remote_addr=(target.ip, target.port)
+            )
+
+            try:
+                # Send poll request
+                transport.sendto(poll_request)
+
+                # Wait for response with timeout
+                timeout = self.config.device_poll_timeout
+                response = await asyncio.wait_for(
+                    protocol.response_future,
+                    timeout=timeout
+                )
+                return response
+            finally:
+                transport.close()
+
         except asyncio.TimeoutError:
-            self._pending_polls.pop(target.ip, None)
             return None
         except Exception:
-            self._pending_polls.pop(target.ip, None)
+            self.logger.debug(
+                "Poll send failed",
+                extra={"device_id": target.id, "ip": target.ip},
+                exc_info=True
+            )
             raise
 
     async def _sleep_with_stop(self, delay: float) -> None:

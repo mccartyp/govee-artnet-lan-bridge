@@ -195,6 +195,11 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
     add.add_argument("--id", required=True, help="Device identifier (e.g., MAC address)")
     add.add_argument("--ip", required=True, help="Device IP address")
     add.add_argument(
+        "--protocol",
+        default="govee",
+        help="Device protocol (e.g., govee, lifx). Defaults to 'govee'.",
+    )
+    add.add_argument(
         "--model-number",
         dest="model_number",
         help="Device model number/sku shown in responses (alias: --model)",

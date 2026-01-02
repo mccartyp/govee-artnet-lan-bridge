@@ -636,6 +636,8 @@ class PollTarget:
 
     id: str
     ip: str
+    protocol: str
+    port: int
     model_number: Optional[str]
     device_type: Optional[str]
     length_meters: Optional[float]
@@ -1241,6 +1243,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                protocol,
                 model,
                 model_number,
                 device_type,
@@ -1264,10 +1267,29 @@ class DeviceStore:
             model_number = row["model_number"] if "model_number" in row.keys() else None
             if not model_number:
                 model_number = row["model"]
+
+            # Get protocol and determine port
+            protocol = row["protocol"] if "protocol" in row.keys() else "govee"
+            from .protocol import get_protocol_handler
+            handler = get_protocol_handler(protocol)
+
+            # Use protocol default port, but allow capability override
+            port = handler.get_default_port()
+            if isinstance(normalized.as_mapping(), Mapping):
+                for key in ("port", "control_port", "device_port"):
+                    if key in normalized.as_mapping():
+                        try:
+                            port = int(normalized.as_mapping()[key])
+                            break
+                        except (TypeError, ValueError):
+                            continue
+
             targets.append(
                 PollTarget(
                     id=row["id"],
                     ip=row["ip"],
+                    protocol=protocol,
+                    port=port,
                     model_number=model_number,
                     device_type=metadata.get("device_type"),
                     length_meters=metadata.get("length_meters"),
@@ -2445,6 +2467,38 @@ class DeviceStore:
             "poll_successes": int(rows["ever_polled"] or 0),
             "poll_failures": int(rows["failures"] or 0),
         }
+
+    async def protocol_stats(self) -> Mapping[str, Mapping[str, int]]:
+        """Get device counts broken down by protocol."""
+        return await self.db.run(self._protocol_stats)
+
+    def _protocol_stats(self, conn: sqlite3.Connection) -> Mapping[str, Mapping[str, int]]:
+        rows = conn.execute(
+            """
+            SELECT
+                protocol,
+                COUNT(*) AS total,
+                SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled,
+                SUM(CASE WHEN offline = 1 THEN 1 ELSE 0 END) AS offline,
+                SUM(CASE WHEN discovered = 1 THEN 1 ELSE 0 END) AS discovered,
+                SUM(CASE WHEN manual = 1 THEN 1 ELSE 0 END) AS manual
+            FROM devices
+            GROUP BY protocol
+            ORDER BY protocol
+            """
+        ).fetchall()
+
+        result: Dict[str, Dict[str, int]] = {}
+        for row in rows:
+            protocol = row["protocol"] or "unknown"
+            result[protocol] = {
+                "total": int(row["total"] or 0),
+                "enabled": int(row["enabled"] or 0),
+                "offline": int(row["offline"] or 0),
+                "discovered": int(row["discovered"] or 0),
+                "manual": int(row["manual"] or 0),
+            }
+        return result
 
     async def refresh_metrics(self) -> None:
         """Refresh gauges derived from the database."""
