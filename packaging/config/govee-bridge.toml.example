@@ -1,24 +1,74 @@
 # ==============================================================================
-# Govee ArtNet LAN Bridge - Comprehensive Configuration Example
+# DMX LAN Bridge - Comprehensive Configuration Example
 # ==============================================================================
 # This file documents ALL available configuration options for the bridge.
 # For production use, copy the minimal config template from:
-#   - System: /etc/govee-bridge/config.toml
-#   - User: ~/.config/govee-bridge/config.toml
+#   - System: /etc/artnet-bridge/config.toml
+#   - User: ~/.config/artnet-bridge/config.toml
 #
 # After editing, reload configuration:
-#   - System: sudo systemctl reload govee-bridge.service
-#   - User: systemctl --user reload govee-bridge-user.service
+#   - System: sudo systemctl reload artnet-bridge.service
+#   - User: systemctl --user reload artnet-bridge-user.service
 #   - API: POST /reload (requires authentication)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Network Settings
+# DMX Input Protocols
+# ------------------------------------------------------------------------------
+# The bridge supports multiple DMX input protocols with priority-based merging.
+# Enable the protocols you need. Both can run simultaneously.
+#
+# Priority Merging:
+#   - When multiple sources send to the same universe, highest priority wins
+#   - ArtNet: Configurable priority (default 50, below sACN default)
+#   - sACN: Native priority 0-200 (default 100)
+#   - Automatic failover: If primary source stops, backup takes over (2.5s timeout)
 # ------------------------------------------------------------------------------
 
-# ArtNet DMX input port (default: 6454, standard ArtNet port)
+## ArtNet (Art-Net)
+# Enable ArtNet input protocol (default: true)
+# Widely supported, simple broadcast protocol
+artnet_enabled = true
+
+# ArtNet listening port (default: 6454, standard ArtNet port)
 # This is where the bridge listens for ArtNet packets from lighting controllers
 artnet_port = 6454
+
+# ArtNet priority for source merging (default: 50)
+# Range: 0-200 (higher priority wins)
+# Default 50 puts ArtNet below sACN default (100) but above sACN minimum
+# Adjust to control priority when mixing ArtNet and sACN sources
+artnet_priority = 50
+
+## sACN (Streaming ACN / ANSI E1.31)
+# Enable sACN/E1.31 input protocol (default: false)
+# Professional standard with priority control and multicast efficiency
+sacn_enabled = false
+
+# sACN listening port (default: 5568, standard sACN port)
+sacn_port = 5568
+
+# sACN multicast mode (default: true)
+# true:  Join multicast groups per universe (recommended, more efficient)
+# false: Unicast mode, receive on any address
+sacn_multicast = true
+
+# sACN universe subscription list (multicast mode only)
+# List of universe numbers to listen on via multicast (1-63999)
+# Each universe joins multicast group 239.255.(universe>>8).(universe&0xFF)
+# Default: [1] (universe 1 only)
+# Examples:
+#   [1]           - Listen only to universe 1
+#   [1, 2, 3]     - Listen to universes 1, 2, 3
+#   [1, 2, 5, 10] - Listen to universes 1, 2, 5, 10
+sacn_universes = [1]
+
+# Note: In unicast mode (sacn_multicast = false), sacn_universes is ignored
+#       and ALL universes are received on the configured port.
+
+# ------------------------------------------------------------------------------
+# HTTP API Configuration
+# ------------------------------------------------------------------------------
 
 # HTTP API server port (default: 8000)
 # REST API and WebSocket endpoints listen on this port
@@ -198,7 +248,7 @@ rate_limit_burst = 20
 # ------------------------------------------------------------------------------
 
 # Number of consecutive failures before marking subsystem unhealthy
-# Subsystems: discovery, artnet, sender, api, poller
+# Subsystems: discovery, dmx_mapping, artnet (if enabled), sacn (if enabled), sender, api, poller
 subsystem_failure_threshold = 5
 
 # Cooldown period after subsystem failures (seconds)

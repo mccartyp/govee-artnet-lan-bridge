@@ -70,6 +70,7 @@ class Config:
     # Input Protocol Configuration
     artnet_enabled: bool = True
     artnet_port: int = 6454
+    artnet_priority: int = 50  # Fixed priority for ArtNet (0-200, below sACN default)
     sacn_enabled: bool = False  # sACN disabled by default (new feature)
     sacn_port: int = 5568
     sacn_multicast: bool = True
@@ -167,6 +168,7 @@ class Config:
             "config_version": self.config_version,
             "artnet_enabled": self.artnet_enabled,
             "artnet_port": self.artnet_port,
+            "artnet_priority": self.artnet_priority,
             "sacn_enabled": self.sacn_enabled,
             "sacn_port": self.sacn_port,
             "sacn_multicast": self.sacn_multicast,
@@ -254,6 +256,7 @@ class Config:
 def _validate_config(config: Config, skip_capability_catalog_check: bool = False) -> None:
     _validate_version(config.config_version)
     _validate_range("artnet_port", config.artnet_port, 1, 65535)
+    _validate_range("artnet_priority", config.artnet_priority, 0, 200)
     _validate_range("api_port", config.api_port, 1, 65535)
     _validate_range("discovery_interval", config.discovery_interval, 1.0, 3600.0)
     _validate_range(
@@ -660,6 +663,7 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
             data[key] = _coerce_path(value)
         elif key in {
             "artnet_port",
+            "artnet_priority",
             "api_port",
             "rate_limit_burst",
             "device_max_queue_depth",

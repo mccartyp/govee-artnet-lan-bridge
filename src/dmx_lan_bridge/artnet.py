@@ -364,9 +364,6 @@ class ArtNetService:
     logic is handled by the protocol-agnostic DmxMappingService.
     """
 
-    # ArtNet runs at fixed priority below sACN default
-    ARTNET_PRIORITY = 50
-
     def __init__(
         self,
         config: Config,
@@ -404,7 +401,7 @@ class ArtNetService:
             "ArtNet input protocol started",
             extra={
                 "port": self.config.artnet_port,
-                "priority": self.ARTNET_PRIORITY,
+                "priority": self.config.artnet_priority,
             },
         )
 
@@ -450,7 +447,7 @@ class ArtNetService:
             data=dmx_data,
             sequence=packet.sequence,
             source_protocol="artnet",
-            priority=self.ARTNET_PRIORITY,  # Fixed priority for ArtNet
+            priority=self.config.artnet_priority,  # Configurable priority for ArtNet
             timestamp=time.perf_counter(),
             source_id=self._source_id,
         )
