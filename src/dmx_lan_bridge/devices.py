@@ -2147,50 +2147,83 @@ class DeviceStore:
         )
 
     async def set_last_seen(
-        self, device_ids: Iterable[str], timestamp: Optional[str] = None, mark_online: bool = False
+        self, device_ids: Iterable[str], timestamp: Optional[str] = None, mark_online: bool = True
     ) -> None:
-        await self.db.run(lambda conn: self._set_last_seen(conn, device_ids, timestamp, mark_online))
+        event_data = await self.db.run(lambda conn: self._set_last_seen(conn, device_ids, timestamp, mark_online))
+
+        # Publish device_online event if device transitioned from offline to online
+        if self._event_bus and mark_online and event_data and event_data.get("went_online"):
+            from .events import EVENT_DEVICE_ONLINE
+
+            for device_id in event_data["went_online"]:
+                self.logger.info(
+                    "Device came online from activity",
+                    extra={
+                        "device_id": device_id,
+                        "previous_offline_reason": "activity",
+                    },
+                )
+                await self._event_bus.publish(
+                    EVENT_DEVICE_ONLINE,
+                    {
+                        "device_id": device_id,
+                        "previous_offline_reason": "activity",
+                    },
+                )
 
     def _set_last_seen(
         self,
         conn: sqlite3.Connection,
         device_ids: Iterable[str],
         timestamp: Optional[str] = None,
-        mark_online: bool = False,
-    ) -> None:
+        mark_online: bool = True,
+    ) -> Optional[Dict[str, Any]]:
         ids = list(device_ids)
         if not ids:
-            return
+            return None
         ts = timestamp or _now_iso()
         params = [(ts, device_id) for device_id in ids]
 
+        # Always update last_seen/stale
+        conn.executemany(
+            """
+            UPDATE devices
+            SET last_seen = ?, stale = 0
+            WHERE id = ?
+            """,
+            params,
+        )
+
         if mark_online:
-            conn.executemany(
-                """
-                UPDATE devices
-                SET
-                    last_seen = ?,
-                    stale = 0,
-                    offline = 0,
-                    poll_failure_count = 0,
-                    poll_health = 'healthy',
-                    poll_last_failure_at = NULL
-                WHERE id = ?
-                """,
-                params,
-            )
-            conn.commit()
-            self._update_offline_metric(conn)
-        else:
-            conn.executemany(
-                """
-                UPDATE devices
-                SET last_seen = ?, stale = 0
-                WHERE id = ?
-                """,
-                params,
-            )
-            conn.commit()
+            placeholders = ",".join(["?"] * len(ids))
+            rows = conn.execute(
+                f"SELECT id, offline FROM devices WHERE id IN ({placeholders})",
+                ids,
+            ).fetchall()
+            offline_ids = [row["id"] for row in rows if bool(row["offline"])]
+
+            if offline_ids:
+                conn.executemany(
+                    """
+                    UPDATE devices
+                    SET
+                        offline = 0,
+                        poll_failure_count = 0,
+                        poll_health = 'healthy',
+                        poll_last_failure_at = NULL,
+                        poll_last_success_at = ?,
+                        failure_count = 0,
+                        last_failure_at = NULL
+                    WHERE id = ?
+                    """,
+                    [(ts, device_id) for device_id in offline_ids],
+                )
+                conn.commit()
+                self._update_offline_metric(conn)
+                return {"went_online": offline_ids}
+
+        conn.commit()
+        return None
 
     async def pending_device_ids(self) -> List[str]:
         return await self.db.run(self._pending_device_ids)

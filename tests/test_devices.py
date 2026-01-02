@@ -1,9 +1,12 @@
+import asyncio
+
 import pytest
 
 from dmx_lan_bridge.capabilities import load_embedded_catalog
 from dmx_lan_bridge.config import ManualDevice
 from dmx_lan_bridge.db import apply_migrations
 from dmx_lan_bridge.devices import DeviceStore, DiscoveryResult
+from dmx_lan_bridge.events import EVENT_DEVICE_ONLINE, EventBus
 
 
 @pytest.mark.asyncio
@@ -348,7 +351,8 @@ async def test_template_validation_rejects_incompatible_device(tmp_path) -> None
 async def test_set_last_seen_recovers_poll_offline(tmp_path) -> None:
     db_path = tmp_path / "bridge.sqlite3"
     apply_migrations(db_path)
-    store = DeviceStore(db_path)
+    bus = EventBus()
+    store = DeviceStore(db_path, event_bus=bus)
     await store.create_manual_device(
         ManualDevice(
             id="dev-last-seen",
@@ -357,6 +361,15 @@ async def test_set_last_seen_recovers_poll_offline(tmp_path) -> None:
         )
     )
 
+    events = []
+    event_received = asyncio.Event()
+
+    async def on_online(event):
+        events.append(event)
+        event_received.set()
+
+    await bus.subscribe(EVENT_DEVICE_ONLINE, on_online)
+
     await store.record_poll_failure("dev-last-seen", offline_threshold=1)
     device = await store.device("dev-last-seen")
     assert device is not None
@@ -364,7 +377,8 @@ async def test_set_last_seen_recovers_poll_offline(tmp_path) -> None:
     assert device.poll_health == "offline"
     assert device.poll_failure_count >= 1
 
-    await store.set_last_seen(["dev-last-seen"], mark_online=True)
+    await store.set_last_seen(["dev-last-seen"])
+    await asyncio.wait_for(event_received.wait(), timeout=1)
 
     device = await store.device("dev-last-seen")
     assert device is not None
@@ -372,3 +386,44 @@ async def test_set_last_seen_recovers_poll_offline(tmp_path) -> None:
     assert device.poll_health == "healthy"
     assert device.poll_failure_count == 0
     assert device.last_seen is not None
+    assert any(evt.event_type == EVENT_DEVICE_ONLINE for evt in events)
+
+
+@pytest.mark.asyncio
+async def test_set_last_seen_does_not_reset_online_devices(tmp_path) -> None:
+    db_path = tmp_path / "bridge.sqlite3"
+    apply_migrations(db_path)
+    bus = EventBus()
+    store = DeviceStore(db_path, event_bus=bus)
+    await store.create_manual_device(
+        ManualDevice(
+            id="dev-last-seen-online",
+            ip="127.0.0.1",
+            capabilities={"color_modes": ["color"], "brightness": True},
+        )
+    )
+
+    event_received = asyncio.Event()
+
+    async def on_online(event):
+        event_received.set()
+
+    await bus.subscribe(EVENT_DEVICE_ONLINE, on_online)
+
+    await store.record_poll_failure("dev-last-seen-online", offline_threshold=5)
+    device = await store.device("dev-last-seen-online")
+    assert device is not None
+    assert device.offline is False
+    assert device.poll_health == "degraded"
+    assert device.poll_failure_count == 1
+
+    await store.set_last_seen(["dev-last-seen-online"])
+
+    device = await store.device("dev-last-seen-online")
+    assert device is not None
+    assert device.offline is False
+    assert device.poll_health == "degraded"
+    assert device.poll_failure_count == 1
+    assert device.last_seen is not None
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(event_received.wait(), timeout=0.1)
