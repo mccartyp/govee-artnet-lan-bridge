@@ -220,7 +220,7 @@ class CatalogCapabilityProvider(CapabilityProvider):
             catalog_dir: Directory containing catalog files, or None for default
         """
         self.protocol = protocol
-        self.logger = get_logger()
+        self.logger = get_logger(f"capabilities.{protocol}")
         self._catalog = self._load_catalog(protocol, catalog_dir)
         self._use_defaults = self._catalog is None
 
