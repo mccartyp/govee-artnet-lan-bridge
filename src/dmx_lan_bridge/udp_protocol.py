@@ -76,8 +76,10 @@ class GoveeProtocol(asyncio.DatagramProtocol):
         self.logger.debug("Registered default handler")
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]) -> None:
+        """Parse inbound datagrams and dispatch registered handlers with both parsed and raw payloads."""
+        raw_payload = data
         try:
-            message = data.decode("utf-8")
+            message = raw_payload.decode("utf-8")
         except UnicodeDecodeError:
             self.logger.debug("Ignoring non-UTF8 message", extra={"from": addr})
             return
@@ -109,7 +111,7 @@ class GoveeProtocol(asyncio.DatagramProtocol):
                 extra={"cmd": cmd, "from": addr},
             )
             try:
-                self._handlers[cmd](payload, addr, data)
+                self._handlers[cmd](payload, addr, raw_payload)
             except Exception:
                 self.logger.exception(
                     "Handler error",
@@ -117,7 +119,7 @@ class GoveeProtocol(asyncio.DatagramProtocol):
                 )
         elif self._default_handler:
             try:
-                self._default_handler(payload, addr, data)
+                self._default_handler(payload, addr, raw_payload)
             except Exception:
                 self.logger.exception(
                     "Default handler error",
