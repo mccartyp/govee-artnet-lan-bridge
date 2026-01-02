@@ -725,6 +725,86 @@ def validate_command_payload(
         )
 
     return sanitized, warnings
+
+
+def refine_capabilities_from_state(
+    current_capabilities: Mapping[str, Any],
+    observed_state: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    """Refine capabilities additively based on observed device state.
+
+    Never removes capabilities, only adds observed ones (additive refinement).
+
+    Args:
+        current_capabilities: Current device capabilities
+        observed_state: Observed state from poll response or discovery
+
+    Returns:
+        Refined capabilities with observed features added
+    """
+    refined = dict(current_capabilities)
+
+    # Track observed color modes
+    observed_modes = set(refined.get("color_modes", []))
+
+    # Infer color support from observed RGB values
+    if "color" in observed_state and isinstance(observed_state["color"], Mapping):
+        color = observed_state["color"]
+        # If we see non-zero RGB values, device supports color
+        if any(color.get(ch, 0) > 0 for ch in ("r", "g", "b")):
+            observed_modes.add("color")
+            refined["color"] = True
+
+    # Infer color temperature support from observed values
+    if "color_temperature" in observed_state or "kelvin" in observed_state:
+        kelvin_value = observed_state.get("color_temperature") or observed_state.get("kelvin")
+        if kelvin_value and isinstance(kelvin_value, (int, float)):
+            observed_modes.add("ct")
+            refined["color_temperature"] = True
+
+            # Update color temp range if we observe a value outside current range
+            current_range = refined.get("color_temp_range")
+            if current_range and isinstance(current_range, (list, tuple)) and len(current_range) == 2:
+                low, high = current_range
+                kelvin_int = int(kelvin_value)
+                # Expand range if observed value is outside (but keep reasonable bounds)
+                new_low = min(low, max(1000, kelvin_int - 500))
+                new_high = max(high, min(10000, kelvin_int + 500))
+                refined["color_temp_range"] = [new_low, new_high]
+            elif not current_range:
+                # If no range, infer reasonable range around observed value
+                kelvin_int = int(kelvin_value)
+                refined["color_temp_range"] = [
+                    max(1000, kelvin_int - 1000),
+                    min(10000, kelvin_int + 1000)
+                ]
+
+    # Infer brightness support from observed values
+    if "brightness" in observed_state:
+        brightness = observed_state["brightness"]
+        if brightness is not None:
+            refined["brightness"] = True
+
+    # Infer white support (if we see white channel or saturated values)
+    if "color" in observed_state and isinstance(observed_state["color"], Mapping):
+        if "w" in observed_state["color"]:
+            refined["white"] = True
+
+    # Update color modes if any were observed
+    if observed_modes:
+        refined["color_modes"] = sorted(observed_modes)
+
+    # Infer effects if we see effect/scene in state
+    if "effect" in observed_state or "mode" in observed_state:
+        effect_value = observed_state.get("effect") or observed_state.get("mode")
+        if effect_value:
+            current_effects = set(refined.get("effects", []))
+            current_effects.add(str(effect_value))
+            refined["effects"] = sorted(current_effects)
+
+    return refined
+
+
 def _coerce_optional_int(value: Any) -> Optional[int]:
     if value is None:
         return None

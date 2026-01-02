@@ -2326,31 +2326,83 @@ class DeviceStore:
     def _record_poll_success(
         self, conn: sqlite3.Connection, device_id: str, state: Optional[Mapping[str, Any]]
     ) -> Optional[Dict[str, Any]]:
-        # Check current offline status before update
-        row = conn.execute("SELECT offline FROM devices WHERE id = ?", (device_id,)).fetchone()
-        was_offline = row["offline"] if row else False
+        # Get current device info for capability refinement
+        device_row = conn.execute(
+            "SELECT offline, capabilities, protocol, model, model_number FROM devices WHERE id = ?",
+            (device_id,)
+        ).fetchone()
+        was_offline = device_row["offline"] if device_row else False
+
+        # Refine capabilities additively from observed state
+        refined_capabilities = None
+        if state and device_row:
+            from .capabilities import refine_capabilities_from_state
+
+            current_caps = _deserialize_capabilities(device_row["capabilities"])
+            protocol = device_row["protocol"] if "protocol" in device_row.keys() else "govee"
+            model = device_row["model_number"] or device_row["model"]
+
+            # Get current normalized capabilities
+            cache = self._get_capability_cache(protocol)
+            current_normalized = cache.normalize(model, current_caps)
+
+            # Refine based on observed state (additive only)
+            refined_raw = refine_capabilities_from_state(current_normalized.as_mapping(), state)
+
+            # Re-normalize the refined capabilities
+            refined_normalized = cache.normalize(model, refined_raw)
+
+            # Only update if capabilities actually changed
+            if refined_normalized.fingerprint != current_normalized.fingerprint:
+                refined_capabilities = _serialize_capabilities(refined_normalized.as_mapping())
 
         now = _now_iso()
         serialized_state = _serialize_capabilities(state) if state is not None else None
-        conn.execute(
-            """
-            UPDATE devices
-            SET
-                poll_failure_count = 0,
-                poll_last_success_at = ?,
-                poll_last_failure_at = NULL,
-                poll_state = ?,
-                poll_state_updated_at = CASE
-                    WHEN ? IS NOT NULL THEN ?
-                    ELSE poll_state_updated_at
-                END,
-                offline = 0,
-                last_seen = ?,
-                stale = 0
-            WHERE id = ?
-            """,
-            (now, serialized_state, serialized_state, now, now, device_id),
-        )
+
+        if refined_capabilities is not None:
+            # Update with refined capabilities
+            conn.execute(
+                """
+                UPDATE devices
+                SET
+                    poll_failure_count = 0,
+                    poll_last_success_at = ?,
+                    poll_last_failure_at = NULL,
+                    poll_state = ?,
+                    poll_state_updated_at = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE poll_state_updated_at
+                    END,
+                    capabilities = ?,
+                    offline = 0,
+                    last_seen = ?,
+                    stale = 0
+                WHERE id = ?
+                """,
+                (now, serialized_state, serialized_state, now, refined_capabilities, now, device_id),
+            )
+        else:
+            # Update without changing capabilities
+            conn.execute(
+                """
+                UPDATE devices
+                SET
+                    poll_failure_count = 0,
+                    poll_last_success_at = ?,
+                    poll_last_failure_at = NULL,
+                    poll_state = ?,
+                    poll_state_updated_at = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE poll_state_updated_at
+                    END,
+                    offline = 0,
+                    last_seen = ?,
+                    stale = 0
+                WHERE id = ?
+                """,
+                (now, serialized_state, serialized_state, now, now, device_id),
+            )
+
         conn.commit()
         self._update_offline_metric(conn)
 
