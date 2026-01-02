@@ -2,11 +2,11 @@ name: Build Debian Package
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "multi-protocol" ]
     tags:
       - 'v*.*.*'
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "multi-protocol" ]
   workflow_dispatch:  # Allow manual triggers
 
 permissions:
