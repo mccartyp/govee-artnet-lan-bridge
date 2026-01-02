@@ -278,7 +278,7 @@ def _validate_config(config: Config, skip_capability_catalog_check: bool = False
     _validate_range("device_poll_timeout", config.device_poll_timeout, 0.05, 60.0)
     _validate_range("device_poll_rate_per_second", config.device_poll_rate_per_second, 0.0, 10000.0)
     _validate_range("device_poll_rate_burst", config.device_poll_rate_burst, 0, 100000)
-    _validate_range("device_poll_offline_threshold", config.device_poll_offline_threshold, 1, 1000)
+    _validate_range("device_poll_offline_threshold", config.device_poll_offline_threshold, 2, 1000)
     _validate_range("device_poll_backoff_base", config.device_poll_backoff_base, 0.0, 300.0)
     _validate_range("device_poll_backoff_factor", config.device_poll_backoff_factor, 1.0, 10.0)
     _validate_range("device_poll_backoff_max", config.device_poll_backoff_max, 0.1, 3600.0)

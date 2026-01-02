@@ -18,7 +18,12 @@ from .capabilities import (
 from .config import ManualDevice
 from .db import DatabaseManager
 from .logging import get_logger
-from .metrics import set_offline_devices, set_queue_depth, set_total_queue_depth
+from .metrics import (
+    set_offline_devices,
+    set_poll_health_devices,
+    set_queue_depth,
+    set_total_queue_depth,
+)
 
 # Import EventBus type for type hints (avoid circular import at runtime)
 if False:  # TYPE_CHECKING
@@ -590,6 +595,7 @@ class DeviceInfo:
     zone_count: Optional[int]
     normalized_capabilities: Optional[NormalizedCapabilities]
     offline: bool
+    poll_health: str
     failure_count: int
     last_payload_hash: Optional[str]
     last_payload_at: Optional[str]
@@ -622,6 +628,7 @@ class DeviceRow:
     enabled: bool
     stale: bool
     offline: bool
+    poll_health: str
     last_seen: Optional[str]
     first_seen: Optional[str]
     poll_last_success_at: Optional[str]
@@ -732,6 +739,7 @@ class DeviceStore:
                 d.enabled,
                 d.stale,
                 d.offline,
+                d.poll_health,
                 d.last_seen,
                 d.first_seen,
                 d.poll_last_success_at,
@@ -776,6 +784,7 @@ class DeviceStore:
                 d.enabled,
                 d.stale,
                 d.offline,
+                d.poll_health,
                 d.last_seen,
                 d.first_seen,
                 d.poll_last_success_at,
@@ -825,6 +834,7 @@ class DeviceStore:
                 enabled,
                 stale,
                 offline,
+                poll_health,
                 last_seen,
                 first_seen,
                 poll_last_success_at,
@@ -992,6 +1002,7 @@ class DeviceStore:
                 enabled,
                 stale,
                 offline,
+                poll_health,
                 last_seen,
                 first_seen,
                 poll_last_success_at,
@@ -2247,6 +2258,7 @@ class DeviceStore:
                 zone_count,
                 capabilities,
                 offline,
+                poll_health,
                 failure_count,
                 last_payload_hash,
                 last_payload_at,
@@ -2281,6 +2293,7 @@ class DeviceStore:
             has_zones=metadata.get("has_zones"),
             zone_count=metadata.get("zone_count"),
             offline=bool(row["offline"]),
+            poll_health=row["poll_health"] or "healthy",
             failure_count=int(row["failure_count"] or 0),
             last_payload_hash=row["last_payload_hash"],
             last_payload_at=row["last_payload_at"],
@@ -2397,6 +2410,7 @@ class DeviceStore:
                 UPDATE devices
                 SET
                     poll_failure_count = 0,
+                    poll_health = 'healthy',
                     poll_last_success_at = ?,
                     poll_last_failure_at = NULL,
                     poll_state = ?,
@@ -2419,6 +2433,7 @@ class DeviceStore:
                 UPDATE devices
                 SET
                     poll_failure_count = 0,
+                    poll_health = 'healthy',
                     poll_last_success_at = ?,
                     poll_last_failure_at = NULL,
                     poll_state = ?,
@@ -2477,13 +2492,18 @@ class DeviceStore:
             SET
                 poll_failure_count = poll_failure_count + 1,
                 poll_last_failure_at = ?,
+                poll_health = CASE
+                    WHEN (poll_failure_count + 1) >= ? THEN 'offline'
+                    WHEN (poll_failure_count + 1) >= 1 THEN 'degraded'
+                    ELSE poll_health
+                END,
                 offline = CASE
                     WHEN (poll_failure_count + 1) >= ? THEN 1
                     ELSE offline
                 END
             WHERE id = ?
             """,
-            (now, offline_threshold, device_id),
+            (now, offline_threshold, offline_threshold, device_id),
         )
         conn.commit()
         self._update_offline_metric(conn)
@@ -2773,6 +2793,15 @@ class DeviceStore:
         count = int(row["offline"] if row else 0)
         set_offline_devices(count)
 
+        health_rows = conn.execute(
+            "SELECT poll_health, COUNT(*) AS count FROM devices GROUP BY poll_health"
+        ).fetchall()
+        counts = {
+            (health_row["poll_health"] or "unknown"): int(health_row["count"] or 0)
+            for health_row in health_rows
+        }
+        set_poll_health_devices(counts)
+
     def _normalized_capabilities_obj(self, row: sqlite3.Row) -> NormalizedCapabilities:
         model = None
         if "model_number" in row.keys() and row["model_number"]:
@@ -2815,6 +2844,7 @@ class DeviceStore:
             enabled=bool(row["enabled"]),
             stale=bool(row["stale"]),
             offline=bool(row["offline"]),
+            poll_health=row["poll_health"] if "poll_health" in row.keys() else "healthy",
             last_seen=row["last_seen"],
             first_seen=row["first_seen"],
             poll_last_success_at=row["poll_last_success_at"]

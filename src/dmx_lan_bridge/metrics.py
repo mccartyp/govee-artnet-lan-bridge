@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Mapping, Optional
 
 try:
     from prometheus_client import (  # type: ignore
@@ -169,6 +169,13 @@ DEVICE_POLLING_ENABLED = Gauge(
     "Whether device polling is enabled (0/1)",
     registry=_REGISTRY,
 )
+DEVICE_POLL_HEALTH = Gauge(
+    "artnet_lan_device_poll_health_total",
+    "Number of devices by poll health status",
+    ["status"],
+    registry=_REGISTRY,
+)
+POLL_HEALTH_STATUSES = ("healthy", "degraded", "offline", "unknown")
 
 
 def get_registry() -> CollectorRegistry:
@@ -296,6 +303,13 @@ def set_offline_devices(count: int) -> None:
     """Set the number of offline devices."""
 
     OFFLINE_DEVICES.set(count)
+
+
+def set_poll_health_devices(counts: Mapping[str, int]) -> None:
+    """Set the number of devices per poll health status."""
+
+    for status in POLL_HEALTH_STATUSES:
+        DEVICE_POLL_HEALTH.labels(status=status).set(int(counts.get(status, 0)))
 
 
 def set_rate_limit_tokens(tokens: float) -> None:
