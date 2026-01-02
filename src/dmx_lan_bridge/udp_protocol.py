@@ -68,7 +68,7 @@ class GoveeProtocol(asyncio.DatagramProtocol):
     def register_handler(self, cmd: str, handler: MessageHandler) -> None:
         """Register a handler for a specific message cmd type."""
         self._handlers[cmd] = handler
-        self.logger.debug(f"Registered handler for cmd: {cmd}")
+        self.logger.info(f"Registered handler for cmd: {cmd}", extra={"cmd": cmd})
 
     def register_default_handler(self, handler: MessageHandler) -> None:
         """Register a fallback handler for unrecognized message types."""

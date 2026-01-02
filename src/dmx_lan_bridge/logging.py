@@ -228,6 +228,16 @@ def configure_logging(config: Config, log_buffer: Any = None) -> None:
                     "handlers": ["console"],
                     "propagate": False,
                 },
+                "artnet.protocol.service": {
+                    "level": artnet_level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
+                "artnet.poller": {
+                    "level": level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
                 "govee.artnet.mapping": {
                     "level": artnet_level,
                     "handlers": ["console"],
@@ -290,6 +300,8 @@ def configure_logging(config: Config, log_buffer: Any = None) -> None:
             "devices.discovery",
             "devices.protocol",
             "artnet.protocol",
+            "artnet.protocol.service",
+            "artnet.poller",
             "artnet.mapping",
         ]:
             logger = logging.getLogger(logger_name)
