@@ -679,7 +679,7 @@ class DeviceStore:
         event_bus: Optional[Any] = None
     ) -> None:
         self.db = DatabaseManager(db_path)
-        self.logger = get_logger("artnet.devices")
+        self.logger = get_logger("devices.store")
         self._event_bus = event_bus
         # Cache capability caches per protocol
         self._capability_caches: Dict[str, CapabilityCache] = {}
