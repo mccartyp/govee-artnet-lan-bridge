@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
-from govee_artnet_lan_bridge.config import Config, ManualDevice
-from govee_artnet_lan_bridge.db import apply_migrations
-from govee_artnet_lan_bridge.devices import DeviceStateUpdate, DeviceStore
-from govee_artnet_lan_bridge.sender import DeviceSenderService
+from dmx_lan_bridge.config import Config, ManualDevice
+from dmx_lan_bridge.db import apply_migrations
+from dmx_lan_bridge.devices import DeviceStateUpdate, DeviceStore
+from dmx_lan_bridge.sender import DeviceSenderService
 
 
 async def _wait_for_drain(store: DeviceStore, timeout: float = 1.0) -> None:

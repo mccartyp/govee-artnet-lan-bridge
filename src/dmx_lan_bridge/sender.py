@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import socket
 import contextlib
@@ -28,6 +29,7 @@ class DeviceTarget:
 
     id: str
     ip: str
+    protocol: str
     port: int
     transport: str
     capabilities: Any
@@ -59,11 +61,19 @@ def _coerce_port(capabilities: Any, default: int) -> int:
 def _derive_target(config: Config, device: DeviceInfo) -> Optional[DeviceTarget]:
     if not device.ip:
         return None
-    transport = _coerce_transport(device.capabilities, config.device_default_transport)
-    port = _coerce_port(device.capabilities, config.device_default_port)
+
+    # Get protocol-specific defaults
+    from .protocol import get_protocol_handler
+    handler = get_protocol_handler(device.protocol)
+
+    # Use protocol handler defaults, but allow capability overrides
+    transport = _coerce_transport(device.capabilities, handler.get_default_transport())
+    port = _coerce_port(device.capabilities, handler.get_default_port())
+
     return DeviceTarget(
         id=device.id,
         ip=device.ip,
+        protocol=device.protocol,
         port=port,
         transport=transport,
         capabilities=device.capabilities,
@@ -78,7 +88,7 @@ class DeviceSenderService:
     ) -> None:
         self.config = config
         self.store = store
-        self.logger = get_logger("govee.sender")
+        self.logger = get_logger("artnet.sender")
         self._stop_event = asyncio.Event()
         self._poll_task: Optional[asyncio.Task[None]] = None
         self._device_tasks: Dict[str, asyncio.Task[None]] = {}
@@ -236,7 +246,15 @@ class DeviceSenderService:
             return
 
         await self._acquire_rate_limit(state.device_id, state.context_id)
-        payload = state.payload.encode("utf-8")
+
+        # Decode binary payloads (LIFX) or encode text payloads (Govee)
+        if state.payload.startswith("base64:"):
+            # Binary payload - decode from base64
+            payload = base64.b64decode(state.payload[7:])  # Strip "base64:" prefix
+        else:
+            # Text payload - encode to UTF-8 (Govee JSON)
+            payload = state.payload.encode("utf-8")
+
         transport_label = target.transport
         try:
             success = await self._send_with_retries(target, payload, payload_hash, state.context_id)

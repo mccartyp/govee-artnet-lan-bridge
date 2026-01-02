@@ -3,13 +3,13 @@ requires = ["setuptools>=65", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "govee-artnet-lan-bridge"
-version = "1.0.3"
-description = "Asyncio entrypoint, configuration loader, and structured logging for the Govee Artnet LAN bridge."
+name = "dmx-lan-bridge"
+version = "2.0.0"
+description = "Multi-protocol DMX to LAN device bridge supporting ArtNet, sACN (future), and smart lighting devices (Govee, LIFX, WiZ)."
 readme = "LICENSE"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "Govee Bridge Maintainers" }]
+authors = [{ name = "DMX LAN Bridge Maintainers" }]
 dependencies = [
     "fastapi>=0.101.0",
     "httpx>=0.26.0",
@@ -23,8 +23,15 @@ dependencies = [
 ]
 
 [project.scripts]
-govee-artnet-bridge = "govee_artnet_lan_bridge.__main__:run"
-govee-artnet-cli = "govee_artnet_lan_bridge.cli:main"
+# Primary commands
+dmx-lan-bridge = "dmx_lan_bridge.__main__:run"
+dmx-lan-cli = "dmx_lan_bridge.cli:main"
+
+# Legacy aliases for backwards compatibility (deprecated, will be removed in 3.0)
+artnet-lan-bridge = "dmx_lan_bridge.__main__:run"
+artnet-lan-cli = "dmx_lan_bridge.cli:main"
+govee-artnet-bridge = "dmx_lan_bridge.__main__:run"
+govee-artnet-cli = "dmx_lan_bridge.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -33,4 +40,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.data-files]
-"share/govee_artnet_lan_bridge" = ["res/capability_catalog.json"]
+"share/dmx_lan_bridge" = ["res/capability_catalog_govee.json"]

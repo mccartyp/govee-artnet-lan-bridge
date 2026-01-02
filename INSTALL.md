@@ -4,7 +4,9 @@
 [![Download DEB](https://img.shields.io/badge/download-.deb-blue)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-This repository provides multiple installation methods for the Govee ArtNet LAN bridge. The Debian package (.deb) method is recommended for Ubuntu 24.04 and Debian 13 systems.
+This repository provides multiple installation methods for the DMX LAN Bridge. The Debian package (.deb) method is recommended for Ubuntu 24.04 and Debian 13 systems.
+
+**Note:** Package has been renamed from `artnet-lan-bridge` to `dmx-lan-bridge` to reflect multi-protocol support. Legacy command names (`artnet-lan-bridge`, `artnet-lan-cli`) remain available for backwards compatibility.
 
 ---
 
@@ -13,7 +15,7 @@ This repository provides multiple installation methods for the Govee ArtNet LAN 
 - **Python**: 3.10 or higher
 - **Operating System**: Ubuntu 24.04 LTS, Debian 13 (Trixie), or compatible Linux distribution
 - **systemd**: For service management
-- **Network**: Local network access to Govee devices
+- **Network**: Local network access to smart lighting devices (Govee, LIFX, etc.)
 
 ---
 
@@ -31,13 +33,13 @@ Download the latest release from GitHub:
 # Visit https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest
 # Or download latest version dynamically:
 LATEST_VERSION=$(curl -s https://api.github.com/repos/mccartyp/govee-artnet-lan-bridge/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-wget https://github.com/mccartyp/govee-artnet-lan-bridge/releases/download/${LATEST_VERSION}/govee-artnet-bridge_${LATEST_VERSION#v}_all.deb
+wget https://github.com/mccartyp/govee-artnet-lan-bridge/releases/download/${LATEST_VERSION}/dmx-lan-bridge_${LATEST_VERSION#v}_all.deb
 ```
 
 ### 2. Install the Package
 
 ```bash
-sudo dpkg -i govee-artnet-bridge_*.deb
+sudo dpkg -i dmx-lan-bridge_*.deb
 ```
 
 If there are missing dependencies, install them with:
@@ -52,10 +54,10 @@ The service is automatically started after installation:
 
 ```bash
 # Check service status
-sudo systemctl status govee-bridge.service
+sudo systemctl status artnet-bridge.service
 
 # View service logs
-sudo journalctl -u govee-bridge.service -f
+sudo journalctl -u artnet-bridge.service -f
 ```
 
 ### 4. Configure (Optional)
@@ -63,39 +65,39 @@ sudo journalctl -u govee-bridge.service -f
 Edit the configuration file:
 
 ```bash
-sudo nano /etc/govee-bridge/config.toml
+sudo nano /etc/artnet-bridge/config.toml
 ```
 
 After making changes, reload the configuration:
 
 ```bash
-sudo systemctl reload govee-bridge.service
+sudo systemctl reload artnet-bridge.service
 ```
 
 For detailed configuration options, see:
-- `/usr/share/doc/govee-artnet-bridge/govee-bridge.toml.example`
+- `/usr/share/doc/dmx-lan-bridge/artnet-bridge.toml.example`
 
 ### What Gets Installed
 
-- **Binaries**: `/usr/bin/govee-artnet-bridge`, `/usr/bin/govee-artnet-cli`
-- **Python Package**: `/usr/lib/python3/dist-packages/govee_artnet_lan_bridge/`
-- **Systemd Service**: `/lib/systemd/system/govee-bridge.service`
-- **Configuration**: `/etc/govee-bridge/config.toml`
-- **Data Directory**: `/var/lib/govee-bridge/`
-- **Documentation**: `/usr/share/doc/govee-artnet-bridge/`
+- **Binaries**: `/usr/bin/dmx-lan-bridge`, `/usr/bin/dmx-lan-cli`
+- **Python Package**: `/usr/lib/python3/dist-packages/dmx_lan_bridge/`
+- **Systemd Service**: `/lib/systemd/system/artnet-bridge.service`
+- **Configuration**: `/etc/artnet-bridge/config.toml`
+- **Data Directory**: `/var/lib/artnet-bridge/`
+- **Documentation**: `/usr/share/doc/dmx-lan-bridge/`
 
 ### Uninstall
 
 Remove the package (keeps configuration and data):
 
 ```bash
-sudo apt remove govee-artnet-bridge
+sudo apt remove artnet-lan-bridge
 ```
 
 Completely remove including configuration and data (purge):
 
 ```bash
-sudo apt purge govee-artnet-bridge
+sudo apt purge artnet-lan-bridge
 ```
 
 ---
@@ -113,7 +115,7 @@ cd govee-artnet-lan-bridge
 make deb
 
 # Install
-sudo dpkg -i dist/govee-artnet-bridge_*.deb
+sudo dpkg -i dist/dmx-lan-bridge_*.deb
 ```
 
 ---
@@ -135,24 +137,24 @@ make install-system
 
 The installer will:
 - Install the Python package globally via `pip`
-- Create the `govee-bridge` system user
-- Set up `/etc/govee-bridge/config.toml` and `/var/lib/govee-bridge/`
+- Create the `artnet-bridge` system user
+- Set up `/etc/artnet-bridge/config.toml` and `/var/lib/artnet-bridge/`
 - Install and start the systemd service
 
 ### Service Management
 
 ```bash
 # Check status
-sudo systemctl status govee-bridge.service
+sudo systemctl status artnet-bridge.service
 
 # Restart service
-sudo systemctl restart govee-bridge.service
+sudo systemctl restart artnet-bridge.service
 
 # View logs
-sudo journalctl -u govee-bridge.service -f
+sudo journalctl -u artnet-bridge.service -f
 
 # Reload configuration
-sudo systemctl reload govee-bridge.service
+sudo systemctl reload artnet-bridge.service
 ```
 
 ### Uninstall
@@ -161,7 +163,7 @@ sudo systemctl reload govee-bridge.service
 make uninstall-system
 ```
 
-**Note**: Configuration and data are preserved. Manually remove `/etc/govee-bridge` and `/var/lib/govee-bridge` if needed.
+**Note**: Configuration and data are preserved. Manually remove `/etc/artnet-bridge` and `/var/lib/artnet-bridge` if needed.
 
 ---
 
@@ -180,21 +182,21 @@ make install-user
 
 ### Configuration and Data Locations
 
-- **Config**: `~/.config/govee-bridge/config.toml`
-- **Data**: `~/.local/share/govee-artnet-lan-bridge/`
-- **Service**: `~/.config/systemd/user/govee-bridge-user.service`
+- **Config**: `~/.config/artnet-bridge/config.toml`
+- **Data**: `~/.local/share/dmx-lan-bridge/`
+- **Service**: `~/.config/systemd/user/artnet-bridge-user.service`
 
 ### Service Management
 
 ```bash
 # Check status
-systemctl --user status govee-bridge-user.service
+systemctl --user status artnet-bridge-user.service
 
 # Restart
-systemctl --user restart govee-bridge-user.service
+systemctl --user restart artnet-bridge-user.service
 
 # View logs
-journalctl --user -u govee-bridge-user.service -f
+journalctl --user -u artnet-bridge-user.service -f
 ```
 
 ### Start at Boot
@@ -235,16 +237,16 @@ pip3 install -e .
 
 ```bash
 # Run bridge server
-govee-artnet-bridge --config config.toml
+dmx-lan-bridge --config config.toml
 
 # Or use the CLI
-govee-artnet-cli --help
+dmx-lan-cli --help
 ```
 
 ### Uninstall
 
 ```bash
-pip3 uninstall govee-artnet-lan-bridge
+pip3 uninstall artnet-lan-bridge
 ```
 
 ---
@@ -298,12 +300,12 @@ firefox http://localhost:8000/docs
 Devices are automatically discovered via multicast. Check logs to see discovered devices:
 
 ```bash
-sudo journalctl -u govee-bridge.service | grep discovered
+sudo journalctl -u artnet-bridge.service | grep discovered
 ```
 
 ### Configuration Examples
 
-See `/usr/share/doc/govee-artnet-bridge/govee-bridge.toml.example` for comprehensive configuration documentation.
+See `/usr/share/doc/dmx-lan-bridge/artnet-bridge.toml.example` for comprehensive configuration documentation.
 
 ---
 
@@ -311,9 +313,9 @@ See `/usr/share/doc/govee-artnet-bridge/govee-bridge.toml.example` for comprehen
 
 After installation:
 
-1. **Verify service is running**: `sudo systemctl status govee-bridge.service`
-2. **Check devices are discovered**: `govee-artnet-cli` or check API
+1. **Verify service is running**: `sudo systemctl status artnet-bridge.service`
+2. **Check devices are discovered**: `dmx-lan-cli` or check API
 3. **Configure ArtNet mapping**: See main [README.md](README.md) for usage
-4. **Set up authentication**: Edit `/etc/govee-bridge/config.toml` to add `api_key`
+4. **Set up authentication**: Edit `/etc/artnet-bridge/config.toml` to add `api_key`
 
 For usage instructions and ArtNet mapping examples, see the main [README.md](README.md).

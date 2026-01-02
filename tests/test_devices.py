@@ -1,9 +1,9 @@
 import pytest
 
-from govee_artnet_lan_bridge.capabilities import load_embedded_catalog
-from govee_artnet_lan_bridge.config import ManualDevice
-from govee_artnet_lan_bridge.db import apply_migrations
-from govee_artnet_lan_bridge.devices import DeviceStore, DiscoveryResult
+from dmx_lan_bridge.capabilities import load_embedded_catalog
+from dmx_lan_bridge.config import ManualDevice
+from dmx_lan_bridge.db import apply_migrations
+from dmx_lan_bridge.devices import DeviceStore, DiscoveryResult
 
 
 @pytest.mark.asyncio
