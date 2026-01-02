@@ -80,10 +80,10 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Command-line client for Govee Art-Net bridge. "
-            "Uses GOVEE_ARTNET_CLI_* env vars for defaults and prints JSON (default) or YAML. "
-            "Examples: `govee-artnet-cli devices list`, "
-            "`govee-artnet-cli mappings create --device-id <id> --universe 0 --start-channel 1 --template rgb`."
+            "Command-line client for ArtNet LAN Bridge (multi-protocol). "
+            "Uses ARTNET_LAN_CLI_* env vars for defaults and prints JSON (default) or YAML. "
+            "Examples: `artnet-lan-cli devices list`, "
+            "`artnet-lan-cli mappings create --device-id <id> --universe 0 --start-channel 1 --template rgb`."
         )
     )
     parser.add_argument(

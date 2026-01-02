@@ -281,7 +281,7 @@ class UniverseMapping:
     ) -> None:
         self.universe = universe
         self._mappings = list(mappings)
-        self.logger = get_logger("govee.artnet.mapping")
+        self.logger = get_logger("artnet.artnet.mapping")
         self._log_sample_rate = max(0.0, min(1.0, log_sample_rate))
 
     def apply(self, data: bytes, context_id: Optional[str] = None) -> List[DeviceStateUpdate]:
@@ -335,7 +335,7 @@ class ArtNetProtocol(asyncio.DatagramProtocol):
 
     def __init__(self, handler: "ArtNetService") -> None:
         self.handler = handler
-        self.logger = get_logger("govee.artnet.protocol")
+        self.logger = get_logger("artnet.artnet.protocol")
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.logger.info(
@@ -367,7 +367,7 @@ class ArtNetService:
         self.config = config
         self.store = store
         self.event_bus = event_bus
-        self.logger = get_logger("govee.artnet")
+        self.logger = get_logger("artnet.artnet")
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._protocol: Optional[ArtNetProtocol] = None
         self._universe_mappings: Dict[int, UniverseMapping] = {}

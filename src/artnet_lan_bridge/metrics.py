@@ -44,128 +44,128 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for constrained envir
 _REGISTRY = CollectorRegistry()
 
 REQUEST_LATENCY = Histogram(
-    "govee_api_request_duration_seconds",
+    "artnet_lan_api_request_duration_seconds",
     "Time spent processing API requests",
     ["method", "path", "status"],
     registry=_REGISTRY,
     buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
 )
 REQUEST_COUNT = Counter(
-    "govee_api_requests_total",
+    "artnet_lan_api_requests_total",
     "HTTP requests processed by the API",
     ["method", "path", "status"],
     registry=_REGISTRY,
 )
 DISCOVERY_RESPONSES = Counter(
-    "govee_discovery_responses_total",
+    "artnet_lan_discovery_responses_total",
     "Discovery responses parsed",
     ["source"],
     registry=_REGISTRY,
 )
 DISCOVERY_ERRORS = Counter(
-    "govee_discovery_errors_total",
+    "artnet_lan_discovery_errors_total",
     "Discovery responses discarded",
     ["reason"],
     registry=_REGISTRY,
 )
 ARTNET_PACKETS = Counter(
-    "govee_artnet_packets_total",
+    "artnet_lan_packets_total",
     "ArtNet packets received",
     ["universe"],
     registry=_REGISTRY,
 )
 ARTNET_DEVICE_UPDATES = Counter(
-    "govee_artnet_device_updates_total",
+    "artnet_lan_device_updates_total",
     "Device updates generated from ArtNet payloads",
     ["device_id"],
     registry=_REGISTRY,
 )
 ARTNET_INGEST_DURATION = Histogram(
-    "govee_artnet_ingest_duration_seconds",
+    "artnet_lan_ingest_duration_seconds",
     "Time spent applying ArtNet frames",
     ["universe", "status"],
     registry=_REGISTRY,
     buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
 )
 DEVICE_SEND_RESULTS = Counter(
-    "govee_device_sends_total",
+    "artnet_lan_device_sends_total",
     "Device send outcomes",
     ["result"],
     registry=_REGISTRY,
 )
 DEVICE_SEND_DURATION = Histogram(
-    "govee_device_send_duration_seconds",
+    "artnet_lan_device_send_duration_seconds",
     "Time to deliver payloads to devices",
     ["result", "transport"],
     registry=_REGISTRY,
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
 )
 SUBSYSTEM_FAILURES = Counter(
-    "govee_subsystem_failures_total",
+    "artnet_lan_subsystem_failures_total",
     "Subsystem failures leading to suppression",
     ["subsystem"],
     registry=_REGISTRY,
 )
 SUBSYSTEM_STATUS = Gauge(
-    "govee_subsystem_status",
+    "artnet_lan_subsystem_status",
     "Subsystem health (0=suppressed,1=degraded/recovering,2=ok)",
     ["subsystem"],
     registry=_REGISTRY,
 )
 DISCOVERY_CYCLE_DURATION = Histogram(
-    "govee_discovery_cycle_duration_seconds",
+    "artnet_lan_discovery_cycle_duration_seconds",
     "Time spent performing discovery cycles",
     ["result"],
     registry=_REGISTRY,
     buckets=[0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
 )
 DEVICE_QUEUE_DEPTH = Gauge(
-    "govee_device_queue_depth",
+    "artnet_lan_device_queue_depth",
     "Queued state payloads per device",
     ["device_id"],
     registry=_REGISTRY,
 )
 DEVICE_QUEUE_TOTAL = Gauge(
-    "govee_device_queue_depth_total",
+    "artnet_lan_device_queue_depth_total",
     "Total queued state payloads",
     registry=_REGISTRY,
 )
 OFFLINE_DEVICES = Gauge(
-    "govee_offline_devices_total",
+    "artnet_lan_offline_devices_total",
     "Number of devices marked offline",
     registry=_REGISTRY,
 )
 RATE_LIMIT_TOKENS = Gauge(
-    "govee_rate_limit_tokens",
+    "artnet_lan_rate_limit_tokens",
     "Available tokens in the device sender rate limiter",
     registry=_REGISTRY,
 )
 RATE_LIMIT_WAITS = Counter(
-    "govee_rate_limit_waits_total",
+    "artnet_lan_rate_limit_waits_total",
     "Send attempts delayed by the rate limiter",
     ["scope"],
     registry=_REGISTRY,
 )
 DEVICE_POLL_RESULTS = Counter(
-    "govee_device_polls_total",
+    "artnet_lan_device_polls_total",
     "Device poll outcomes",
     ["result"],
     registry=_REGISTRY,
 )
 DEVICE_POLL_DURATION = Histogram(
-    "govee_device_poll_duration_seconds",
+    "artnet_lan_device_poll_duration_seconds",
     "Time spent polling devices",
     ["result"],
     registry=_REGISTRY,
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
 )
 DEVICE_POLL_STATE_UPDATES = Counter(
-    "govee_device_poll_state_updates_total",
+    "artnet_lan_device_poll_state_updates_total",
     "Device state snapshots parsed from poll responses",
     registry=_REGISTRY,
 )
 DEVICE_POLLING_ENABLED = Gauge(
-    "govee_device_polling_enabled",
+    "artnet_lan_device_polling_enabled",
     "Whether device polling is enabled (0/1)",
     registry=_REGISTRY,
 )

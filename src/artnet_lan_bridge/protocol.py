@@ -40,7 +40,7 @@ class GoveeProtocol(asyncio.DatagramProtocol):
         self.config = config
         self.loop = loop
         self.transport: Optional[asyncio.DatagramTransport] = None
-        self.logger = get_logger("govee.protocol")
+        self.logger = get_logger("artnet.protocol")
         self._handlers: Dict[str, MessageHandler] = {}
         self._default_handler: Optional[MessageHandler] = None
 
@@ -146,7 +146,7 @@ class GoveeProtocolService:
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.logger = get_logger("govee.protocol.service")
+        self.logger = get_logger("artnet.protocol.service")
         self._protocol: Optional[GoveeProtocol] = None
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket: Optional[socket.socket] = None
