@@ -1,10 +1,13 @@
 # Usage Guide
 
-This guide provides detailed information on using the Govee ArtNet LAN Bridge CLI to manage devices and configure DMX channel mappings.
+This guide provides detailed information on using the DMX LAN Bridge CLI to manage devices and configure DMX channel mappings.
 
 ## Table of Contents
 
 - [Starting the Bridge Server](#starting-the-bridge-server)
+- [Multi-Protocol DMX Input](#multi-protocol-dmx-input)
+  - [Priority-Based Source Merging](#priority-based-source-merging)
+  - [Supported Input Protocols](#supported-input-protocols)
 - [CLI Overview](#cli-overview)
 - [DMX Channel Mapping](#dmx-channel-mapping)
   - [Using Templates (Recommended)](#using-templates-recommended)
@@ -17,45 +20,114 @@ This guide provides detailed information on using the Govee ArtNet LAN Bridge CL
 ## Starting the Bridge Server
 
 The bridge server runs as a daemon and provides:
-- ArtNet listener on port 6454 (configurable)
+- **Multi-protocol DMX input** (ArtNet on port 6454, sACN coming soon)
+- **Priority-based source merging** (multiple consoles, graceful failover)
 - REST API on port 8000 (configurable)
+- Multi-protocol device support (Govee, LIFX, WiZ)
 - Automatic device discovery
 - Device health monitoring
 
 Start the server:
 ```bash
 # Start with default settings
-govee-artnet-bridge
+dmx-lan-bridge
 
 # Start with custom configuration
-govee-artnet-bridge --config /path/to/config.toml
+dmx-lan-bridge --config /path/to/config.toml
 
 # Start with custom API port
-govee-artnet-bridge --api-port 9000
+dmx-lan-bridge --api-port 9000
+
+# Legacy command (still works)
+artnet-lan-bridge
 ```
 
 See [INSTALL.md](INSTALL.md) for systemd service setup and other installation options.
 
+## Multi-Protocol DMX Input
+
+The bridge supports multiple DMX input protocols with intelligent priority-based merging.
+
+### Priority-Based Source Merging
+
+When multiple sources send DMX data to the same universe, the bridge automatically merges them based on priority:
+
+```
+Priority Levels (0-200, higher wins):
+  200: Emergency override (sACN)
+  150: Primary console (sACN)
+  100: sACN default         ← Wins over ArtNet
+   50: ArtNet (FIXED)       ← All ArtNet traffic
+   25: Backup console (sACN)
+    0: Lowest (sACN)
+```
+
+**How it works:**
+1. **Highest priority wins** - Device receives data from highest-priority source
+2. **Automatic failover** - If primary source stops sending (2.5s timeout), backup takes over
+3. **Per-universe merging** - Different universes can have different active sources
+4. **Seamless switching** - No manual intervention needed
+
+**Example Scenarios:**
+
+**Scenario 1: sACN beats ArtNet (default)**
+```
+Console A (sACN, priority 100) → Universe 0
+Console B (ArtNet, priority 50) → Universe 0
+
+Result: Console A controls devices (100 > 50)
+```
+
+**Scenario 2: Graceful failover**
+```
+Primary (sACN, priority 150) → Universe 0
+Backup (sACN, priority 100) → Universe 0
+
+Primary active: Devices controlled by Primary
+Primary stops: Backup takes over automatically after 2.5s timeout
+Primary returns: Primary resumes control immediately
+```
+
+**Scenario 3: Separate universes (no conflict)**
+```
+Console A (ArtNet) → Universe 0
+Console B (sACN) → Universe 1
+
+Result: No conflict, both active simultaneously
+```
+
+### Supported Input Protocols
+
+| Protocol | Status | Port | Priority | Notes |
+|----------|--------|------|----------|-------|
+| **ArtNet** | ✅ Supported | 6454 | Fixed: 50 | Universal support, simple setup |
+| **sACN/E1.31** | 🔜 Coming Soon | 5568 | 0-200 (native) | Professional standard, priority control |
+
 ## CLI Overview
 
-The `govee-artnet-cli` tool communicates with the bridge server via its REST API and connects to `http://127.0.0.1:8000` by default.
+The `dmx-lan-cli` tool communicates with the bridge server via its REST API and connects to `http://127.0.0.1:8000` by default.
 
 ```bash
 # Run CLI commands
-govee-artnet-cli devices list
+dmx-lan-cli devices list
+
+# Legacy command (still works)
+artnet-lan-cli devices list
 ```
 
-For an interactive shell experience with real-time monitoring, log viewing, and enhanced features, see the dedicated console tool: **[govee-artnet-console](https://github.com/mccartyp/govee-artnet-console)**
+**Note:** Both `dmx-lan-cli` and `artnet-lan-cli` commands work identically. The legacy names are maintained for backwards compatibility.
+
+For an interactive shell experience with real-time monitoring, log viewing, and enhanced features, see the dedicated console tool: **[artnet-console](https://github.com/mccartyp/artnet-console)**
 
 ### Connecting to a Remote Server
 
 ```bash
 # Connect to a remote bridge server
-govee-artnet-cli --server-url http://192.168.1.100:8000 devices list
+dmx-lan-cli --server-url http://192.168.1.100:8000 devices list
 
 # Or set the environment variable
 export GOVEE_ARTNET_CLI_SERVER_URL=http://192.168.1.100:8000
-govee-artnet-cli devices list
+dmx-lan-cli devices list
 ```
 
 ### Authentication
@@ -64,29 +136,31 @@ If the bridge server has API authentication enabled:
 
 ```bash
 # Using API key
-govee-artnet-cli --api-key your-api-key devices list
+dmx-lan-cli --api-key your-api-key devices list
 
 # Using bearer token
-govee-artnet-cli --api-bearer-token your-token devices list
+dmx-lan-cli --api-bearer-token your-token devices list
 
 # Or use environment variables
 export GOVEE_ARTNET_CLI_API_KEY=your-api-key
-govee-artnet-cli devices list
+dmx-lan-cli devices list
 ```
 
 ### Output Formats
 
 ```bash
 # JSON output (default)
-govee-artnet-cli devices list
+dmx-lan-cli devices list
 
 # YAML output
-govee-artnet-cli devices list --output yaml
+dmx-lan-cli devices list --output yaml
 ```
 
 ## DMX Channel Mapping
 
-The bridge maps ArtNet DMX channels to Govee device controls. Each device can be mapped to one or more DMX channels to control dimmer (brightness), color (RGB), and color temperature.
+The bridge maps DMX channels (from ArtNet, sACN, or other input protocols) to smart device controls. Each device can be mapped to one or more DMX channels to control dimmer (brightness), color (RGB), and color temperature.
+
+**Important:** Mappings are protocol-agnostic. A single mapping works for any input protocol (ArtNet, sACN, etc.) sending to that universe. You do NOT need separate mappings per protocol.
 
 ### Using Templates (Recommended)
 
@@ -127,24 +201,24 @@ For individual field control, use single channel mappings instead of templates:
 - **Color-capable devices** support `r`, `g`, `b` fields
 - **Color temperature devices** support `ct` field
 
-Use `govee-artnet-cli devices list` to check which capabilities your device supports.
+Use `dmx-lan-cli devices list` to check which capabilities your device supports.
 
 **Example - Power and Dimmer Control:**
 ```bash
 # Power control on channel 1 (works on ALL devices, including plugs)
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 1 \
   --field power
 
 # Dimmer control on channel 5 (only works if device supports brightness)
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 5 \
   --field dimmer
 
 # Use field aliases for convenience (only works if device supports color)
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --channel 10 \
   --field red
@@ -154,7 +228,7 @@ govee-artnet-cli mappings create \
 
 **RGB Light Strip (3-channel RGB)**
 ```bash
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
@@ -168,7 +242,7 @@ This creates mappings for:
 
 **RGB + Color Temperature Light (4-channel RGB+CT)**
 ```bash
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 10 \
@@ -183,7 +257,7 @@ This creates mappings for:
 
 **Full Control Light (5-channel Dimmer+RGB+CT)**
 ```bash
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 1 \
   --start-channel 5 \
@@ -199,7 +273,7 @@ This creates mappings for:
 
 **Simple Dimmer-Only Light (single channel mapping)**
 ```bash
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 100 \
@@ -209,12 +283,12 @@ govee-artnet-cli mappings create \
 This creates a single channel mapping for:
 - Channel 100: Dimmer (0-255)
 
-**Note**: This only works if the device has the `brightness` capability. Check with `govee-artnet-cli devices list`.
+**Note**: This only works if the device has the `brightness` capability. Check with `dmx-lan-cli devices list`.
 
 **Tunable White (2-channel Dimmer+CT)**
 ```bash
 # Dimmer and Color Temperature
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 2 \
   --start-channel 20 \
@@ -238,7 +312,7 @@ For fine-grained control or non-standard fixture layouts, you can create individ
 
 **Step 1: Map a single dimmer channel**
 ```bash
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 1 \
@@ -249,7 +323,7 @@ govee-artnet-cli mappings create \
 
 **Step 2: Map RGB as a range (3 consecutive channels)**
 ```bash
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 2 \
@@ -261,7 +335,7 @@ This automatically maps channels 2, 3, 4 to R, G, B respectively.
 **Step 3: Map individual color channels**
 ```bash
 # Map red to channel 10
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 10 \
@@ -270,7 +344,7 @@ govee-artnet-cli mappings create \
   --field r
 
 # Map green to channel 11
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 11 \
@@ -279,7 +353,7 @@ govee-artnet-cli mappings create \
   --field g
 
 # Map blue to channel 12
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 12 \
@@ -290,7 +364,7 @@ govee-artnet-cli mappings create \
 
 **Step 4: Map a color temperature channel**
 ```bash
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 13 \
@@ -333,7 +407,7 @@ Govee devices report their capabilities:
 
 List all devices with their capabilities:
 ```bash
-govee-artnet-cli devices list
+dmx-lan-cli devices list
 ```
 
 Example output:
@@ -368,7 +442,7 @@ Example output:
 | **RGBIC Lights** | ✓ | ✓ | ✓ | ✗ | Multi-segment RGB strips |
 | **RGB+CT Lights** | ✓ | ✓ | ✓ | ✓ | Full-featured lights |
 
-**Important**: Always check your specific device's capabilities with `govee-artnet-cli devices list` before creating mappings.
+**Important**: Always check your specific device's capabilities with `dmx-lan-cli devices list` before creating mappings.
 
 Discovery responses that include a `model_number` are matched against the bundled capability catalog. When a device does not report full capabilities, the bridge fills in `device_type`, `length_meters`, and segment metadata from the catalog so channel templates can be validated without manual editing. Manual devices can provide the same fields to override or augment catalog values.
 
@@ -391,7 +465,7 @@ Template 'DimRGBCT' is incompatible with this device (missing brightness support
 **Cause**: The device doesn't support all features required by the template.
 
 **Solution**:
-1. Check device capabilities: `govee-artnet-cli devices list`
+1. Check device capabilities: `dmx-lan-cli devices list`
 2. Choose a compatible template based on the capability matrix above
 3. For this example, use `rgbc` template instead (doesn't require brightness)
 
@@ -405,8 +479,8 @@ Field(s) already mapped for device AA:BB:CC:DD:EE:FF on universe 0: r, g, b
 **Cause**: You're trying to map a field (like 'r' for red) that's already mapped for this device on this universe.
 
 **Solution**:
-1. List existing mappings: `govee-artnet-cli mappings list`
-2. Delete the conflicting mapping: `govee-artnet-cli mappings delete <mapping_id>`
+1. List existing mappings: `dmx-lan-cli mappings list`
+2. Delete the conflicting mapping: `dmx-lan-cli mappings delete <mapping_id>`
 3. Or use a different universe for the new mapping
 
 ---
@@ -441,17 +515,17 @@ Device does not support brightness control.
 **Cause**: You're trying to create a dimmer mapping on a device that doesn't have the `brightness` capability (e.g., a smart plug).
 
 **Solution**:
-1. Check device capabilities: `govee-artnet-cli devices list`
+1. Check device capabilities: `dmx-lan-cli devices list`
 2. For non-dimmable devices (like plugs), use `--field power` instead for on/off control
 3. Verify you selected the correct device ID
 
 **Example - Controlling a smart plug:**
 ```bash
 # This will FAIL on a plug (no brightness capability)
-govee-artnet-cli mappings create --device-id H5080_PLUG --channel 1 --field dimmer
+dmx-lan-cli mappings create --device-id H5080_PLUG --channel 1 --field dimmer
 
 # This will WORK on a plug (power is supported by all devices)
-govee-artnet-cli mappings create --device-id H5080_PLUG --channel 1 --field power
+dmx-lan-cli mappings create --device-id H5080_PLUG --channel 1 --field power
 ```
 
 ---
@@ -481,7 +555,7 @@ Mapping overlaps an existing entry
 **Cause**: The DMX channel range you're trying to map overlaps with an existing mapping.
 
 **Solution**:
-1. Check existing mappings: `govee-artnet-cli mappings list`
+1. Check existing mappings: `dmx-lan-cli mappings list`
 2. Use a different channel range, or
 3. Delete the conflicting mapping, or
 4. Use `--allow-overlap` flag if intentional
@@ -502,10 +576,10 @@ govee-artnet status
 
 ```bash
 # List all discovered devices
-govee-artnet-cli devices list
+dmx-lan-cli devices list
 
 # Add a manual device
-govee-artnet-cli devices add \
+dmx-lan-cli devices add \
   --id "AA:BB:CC:DD:EE:FF" \
   --ip "192.168.1.100" \
   --model-number "H6160" \
@@ -514,21 +588,21 @@ govee-artnet-cli devices add \
   --description "Living Room Strip"
 
 # Update a device
-govee-artnet-cli devices update "AA:BB:CC:DD:EE:FF" \
+dmx-lan-cli devices update "AA:BB:CC:DD:EE:FF" \
   --ip "192.168.1.101" \
   --description "Updated description"
 
 # Enable/disable a device
-govee-artnet-cli devices enable "AA:BB:CC:DD:EE:FF"
-govee-artnet-cli devices disable "AA:BB:CC:DD:EE:FF"
+dmx-lan-cli devices enable "AA:BB:CC:DD:EE:FF"
+dmx-lan-cli devices disable "AA:BB:CC:DD:EE:FF"
 
 # Send a test payload to a device
-govee-artnet-cli devices test "AA:BB:CC:DD:EE:FF" \
+dmx-lan-cli devices test "AA:BB:CC:DD:EE:FF" \
   --payload '{"cmd":"turn","turn":"on"}'
 
 # Send a quick command (on/off/brightness/color/kelvin)
-govee-artnet-cli devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
-govee-artnet-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 32
+dmx-lan-cli devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
+dmx-lan-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 32
 ```
 
 The `devices command` helper accepts the following actions:
@@ -567,20 +641,20 @@ manual_devices = [
 
 ```bash
 # List all mappings
-govee-artnet-cli mappings list
+dmx-lan-cli mappings list
 
 # Get specific mapping
-govee-artnet-cli mappings get <mapping_id>
+dmx-lan-cli mappings get <mapping_id>
 
 # Create mapping with template
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id <device_id> \
   --universe <universe_number> \
   --start-channel <channel_number> \
   --template <template_name>
 
 # Create individual mapping
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id <device_id> \
   --universe <universe_number> \
   --channel <channel_number> \
@@ -589,15 +663,15 @@ govee-artnet-cli mappings create \
   --field <field_name>  # required for discrete type
 
 # Update mapping
-govee-artnet-cli mappings update <mapping_id> \
+dmx-lan-cli mappings update <mapping_id> \
   --channel <new_channel> \
   --universe <new_universe>
 
 # Delete mapping
-govee-artnet-cli mappings delete <mapping_id>
+dmx-lan-cli mappings delete <mapping_id>
 
 # View channel map (universe -> mappings)
-govee-artnet-cli mappings channel-map
+dmx-lan-cli mappings channel-map
 ```
 
 ## Sample Configurations
@@ -606,21 +680,21 @@ govee-artnet-cli mappings channel-map
 
 ```bash
 # Strip 1: Channels 1-3
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
   --universe 0 \
   --start-channel 1 \
   --template RGB
 
 # Strip 2: Channels 4-6
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:02" \
   --universe 0 \
   --start-channel 4 \
   --template RGB
 
 # Strip 3: Channels 7-9
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:03" \
   --universe 0 \
   --start-channel 7 \
@@ -639,21 +713,21 @@ Ch 10-512: Unused
 
 ```bash
 # Living room: RGB+CT strip with master dimmer (5 channels)
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:10" \
   --universe 1 \
   --start-channel 1 \
   --template DimRGBCT
 
 # Bedroom: Tunable white bulb (2 channels - dimmer + color temp)
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:20" \
   --universe 1 \
   --start-channel 10 \
   --template DimCT
 
 # Kitchen: RGB+CT strip (4 channels)
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:30" \
   --universe 1 \
   --start-channel 20 \
@@ -676,7 +750,7 @@ If you need a non-standard layout, use individual mappings:
 
 ```bash
 # Dimmer on channel 1
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 1 \
@@ -686,7 +760,7 @@ govee-artnet-cli mappings create \
 # Skip channel 2 (for future use)
 
 # RGB on channels 3-5
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 3 \
@@ -694,7 +768,7 @@ govee-artnet-cli mappings create \
   --type range
 
 # Color temperature on channel 10 (non-consecutive)
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --channel 10 \

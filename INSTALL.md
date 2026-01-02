@@ -4,7 +4,9 @@
 [![Download DEB](https://img.shields.io/badge/download-.deb-blue)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-This repository provides multiple installation methods for the ArtNet LAN Bridge. The Debian package (.deb) method is recommended for Ubuntu 24.04 and Debian 13 systems.
+This repository provides multiple installation methods for the DMX LAN Bridge. The Debian package (.deb) method is recommended for Ubuntu 24.04 and Debian 13 systems.
+
+**Note:** Package has been renamed from `artnet-lan-bridge` to `dmx-lan-bridge` to reflect multi-protocol support. Legacy command names (`artnet-lan-bridge`, `artnet-lan-cli`) remain available for backwards compatibility.
 
 ---
 
@@ -31,13 +33,13 @@ Download the latest release from GitHub:
 # Visit https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest
 # Or download latest version dynamically:
 LATEST_VERSION=$(curl -s https://api.github.com/repos/mccartyp/govee-artnet-lan-bridge/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-wget https://github.com/mccartyp/govee-artnet-lan-bridge/releases/download/${LATEST_VERSION}/artnet-lan-bridge_${LATEST_VERSION#v}_all.deb
+wget https://github.com/mccartyp/govee-artnet-lan-bridge/releases/download/${LATEST_VERSION}/dmx-lan-bridge_${LATEST_VERSION#v}_all.deb
 ```
 
 ### 2. Install the Package
 
 ```bash
-sudo dpkg -i artnet-lan-bridge_*.deb
+sudo dpkg -i dmx-lan-bridge_*.deb
 ```
 
 If there are missing dependencies, install them with:
@@ -73,16 +75,16 @@ sudo systemctl reload artnet-bridge.service
 ```
 
 For detailed configuration options, see:
-- `/usr/share/doc/artnet-lan-bridge/artnet-bridge.toml.example`
+- `/usr/share/doc/dmx-lan-bridge/artnet-bridge.toml.example`
 
 ### What Gets Installed
 
-- **Binaries**: `/usr/bin/artnet-lan-bridge`, `/usr/bin/artnet-lan-cli`
-- **Python Package**: `/usr/lib/python3/dist-packages/artnet_lan_bridge/`
+- **Binaries**: `/usr/bin/dmx-lan-bridge`, `/usr/bin/dmx-lan-cli`
+- **Python Package**: `/usr/lib/python3/dist-packages/dmx_lan_bridge/`
 - **Systemd Service**: `/lib/systemd/system/artnet-bridge.service`
 - **Configuration**: `/etc/artnet-bridge/config.toml`
 - **Data Directory**: `/var/lib/artnet-bridge/`
-- **Documentation**: `/usr/share/doc/artnet-lan-bridge/`
+- **Documentation**: `/usr/share/doc/dmx-lan-bridge/`
 
 ### Uninstall
 
@@ -113,7 +115,7 @@ cd govee-artnet-lan-bridge
 make deb
 
 # Install
-sudo dpkg -i dist/artnet-lan-bridge_*.deb
+sudo dpkg -i dist/dmx-lan-bridge_*.deb
 ```
 
 ---
@@ -181,7 +183,7 @@ make install-user
 ### Configuration and Data Locations
 
 - **Config**: `~/.config/artnet-bridge/config.toml`
-- **Data**: `~/.local/share/artnet-lan-bridge/`
+- **Data**: `~/.local/share/dmx-lan-bridge/`
 - **Service**: `~/.config/systemd/user/artnet-bridge-user.service`
 
 ### Service Management
@@ -235,10 +237,10 @@ pip3 install -e .
 
 ```bash
 # Run bridge server
-artnet-lan-bridge --config config.toml
+dmx-lan-bridge --config config.toml
 
 # Or use the CLI
-artnet-lan-cli --help
+dmx-lan-cli --help
 ```
 
 ### Uninstall
@@ -303,7 +305,7 @@ sudo journalctl -u artnet-bridge.service | grep discovered
 
 ### Configuration Examples
 
-See `/usr/share/doc/artnet-lan-bridge/artnet-bridge.toml.example` for comprehensive configuration documentation.
+See `/usr/share/doc/dmx-lan-bridge/artnet-bridge.toml.example` for comprehensive configuration documentation.
 
 ---
 
@@ -312,7 +314,7 @@ See `/usr/share/doc/artnet-lan-bridge/artnet-bridge.toml.example` for comprehens
 After installation:
 
 1. **Verify service is running**: `sudo systemctl status artnet-bridge.service`
-2. **Check devices are discovered**: `artnet-lan-cli` or check API
+2. **Check devices are discovered**: `dmx-lan-cli` or check API
 3. **Configure ArtNet mapping**: See main [README.md](README.md) for usage
 4. **Set up authentication**: Edit `/etc/artnet-bridge/config.toml` to add `api_key`
 
