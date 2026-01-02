@@ -1,0 +1,90 @@
+# ==============================================================================
+# DMX LAN Bridge - Configuration File
+# ==============================================================================
+# This is the minimal configuration template. For comprehensive documentation
+# of all options, see: /usr/share/doc/govee-artnet-bridge/govee-bridge.toml.example
+#
+# Location:
+#   System service: /etc/govee-bridge/config.toml
+#   User service: ~/.config/govee-bridge/config.toml
+#
+# Reload after changes:
+#   sudo systemctl reload govee-bridge.service
+#   OR: POST /reload via API
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Network Settings
+# ------------------------------------------------------------------------------
+
+# ArtNet DMX input port (standard ArtNet port)
+artnet_port = 6454
+
+# HTTP API server port
+api_port = 8000
+
+# ------------------------------------------------------------------------------
+# Security (Recommended for network-exposed instances)
+# ------------------------------------------------------------------------------
+
+# Uncomment to require API authentication:
+# api_key = "your-secret-api-key-here"
+
+# Disable API docs in production:
+# api_docs = false
+
+# ------------------------------------------------------------------------------
+# Storage
+# ------------------------------------------------------------------------------
+
+# SQLite database path (stores devices, mappings, state)
+db_path = "/var/lib/govee-bridge/bridge.sqlite3"
+
+# Capability catalog path (device capabilities definition)
+capability_catalog_path = "/usr/share/govee_artnet_lan_bridge/capability_catalog.json"
+
+# ------------------------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------------------------
+
+# Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level = "INFO"
+
+# Log format: "plain" (human-readable) or "json" (structured)
+log_format = "plain"
+
+# ------------------------------------------------------------------------------
+# Device Polling (Health Monitoring)
+# ------------------------------------------------------------------------------
+
+# Enable periodic device health checks
+device_poll_enabled = true
+
+# Polling interval (seconds between full poll cycles)
+device_poll_interval = 60.0
+
+# Poll timeout (seconds to wait for device responses)
+device_poll_timeout = 1.5
+
+# Poll rate limiting (polls/second across all devices)
+device_poll_rate_per_second = 2.0
+device_poll_rate_burst = 5
+
+# Mark device offline after this many failed polls
+device_poll_offline_threshold = 2
+
+# Maximum devices to poll per cycle
+device_poll_batch_size = 50
+
+# ------------------------------------------------------------------------------
+# Discovery
+# ------------------------------------------------------------------------------
+
+# Device discovery interval (seconds)
+# discovery_interval = 30.0
+
+# ------------------------------------------------------------------------------
+# Advanced Options
+# ------------------------------------------------------------------------------
+# See govee-bridge.toml.example for full list of advanced configuration options
+# including rate limiting, health monitoring, manual device configuration, etc.

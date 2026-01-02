@@ -1,0 +1,24 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Stop the service before removal or upgrade
+        if systemctl is-active --quiet dmx-bridge.service; then
+            echo "Stopping dmx-bridge service..."
+            systemctl stop dmx-bridge.service || true
+        fi
+        ;;
+
+    failed-upgrade)
+        # Do nothing
+        ;;
+
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+exit 0
