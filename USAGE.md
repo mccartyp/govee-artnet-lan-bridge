@@ -20,7 +20,7 @@ This guide provides detailed information on using the DMX LAN Bridge CLI to mana
 ## Starting the Bridge Server
 
 The bridge server runs as a daemon and provides:
-- **Multi-protocol DMX input** (ArtNet on port 6454, sACN coming soon)
+- **Multi-protocol DMX input** (ArtNet on port 6454, sACN/E1.31 on port 5568)
 - **Priority-based source merging** (multiple consoles, graceful failover)
 - REST API on port 8000 (configurable)
 - Multi-protocol device support (Govee, LIFX, WiZ)
@@ -57,7 +57,7 @@ Priority Levels (0-200, higher wins):
   200: Emergency override (sACN)
   150: Primary console (sACN)
   100: sACN default         ← Wins over ArtNet
-   50: ArtNet (FIXED)       ← All ArtNet traffic
+   50: ArtNet (default)     ← Configurable (artnet_priority)
    25: Backup console (sACN)
     0: Lowest (sACN)
 ```
@@ -100,8 +100,8 @@ Result: No conflict, both active simultaneously
 
 | Protocol | Status | Port | Priority | Notes |
 |----------|--------|------|----------|-------|
-| **ArtNet** | ✅ Supported | 6454 | Fixed: 50 | Universal support, simple setup |
-| **sACN/E1.31** | 🔜 Coming Soon | 5568 | 0-200 (native) | Professional standard, priority control |
+| **ArtNet** | ✅ Supported | 6454 | Configurable (default: 50) | Universal support, simple setup |
+| **sACN/E1.31** | ✅ Supported | 5568 | 0-200 (native) | Professional standard, priority control, multicast |
 
 ## CLI Overview
 

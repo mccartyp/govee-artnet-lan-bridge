@@ -8,8 +8,8 @@
 A multi-protocol DMX to LAN device bridge with priority-based source merging. Control smart lights using professional lighting control protocols (ArtNet, sACN) and software like QLC+, Chamsys MagicQ, or any DMX-compatible controller.
 
 **Supported Input Protocols:**
-- ✅ **ArtNet** (fully supported)
-- 🔜 **sACN/E1.31** (coming soon)
+- ✅ **ArtNet** (fully supported with configurable priority)
+- ✅ **sACN/E1.31** (fully supported with native priority control)
 
 **Supported Device Protocols:**
 - ✅ **Govee** (JSON-based LAN control)
@@ -22,7 +22,7 @@ A multi-protocol DMX to LAN device bridge with priority-based source merging. Co
 The bridge consists of two components:
 
 1. **Bridge Server** (`dmx-lan-bridge`) - Runs as a daemon and provides:
-   - **Multi-protocol DMX input** (ArtNet on port 6454, sACN coming)
+   - **Multi-protocol DMX input** (ArtNet on port 6454, sACN/E1.31 on port 5568)
    - **Priority-based source merging** (multiple consoles, graceful failover)
    - REST API server (default port 8000)
    - Multi-protocol device support (Govee, LIFX, and more)
@@ -64,7 +64,7 @@ artnet-lan-bridge
 ```
 
 The server will:
-- Listen for DMX input protocols (ArtNet on port 6454)
+- Listen for DMX input protocols (ArtNet on port 6454, sACN on port 5568 if enabled)
 - Start the REST API on port 8000
 - Automatically discover devices on your network (Govee, LIFX, etc.)
 - Apply priority-based merging if multiple sources detected
@@ -128,9 +128,9 @@ Point your lighting software at the bridge server's IP address and start control
 
 **Priority-Based Source Merging:**
 - If multiple sources send to the same universe, highest priority wins
-- ArtNet: Fixed priority 50 (below sACN default)
-- sACN (future): Uses native priority from packets (0-200, default 100)
-- Graceful failover: If primary source stops, backup takes over automatically
+- ArtNet: Configurable priority (default 50, below sACN default)
+- sACN: Uses native priority from packets (0-200, default 100)
+- Graceful failover: If primary source stops, backup takes over automatically (2.5s timeout)
 
 ## Interactive Console
 
