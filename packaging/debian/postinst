@@ -9,7 +9,7 @@ case "$1" in
         fi
         if ! id dmx-bridge >/dev/null 2>&1; then
             useradd --system --gid dmx-bridge --home-dir /var/lib/dmx-bridge \
-                    --shell /usr/sbin/nologin --comment "Govee ArtNet Bridge service user" \
+                    --shell /usr/sbin/nologin --comment "DMX LAN Bridge service user" \
                     --no-create-home dmx-bridge
         fi
 
@@ -99,7 +99,7 @@ case "$1" in
         fi
 
         echo ""
-        echo "Govee ArtNet Bridge installed successfully!"
+        echo "DMX LAN Bridge installed successfully!"
         echo ""
         echo "Service status:"
         systemctl status dmx-bridge.service --no-pager -l || true
