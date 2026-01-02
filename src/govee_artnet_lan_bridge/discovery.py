@@ -109,7 +109,7 @@ class DiscoveryService:
         self.config = config
         self.store = store
         self.protocol = protocol
-        self.logger = get_logger("govee.discovery")
+        self.logger = get_logger("devices.discovery")
         self._seen: Dict[str, str] = {}
         self._probe_payload = self.config.discovery_probe_payload.encode("utf-8")
 
@@ -197,6 +197,10 @@ class DiscoveryService:
             target = (
                 self.config.discovery_multicast_address,
                 self.config.discovery_multicast_port,
+            )
+            self.logger.debug(
+                "Sent Govee scan broadcast",
+                extra={"target": target, "payload": self._probe_payload.decode("utf-8")},
             )
             self.protocol.send_to(self._probe_payload, target)
 

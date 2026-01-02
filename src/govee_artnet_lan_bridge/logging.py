@@ -198,6 +198,11 @@ def configure_logging(config: Config, log_buffer: Any = None) -> None:
                     "handlers": ["console"],
                     "propagate": False,
                 },
+                "devices.discovery": {
+                    "level": discovery_level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
                 "govee.rate_limit": {
                     "level": level,
                     "handlers": ["console"],
@@ -209,6 +214,11 @@ def configure_logging(config: Config, log_buffer: Any = None) -> None:
                     "propagate": False,
                 },
                 "govee.artnet.protocol": {
+                    "level": artnet_level,
+                    "handlers": ["console"],
+                    "propagate": False,
+                },
+                "devices.protocol": {
                     "level": artnet_level,
                     "handlers": ["console"],
                     "propagate": False,
@@ -267,6 +277,8 @@ def configure_logging(config: Config, log_buffer: Any = None) -> None:
             "govee.api.middleware",
             "govee.discovery.protocol",
             "govee.sender",
+            "devices.discovery",
+            "devices.protocol",
         ]:
             logger = logging.getLogger(logger_name)
             logger.addHandler(buffer_handler)
