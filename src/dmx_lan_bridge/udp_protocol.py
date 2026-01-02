@@ -40,15 +40,20 @@ class GoveeProtocol(asyncio.DatagramProtocol):
         self.config = config
         self.loop = loop
         self.transport: Optional[asyncio.DatagramTransport] = None
-        self.logger = get_logger("artnet.protocol")
+        self.logger = get_logger("devices.protocol")
         self._handlers: Dict[str, MessageHandler] = {}
         self._default_handler: Optional[MessageHandler] = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
+        sockname = transport.get_extra_info("sockname")
+        self.logger.debug(
+            f"Govee discovery listener started on port {sockname[1] if sockname else 'unknown'}",
+            extra={"local": sockname},
+        )
         self.logger.info(
             "Govee protocol ready",
-            extra={"local": transport.get_extra_info("sockname")},
+            extra={"local": sockname},
         )
 
     def connection_lost(self, exc: Optional[Exception]) -> None:
