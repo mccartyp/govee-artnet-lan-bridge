@@ -335,7 +335,7 @@ class ArtNetProtocol(asyncio.DatagramProtocol):
 
     def __init__(self, handler: "ArtNetService") -> None:
         self.handler = handler
-        self.logger = get_logger("artnet.protocol")
+        self.logger = get_logger("govee.artnet.protocol")
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.logger.info(
