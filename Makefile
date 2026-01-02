@@ -5,14 +5,14 @@ START ?= 1
 SETCAP ?= 0
 
 # Debian package settings
-PACKAGE_NAME = govee-artnet-bridge
-VERSION = 1.0.3
+PACKAGE_NAME = dmx-lan-bridge
+VERSION = 2.0.0
 DEB_BUILD_DIR = packaging/debian
 DEB_PKG_DIR = $(DEB_BUILD_DIR)/$(PACKAGE_NAME)
 DEB_OUTPUT_DIR = dist
 
 help:
-	@echo "Govee ArtNet LAN Bridge - Makefile targets:"
+	@echo "DMX LAN Bridge - Makefile targets:"
 	@echo ""
 	@echo "  install-system   Install system service (requires root)"
 	@echo "  install-user     Install user service"
@@ -44,7 +44,7 @@ deb: clean-deb
 	@mkdir -p $(DEB_PKG_DIR)/DEBIAN
 	@mkdir -p $(DEB_PKG_DIR)/usr/bin
 	@mkdir -p $(DEB_PKG_DIR)/lib/systemd/system
-	@mkdir -p $(DEB_PKG_DIR)/etc/govee-bridge
+	@mkdir -p $(DEB_PKG_DIR)/etc/dmx-bridge
 	@mkdir -p $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)
 
 	@# Create control file from template
@@ -58,36 +58,36 @@ deb: clean-deb
 	@cp packaging/debian/conffiles $(DEB_PKG_DIR)/DEBIAN/conffiles
 	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/preinst $(DEB_PKG_DIR)/DEBIAN/postinst $(DEB_PKG_DIR)/DEBIAN/prerm $(DEB_PKG_DIR)/DEBIAN/postrm
 
-	@# Install Python source files to /opt/govee-bridge
-	@mkdir -p $(DEB_PKG_DIR)/opt/govee-bridge
-	@cp -r src/govee_artnet_lan_bridge $(DEB_PKG_DIR)/opt/govee-bridge/
+	@# Install Python source files to /opt/dmx-lan-bridge
+	@mkdir -p $(DEB_PKG_DIR)/opt/dmx-lan-bridge
+	@cp -r src/dmx_lan_bridge $(DEB_PKG_DIR)/opt/dmx-lan-bridge/
 
 	@# Install capability catalog to standard location
-	@mkdir -p $(DEB_PKG_DIR)/usr/share/govee_artnet_lan_bridge
-	@cp res/capability_catalog.json $(DEB_PKG_DIR)/usr/share/govee_artnet_lan_bridge/
+	@mkdir -p $(DEB_PKG_DIR)/usr/share/dmx_lan_bridge
+	@cp res/capability_catalog_govee.json $(DEB_PKG_DIR)/usr/share/dmx_lan_bridge/
 
 	@# Create executable wrappers using system Python
-	@echo '#!/bin/bash' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
-	@echo 'export PYTHONPATH="/opt/govee-bridge:$$PYTHONPATH"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
-	@echo 'exec python3 -c "from govee_artnet_lan_bridge.__main__ import run; import sys; sys.exit(run())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
-	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
+	@echo '#!/bin/bash' > $(DEB_PKG_DIR)/usr/bin/dmx-lan-bridge
+	@echo 'export PYTHONPATH="/opt/dmx-lan-bridge:$$PYTHONPATH"' >> $(DEB_PKG_DIR)/usr/bin/dmx-lan-bridge
+	@echo 'exec python3 -c "from dmx_lan_bridge.__main__ import run; import sys; sys.exit(run())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/dmx-lan-bridge
+	@chmod +x $(DEB_PKG_DIR)/usr/bin/dmx-lan-bridge
 
-	@echo '#!/bin/bash' > $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
-	@echo 'export PYTHONPATH="/opt/govee-bridge:$$PYTHONPATH"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
-	@echo 'exec python3 -c "from govee_artnet_lan_bridge.cli import main; import sys; sys.exit(main())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
-	@chmod +x $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@echo '#!/bin/bash' > $(DEB_PKG_DIR)/usr/bin/dmx-lan-cli
+	@echo 'export PYTHONPATH="/opt/dmx-lan-bridge:$$PYTHONPATH"' >> $(DEB_PKG_DIR)/usr/bin/dmx-lan-cli
+	@echo 'exec python3 -c "from dmx_lan_bridge.cli import main; import sys; sys.exit(main())" "$$@"' >> $(DEB_PKG_DIR)/usr/bin/dmx-lan-cli
+	@chmod +x $(DEB_PKG_DIR)/usr/bin/dmx-lan-cli
 
 	@# Install systemd service
-	@cp packaging/systemd/govee-bridge.service $(DEB_PKG_DIR)/lib/systemd/system/
+	@cp packaging/systemd/dmx-bridge.service $(DEB_PKG_DIR)/lib/systemd/system/
 
 	@# Install config template as conffile
-	@cp packaging/config/govee-bridge.toml $(DEB_PKG_DIR)/etc/govee-bridge/config.toml
+	@cp packaging/config/dmx-bridge.toml $(DEB_PKG_DIR)/etc/dmx-bridge/config.toml
 
 	@# Install documentation
 	@cp README.md $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
 	@cp LICENSE $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
 	@cp INSTALL.md $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
-	@cp packaging/config/govee-bridge.toml.example $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
+	@cp packaging/config/dmx-bridge.toml.example $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/
 	@gzip -9 -n -c INSTALL.md > $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/INSTALL.md.gz
 
 	@# Create copyright file
@@ -103,8 +103,8 @@ deb: clean-deb
 	@# Set permissions
 	@find $(DEB_PKG_DIR) -type d -exec chmod 755 {} \;
 	@find $(DEB_PKG_DIR) -type f -exec chmod 644 {} \;
-	@chmod 755 $(DEB_PKG_DIR)/usr/bin/govee-artnet-bridge
-	@chmod 755 $(DEB_PKG_DIR)/usr/bin/govee-artnet-cli
+	@chmod 755 $(DEB_PKG_DIR)/usr/bin/dmx-lan-bridge
+	@chmod 755 $(DEB_PKG_DIR)/usr/bin/dmx-lan-cli
 	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/preinst
 	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/postinst
 	@chmod 755 $(DEB_PKG_DIR)/DEBIAN/prerm

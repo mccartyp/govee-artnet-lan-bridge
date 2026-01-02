@@ -1,5 +1,5 @@
 # ==============================================================================
-# Govee ArtNet LAN Bridge - Configuration File
+# DMX LAN Bridge - Configuration File
 # ==============================================================================
 # This is the minimal configuration template. For comprehensive documentation
 # of all options, see: /usr/share/doc/govee-artnet-bridge/govee-bridge.toml.example

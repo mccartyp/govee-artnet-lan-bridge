@@ -1,4 +1,4 @@
-Package: govee-artnet-bridge
+Package: dmx-lan-bridge
 Version: ${VERSION}
 Section: net
 Priority: optional
