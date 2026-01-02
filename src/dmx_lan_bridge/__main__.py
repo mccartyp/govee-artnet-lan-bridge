@@ -554,9 +554,19 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
 
         # Start protocol service first (provides shared UDP listener for devices)
         protocol_task = asyncio.create_task(_protocol_loop(stop_event, current_config, services))
-        # Wait for protocol to be ready
-        await asyncio.sleep(0.1)
-        protocol_service = services.protocol
+        # Wait for protocol to be ready - poll until protocol instance is available
+        protocol_service = None
+        for _ in range(50):  # Wait up to 5 seconds (50 * 0.1s)
+            await asyncio.sleep(0.1)
+            if services.protocol:
+                # In dry-run mode, protocol.protocol will be None but that's expected
+                if current_config.dry_run or services.protocol.protocol:
+                    protocol_service = services.protocol
+                    break
+
+        if not protocol_service:
+            logger.error("Protocol service failed to start in time")
+            raise RuntimeError("Protocol service initialization timeout")
 
         # Build task list (conditionally add input protocols)
         tasks: List[asyncio.Task[None]] = [
