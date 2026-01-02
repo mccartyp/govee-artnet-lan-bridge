@@ -165,14 +165,23 @@ class DiscoveryService:
 
     def _schedule(self, coro: asyncio.Future | Coroutine[Any, Any, Any]) -> None:
         """Schedule a coroutine on the protocol loop when available."""
+        async def _wrapper() -> None:
+            try:
+                await coro  # type: ignore[misc]
+            except Exception as exc:
+                self.logger.exception(
+                    "Scheduled coroutine failed",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+
         loop: Optional[asyncio.AbstractEventLoop] = getattr(self.protocol, "loop", None) if self.protocol else None
         try:
             if loop:
-                loop.create_task(coro)  # type: ignore[arg-type]
+                loop.create_task(_wrapper())
             else:
-                asyncio.create_task(coro)  # type: ignore[arg-type]
+                asyncio.create_task(_wrapper())
         except RuntimeError:
-            asyncio.create_task(coro)  # type: ignore[arg-type]
+            asyncio.create_task(_wrapper())
 
     def _handle_scan_response(self, payload: Mapping[str, Any], addr: Tuple[str, int]) -> None:
         """Handle scan responses from the shared protocol."""
@@ -198,6 +207,10 @@ class DiscoveryService:
             extra={"device_id": parsed.id, "ip": parsed.ip, "model_number": parsed.model_number},
         )
         record_discovery_response("multicast")
+        self.logger.debug(
+            "Scheduling device record to database",
+            extra={"device_id": parsed.id, "ip": parsed.ip}
+        )
         self._schedule(self.store.record_discovery(parsed))
 
     def reset_cycle(self) -> None:
@@ -376,6 +389,10 @@ class DiscoveryService:
                 extra={"device_id": device_id, "ip": ip, "port": port},
             )
             record_discovery_response("lifx_broadcast")
+            self.logger.debug(
+                "Scheduling LIFX device record to database",
+                extra={"device_id": device_id, "ip": ip}
+            )
             self._schedule(self.store.record_discovery(discovery_result))
 
         except Exception as e:
