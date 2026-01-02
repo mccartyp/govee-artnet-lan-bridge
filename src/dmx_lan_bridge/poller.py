@@ -19,7 +19,6 @@ from .metrics import (
     set_device_polling_enabled,
 )
 from .protocol import get_protocol_handler
-from .protocol.govee import GoveeProtocolHandler
 from .udp_protocol import GoveeProtocol
 
 
@@ -85,15 +84,18 @@ class DevicePollerService:
                 self.logger.info("Device polling disabled; skipping poller startup.")
             return
 
-        # Register Govee devStatus handler with the shared protocol
-        # Govee devices send devStatus responses back to port 4002 (the multicast discovery port)
-        # even though polls are sent from ephemeral ports
+        # Register Govee-specific UDP handlers with the Govee protocol listener (port 4002)
+        # The protocol instance here is GoveeProtocol which listens on Govee's multicast port
         if self.protocol:
-            self.logger.info("Registering Govee devStatus handler with shared protocol")
-            devstatus_handler = GoveeProtocolHandler.create_devstatus_handler(self.logger)
-            self.protocol.register_handler("devStatus", devstatus_handler)
-        else:
-            self.logger.warning("No shared protocol available; devStatus responses may be lost")
+            self.logger.info("Registering Govee protocol UDP handlers")
+            try:
+                govee_handler = get_protocol_handler("govee")
+                govee_handler.register_udp_handlers(self.protocol, self.logger)
+            except Exception as exc:
+                self.logger.warning(
+                    "Could not register Govee UDP handlers",
+                    exc_info=exc
+                )
 
         self._stop_event.clear()
         set_device_polling_enabled(True)

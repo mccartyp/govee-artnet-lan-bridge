@@ -331,19 +331,16 @@ class GoveeProtocolHandler(ProtocolHandler):
         """Get catalog-based capability provider for Govee devices."""
         return CatalogCapabilityProvider("govee")
 
-    @staticmethod
-    def create_devstatus_handler(logger: Any) -> Any:
-        """Create a handler for devStatus responses received on the shared protocol port.
+    def register_udp_handlers(self, protocol: Any, logger: Any) -> None:
+        """Register Govee-specific UDP message handlers with the Govee protocol listener.
 
+        Registers a handler for 'devStatus' responses on Govee's UDP port 4002.
         Govee devices send devStatus responses back to port 4002 (the multicast discovery
-        port) even when polls are sent from ephemeral ports. This handler catches those
-        responses that arrive on the shared protocol dispatcher.
+        port) even when polls are sent from ephemeral ports.
 
         Args:
-            logger: Logger instance to use for logging
-
-        Returns:
-            Handler function compatible with MessageHandler signature
+            protocol: The GoveeProtocol instance (listens on port 4002)
+            logger: Logger instance for the handler to use
         """
         def _handle_devstatus_response(payload: Mapping[str, Any], addr: tuple[str, int]) -> None:
             """Handle devStatus responses received on shared protocol port 4002.
@@ -364,4 +361,5 @@ class GoveeProtocolHandler(ProtocolHandler):
                 },
             )
 
-        return _handle_devstatus_response
+        protocol.register_handler("devStatus", _handle_devstatus_response)
+        logger.debug("Registered Govee devStatus handler with shared protocol")
