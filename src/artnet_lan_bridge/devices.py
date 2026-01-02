@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import sqlite3
 from dataclasses import dataclass
@@ -33,6 +34,11 @@ def _now_iso() -> str:
 def _serialize_capabilities(value: Any) -> Optional[str]:
     if value is None:
         return None
+    # Handle binary payloads (e.g., LIFX binary packets)
+    if isinstance(value, bytes):
+        # Encode as base64 with a special prefix for detection
+        encoded = base64.b64encode(value).decode('ascii')
+        return f"base64:{encoded}"
     if isinstance(value, (dict, list)):
         try:
             return json.dumps(value, ensure_ascii=False)
@@ -2039,10 +2045,24 @@ class DeviceStore:
         ).fetchone()
         protocol = device_row["protocol"] if device_row else "govee"
 
+        # Prepare payload for protocol-specific wrapping
+        payload_to_wrap = dict(update.payload)
+
+        # For LIFX, add target MAC address from device ID
+        if protocol == "lifx":
+            # Device ID for LIFX is the MAC address string (e.g., "AA:BB:CC:DD:EE:FF")
+            # Convert to bytes for the protocol handler
+            try:
+                mac_bytes = bytes.fromhex(update.device_id.replace(":", ""))
+                payload_to_wrap["_target_mac"] = mac_bytes
+            except (ValueError, AttributeError):
+                # If MAC parsing fails, let the protocol handler handle it
+                pass
+
         # Use protocol-specific handler to wrap payload
         from .protocol import get_protocol_handler
         handler = get_protocol_handler(protocol)
-        wrapped_payload = handler.wrap_command(update.payload)
+        wrapped_payload = handler.wrap_command(payload_to_wrap)
 
         # Handle multiple commands (e.g., color + brightness for Govee)
         if isinstance(wrapped_payload, dict) and "_multiple" in wrapped_payload:
