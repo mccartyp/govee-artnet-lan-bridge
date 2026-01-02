@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Mapping, MutableMapping, Optional, Sequence, Set, Tuple
 
 from .config import _default_capability_catalog_path
+from .logging import get_logger
 
 
 def _coerce_bool(value: Any, default: bool = True) -> bool:
@@ -153,6 +155,137 @@ class CapabilityCatalog:
         if normalized is None:
             return None
         return self._entries.get(normalized)
+
+
+class CapabilityProvider(ABC):
+    """Provides device capabilities from various sources (catalogs, device detection, etc.)."""
+
+    @abstractmethod
+    def get_capabilities(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+        """Get capabilities for a model, or None if unavailable.
+
+        Args:
+            model: Device model number
+
+        Returns:
+            Capabilities dict or None if not available
+        """
+        pass
+
+    @abstractmethod
+    def get_metadata(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+        """Get metadata for a model, or None if unavailable.
+
+        Args:
+            model: Device model number
+
+        Returns:
+            Metadata dict or None if not available
+        """
+        pass
+
+
+class CatalogCapabilityProvider(CapabilityProvider):
+    """Provides capabilities from a JSON catalog file."""
+
+    # Reasonable defaults for protocols when catalog is missing
+    _PROTOCOL_DEFAULTS = {
+        "govee": {
+            "color_modes": ["color", "ct"],
+            "brightness": True,
+            "color": True,
+            "color_temperature": True,
+            "color_temp_range": [2000, 9000],
+            "white": True,
+        }
+    }
+
+    def __init__(self, protocol: str, catalog_dir: Optional[Path] = None):
+        """Initialize catalog provider for a protocol.
+
+        Args:
+            protocol: Protocol name (e.g., 'govee', 'wiz')
+            catalog_dir: Directory containing catalog files, or None for default
+        """
+        self.protocol = protocol
+        self.logger = get_logger()
+        self._catalog = self._load_catalog(protocol, catalog_dir)
+        self._use_defaults = self._catalog is None
+
+    def _load_catalog(self, protocol: str, catalog_dir: Optional[Path]) -> Optional[CapabilityCatalog]:
+        """Load the catalog file for this protocol."""
+        if catalog_dir is None:
+            # Default to res/ directory in package
+            catalog_dir = Path(__file__).resolve().parents[2] / "res"
+
+        catalog_path = catalog_dir / f"capability_catalog_{protocol}.json"
+
+        if not catalog_path.exists():
+            self.logger.warning(
+                f"Capability catalog not found for protocol '{protocol}' at {catalog_path}. "
+                "Using reasonable defaults for discovered devices."
+            )
+            return None
+
+        try:
+            return CapabilityCatalog.from_path(catalog_path)
+        except Exception as e:
+            self.logger.error(
+                f"Failed to load capability catalog for protocol '{protocol}': {e}. "
+                "Using reasonable defaults for discovered devices."
+            )
+            return None
+
+    def get_capabilities(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+        """Get capabilities from catalog for a model, or reasonable defaults."""
+        if self._catalog is None:
+            # Return protocol defaults if available
+            return dict(self._PROTOCOL_DEFAULTS.get(self.protocol, {})) or None
+
+        entry = self._catalog.lookup(model)
+        if entry:
+            return dict(entry.capabilities)
+
+        # Model not found in catalog - return protocol defaults
+        defaults = self._PROTOCOL_DEFAULTS.get(self.protocol)
+        if defaults:
+            return dict(defaults)
+
+        return None
+
+    def get_metadata(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+        """Get metadata from catalog for a model."""
+        if self._catalog is None:
+            return None
+        entry = self._catalog.lookup(model)
+        return dict(entry.metadata) if entry else None
+
+
+class DeviceReportedCapabilityProvider(CapabilityProvider):
+    """Capabilities come directly from device - no catalog needed.
+
+    Optionally provides default capabilities for devices that report full state.
+    """
+
+    def __init__(self, default_capabilities: Optional[Mapping[str, Any]] = None):
+        """Initialize with optional default capabilities.
+
+        Args:
+            default_capabilities: Default capability assumptions (e.g., for LIFX)
+        """
+        self.defaults = dict(default_capabilities) if default_capabilities else None
+
+    def get_capabilities(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+        """Return default capabilities if available, otherwise None.
+
+        When None is returned, the system expects capabilities to come from
+        device poll responses or discovery data.
+        """
+        return dict(self.defaults) if self.defaults else None
+
+    def get_metadata(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+        """No metadata available from device-reported provider."""
+        return None
 
 
 @lru_cache(maxsize=1)
@@ -436,33 +569,66 @@ def normalize_capabilities(
 class CapabilityCache:
     """Cache normalized capabilities keyed by model/firmware."""
 
-    def __init__(self, catalog: Optional[CapabilityCatalog] = None) -> None:
-        self._cache: MutableMapping[Tuple[str, str], Tuple[str, NormalizedCapabilities]] = {}
-        self._catalog = catalog
+    def __init__(self, provider: Optional[CapabilityProvider] = None) -> None:
+        """Initialize capability cache with a provider.
 
-    def has_catalog_entry(self, model: Optional[str]) -> bool:
-        if not self._catalog or model is None:
+        Args:
+            provider: CapabilityProvider instance (catalog-based or device-reported)
+        """
+        self._cache: MutableMapping[Tuple[str, str], Tuple[str, NormalizedCapabilities]] = {}
+        self._provider = provider
+
+    def has_provider_entry(self, model: Optional[str]) -> bool:
+        """Check if provider has capabilities for this model.
+
+        Args:
+            model: Device model number
+
+        Returns:
+            True if provider has capability data for this model
+        """
+        if not self._provider or model is None:
             return False
-        return self._catalog.lookup(model) is not None
+        return self._provider.get_capabilities(model) is not None
 
     def normalize(
         self, model: Optional[str], capabilities: Any, metadata: Optional[Mapping[str, Any]] = None
     ) -> NormalizedCapabilities:
+        """Normalize device capabilities using provider as fallback.
+
+        Args:
+            model: Device model number
+            capabilities: Raw capability data from device (may be incomplete)
+            metadata: Optional metadata to merge
+
+        Returns:
+            Normalized capabilities
+        """
         missing_caps = _capabilities_missing(capabilities)
-        catalog_entry = self._catalog.lookup(model) if self._catalog and model else None
+
+        # Try to get capabilities and metadata from provider
+        provider_caps = self._provider.get_capabilities(model) if self._provider and model else None
+        provider_metadata = self._provider.get_metadata(model) if self._provider and model else None
+
         normalized_model = model
         source_capabilities: Any = None
         metadata_source: Dict[str, Any] = {}
+
+        # Merge provided metadata
         if metadata:
             metadata_source.update(metadata)
-        if missing_caps and catalog_entry is not None:
-            source_capabilities = catalog_entry.capabilities
-            normalized_model = catalog_entry.model_number
-            metadata_source.update(catalog_entry.metadata)
+
+        # Use provider capabilities if device capabilities are missing
+        if missing_caps and provider_caps is not None:
+            source_capabilities = provider_caps
+            if provider_metadata:
+                metadata_source.update(provider_metadata)
         elif not missing_caps:
             source_capabilities = capabilities
-            if catalog_entry is not None:
-                metadata_source.update(catalog_entry.metadata)
+            # Even if device reports capabilities, merge provider metadata
+            if provider_metadata:
+                metadata_source.update(provider_metadata)
+
         normalized = normalize_capabilities(
             normalized_model, source_capabilities, metadata=metadata_source or None
         )
@@ -597,12 +763,13 @@ def _normalize_metadata(data: Mapping[str, Any]) -> Dict[str, Any]:
         metadata["led_density_per_meter"] = _coerce_optional_float(
             data.get("led_density_per_meter", data.get("ledDensityPerMeter"))
         )
-    if "has_segments" in data or "hasSegments" in data:
-        metadata["has_segments"] = _coerce_optional_bool(
-            data.get("has_segments", data.get("hasSegments"))
+    # Handle both "zones" and legacy "segments" terminology
+    if "has_zones" in data or "hasZones" in data or "has_segments" in data or "hasSegments" in data:
+        metadata["has_zones"] = _coerce_optional_bool(
+            data.get("has_zones", data.get("hasZones", data.get("has_segments", data.get("hasSegments"))))
         )
-    if "segment_count" in data or "segmentCount" in data:
-        metadata["segment_count"] = _coerce_optional_int(
-            data.get("segment_count", data.get("segmentCount"))
+    if "zone_count" in data or "zoneCount" in data or "segment_count" in data or "segmentCount" in data:
+        metadata["zone_count"] = _coerce_optional_int(
+            data.get("zone_count", data.get("zoneCount", data.get("segment_count", data.get("segmentCount"))))
         )
     return {key: value for key, value in metadata.items() if value is not None}

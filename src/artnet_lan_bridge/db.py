@@ -319,8 +319,8 @@ def _migration_device_catalog_metadata(conn: sqlite3.Connection) -> None:
         ALTER TABLE devices ADD COLUMN length_meters REAL;
         ALTER TABLE devices ADD COLUMN led_count INTEGER;
         ALTER TABLE devices ADD COLUMN led_density_per_meter REAL;
-        ALTER TABLE devices ADD COLUMN has_segments INTEGER;
-        ALTER TABLE devices ADD COLUMN segment_count INTEGER;
+        ALTER TABLE devices ADD COLUMN has_zones INTEGER;
+        ALTER TABLE devices ADD COLUMN zone_count INTEGER;
 
         UPDATE devices
         SET model_number = COALESCE(model_number, model);

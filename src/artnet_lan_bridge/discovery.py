@@ -54,8 +54,8 @@ def _parse_payload(
     length_meters = data.get("length_meters") or data.get("lengthMeters")
     led_count = data.get("led_count") or data.get("ledCount")
     led_density_per_meter = data.get("led_density_per_meter") or data.get("ledDensityPerMeter")
-    has_segments = data.get("has_segments") or data.get("hasSegments")
-    segment_count = data.get("segment_count") or data.get("segmentCount")
+    has_zones = data.get("has_zones") or data.get("hasZones")
+    zone_count = data.get("zone_count") or data.get("zoneCount")
     description = data.get("description") or data.get("name")
     capabilities = data.get("capabilities") or data.get("capability") or data.get("features")
     color_temp_hints: Dict[str, Any] = {}
@@ -87,8 +87,8 @@ def _parse_payload(
         length_meters=length_meters,
         led_count=led_count,
         led_density_per_meter=led_density_per_meter,
-        has_segments=has_segments,
-        segment_count=segment_count,
+        has_zones=has_zones,
+        zone_count=zone_count,
         description=str(description) if description is not None else None,
         capabilities=capabilities,
         manual=False,
@@ -360,8 +360,8 @@ class DiscoveryService:
                 length_meters=None,
                 led_count=None,
                 led_density_per_meter=None,
-                has_segments=None,
-                segment_count=None,
+                has_zones=None,
+                zone_count=None,
                 description=None,
                 capabilities={"port": port, "service": parsed.get("service", 1)},
                 manual=False,

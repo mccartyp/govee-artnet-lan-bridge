@@ -12,9 +12,7 @@ from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional,
 
 from .capabilities import (
     CapabilityCache,
-    CapabilityCatalog,
     NormalizedCapabilities,
-    load_embedded_catalog,
     validate_mapping_mode,
 )
 from .config import ManualDevice
@@ -294,8 +292,8 @@ _METADATA_FIELDS = (
     "length_meters",
     "led_count",
     "led_density_per_meter",
-    "has_segments",
-    "segment_count",
+    "has_zones",
+    "zone_count",
 )
 
 
@@ -311,9 +309,9 @@ def _extract_metadata(source: Any) -> Dict[str, Any]:
             return
         if key in {"length_meters", "led_density_per_meter"}:
             coerced = _coerce_optional_float(value)
-        elif key in {"led_count", "segment_count"}:
+        elif key in {"led_count", "zone_count"}:
             coerced = _coerce_optional_int(value)
-        elif key == "has_segments":
+        elif key == "has_zones":
             coerced = _coerce_optional_bool(value)
         else:
             coerced = str(value)
@@ -322,15 +320,15 @@ def _extract_metadata(source: Any) -> Dict[str, Any]:
 
     if isinstance(source, Mapping):
         for key in _METADATA_FIELDS:
-            if key in source or key in {"lengthMeters", "ledCount", "ledDensityPerMeter", "hasSegments", "segmentCount"}:
+            if key in source or key in {"lengthMeters", "ledCount", "ledDensityPerMeter", "hasZones", "zoneCount"}:
                 lookup = {
                     "length_meters": source.get("length_meters", source.get("lengthMeters")),
                     "led_count": source.get("led_count", source.get("ledCount")),
                     "led_density_per_meter": source.get(
                         "led_density_per_meter", source.get("ledDensityPerMeter")
                     ),
-                    "has_segments": source.get("has_segments", source.get("hasSegments")),
-                    "segment_count": source.get("segment_count", source.get("segmentCount")),
+                    "has_zones": source.get("has_zones", source.get("hasZones")),
+                    "zone_count": source.get("zone_count", source.get("zoneCount")),
                     "device_type": source.get("device_type"),
                 }
                 _assign(key, lookup.get(key))
@@ -362,11 +360,11 @@ def _coerce_metadata_for_db(metadata: Mapping[str, Any]) -> Dict[str, Any]:
             coerced = _coerce_optional_float(value)
             if coerced is not None:
                 db_values[key] = coerced
-        elif key in {"led_count", "segment_count"}:
+        elif key in {"led_count", "zone_count"}:
             coerced = _coerce_optional_int(value)
             if coerced is not None:
                 db_values[key] = coerced
-        elif key == "has_segments":
+        elif key == "has_zones":
             coerced_bool = _coerce_optional_bool(value)
             if coerced_bool is not None:
                 db_values[key] = 1 if coerced_bool else 0
@@ -518,8 +516,8 @@ class DiscoveryResult:
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[int] = None
     description: Optional[str] = None
     capabilities: Any = None
     manual: bool = False
@@ -588,8 +586,8 @@ class DeviceInfo:
     length_meters: Optional[float]
     led_count: Optional[int]
     led_density_per_meter: Optional[float]
-    has_segments: Optional[bool]
-    segment_count: Optional[int]
+    has_zones: Optional[bool]
+    zone_count: Optional[int]
     normalized_capabilities: Optional[NormalizedCapabilities]
     offline: bool
     failure_count: int
@@ -614,8 +612,8 @@ class DeviceRow:
     length_meters: Optional[float]
     led_count: Optional[int]
     led_density_per_meter: Optional[float]
-    has_segments: Optional[bool]
-    segment_count: Optional[int]
+    has_zones: Optional[bool]
+    zone_count: Optional[int]
     description: Optional[str]
     capabilities: Any
     manual: bool
@@ -649,8 +647,8 @@ class PollTarget:
     length_meters: Optional[float]
     led_count: Optional[int]
     led_density_per_meter: Optional[float]
-    has_segments: Optional[bool]
-    segment_count: Optional[int]
+    has_zones: Optional[bool]
+    zone_count: Optional[int]
     capabilities: Any
     offline: bool
     poll_failure_count: int
@@ -678,14 +676,29 @@ class DeviceStore:
     def __init__(
         self,
         db_path: Path,
-        capability_catalog: Optional[CapabilityCatalog] = None,
         event_bus: Optional[Any] = None
     ) -> None:
         self.db = DatabaseManager(db_path)
         self.logger = get_logger("artnet.devices")
-        self._capability_catalog = capability_catalog or load_embedded_catalog()
-        self._capability_cache = CapabilityCache(self._capability_catalog)
         self._event_bus = event_bus
+        # Cache capability caches per protocol
+        self._capability_caches: Dict[str, CapabilityCache] = {}
+
+    def _get_capability_cache(self, protocol: str) -> CapabilityCache:
+        """Get or create capability cache for a protocol.
+
+        Args:
+            protocol: Protocol name (e.g., 'govee', 'lifx')
+
+        Returns:
+            CapabilityCache instance for this protocol
+        """
+        if protocol not in self._capability_caches:
+            from .protocol import get_protocol_handler
+            handler = get_protocol_handler(protocol)
+            provider = handler.get_capability_provider()
+            self._capability_caches[protocol] = CapabilityCache(provider)
+        return self._capability_caches[protocol]
 
     async def start(self) -> None:
         await self.db.start_integrity_checks()
@@ -709,8 +722,8 @@ class DeviceStore:
                 d.length_meters,
                 d.led_count,
                 d.led_density_per_meter,
-                d.has_segments,
-                d.segment_count,
+                d.has_zones,
+                d.zone_count,
                 d.description,
                 d.capabilities,
                 d.manual,
@@ -753,8 +766,8 @@ class DeviceStore:
                 d.length_meters,
                 d.led_count,
                 d.led_density_per_meter,
-                d.has_segments,
-                d.segment_count,
+                d.has_zones,
+                d.zone_count,
                 d.description,
                 d.capabilities,
                 d.manual,
@@ -802,8 +815,8 @@ class DeviceStore:
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 description,
                 capabilities,
                 manual,
@@ -842,8 +855,8 @@ class DeviceStore:
         length_meters: Optional[float] = None,
         led_count: Optional[int] = None,
         led_density_per_meter: Optional[float] = None,
-        has_segments: Optional[bool] = None,
-        segment_count: Optional[int] = None,
+        has_zones: Optional[bool] = None,
+        zone_count: Optional[int] = None,
         description: Optional[str] = None,
         capabilities: Optional[Any] = None,
         enabled: Optional[bool] = None,
@@ -859,8 +872,8 @@ class DeviceStore:
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 description,
                 capabilities,
                 enabled,
@@ -878,8 +891,8 @@ class DeviceStore:
         length_meters: Optional[float],
         led_count: Optional[int],
         led_density_per_meter: Optional[float],
-        has_segments: Optional[bool],
-        segment_count: Optional[int],
+        has_zones: Optional[bool],
+        zone_count: Optional[int],
         description: Optional[str],
         capabilities: Optional[Any],
         enabled: Optional[bool],
@@ -890,13 +903,17 @@ class DeviceStore:
         ).fetchone()
         if not row:
             return None
+        # Get protocol from row, defaulting to 'govee' for backwards compatibility
+        protocol = row["protocol"] if "protocol" in row.keys() else "govee"
+        cache = self._get_capability_cache(protocol)
+
         metadata_input = {
             "device_type": device_type,
             "length_meters": length_meters,
             "led_count": led_count,
             "led_density_per_meter": led_density_per_meter,
-            "has_segments": has_segments,
-            "segment_count": segment_count,
+            "has_zones": has_zones,
+            "zone_count": zone_count,
         }
         model_hint = model_number or row["model_number"] or row["model"]
         normalized = None
@@ -904,8 +921,8 @@ class DeviceStore:
         if capabilities_source is None:
             capabilities_source = _deserialize_capabilities(row["capabilities"])
         has_metadata_input = any(value is not None for value in metadata_input.values())
-        if capabilities_source is not None or has_metadata_input or self._capability_cache.has_catalog_entry(model_hint):
-            normalized = self._capability_cache.normalize(
+        if capabilities_source is not None or has_metadata_input or cache.has_provider_entry(model_hint):
+            normalized = cache.normalize(
                 model_hint, capabilities_source, metadata=metadata_input if has_metadata_input else None
             )
         serialized_caps = (
@@ -928,8 +945,8 @@ class DeviceStore:
                 length_meters = COALESCE(?, length_meters),
                 led_count = COALESCE(?, led_count),
                 led_density_per_meter = COALESCE(?, led_density_per_meter),
-                has_segments = COALESCE(?, has_segments),
-                segment_count = COALESCE(?, segment_count),
+                has_zones = COALESCE(?, has_zones),
+                zone_count = COALESCE(?, zone_count),
                 description = COALESCE(?, description),
                 capabilities = ?,
                 enabled = COALESCE(?, enabled)
@@ -944,8 +961,8 @@ class DeviceStore:
                 db_metadata.get("length_meters"),
                 db_metadata.get("led_count"),
                 db_metadata.get("led_density_per_meter"),
-                db_metadata.get("has_segments"),
-                db_metadata.get("segment_count"),
+                db_metadata.get("has_zones"),
+                db_metadata.get("zone_count"),
                 description,
                 serialized_caps,
                 int(enabled) if enabled is not None else None,
@@ -965,8 +982,8 @@ class DeviceStore:
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 description,
                 capabilities,
                 manual,
@@ -1017,7 +1034,7 @@ class DeviceStore:
         if (
             device.capabilities is not None
             or metadata_input
-            or self._capability_cache.has_catalog_entry(device.model_number)
+            or cache.has_provider_entry(device.model_number)
         ):
             normalized = self._capability_cache.normalize(
                 device.model_number, device.capabilities, metadata=metadata_input
@@ -1029,7 +1046,7 @@ class DeviceStore:
             """
             INSERT INTO devices (
                 id, ip, protocol, model, model_number, device_type, length_meters, led_count,
-                led_density_per_meter, has_segments, segment_count, description, capabilities, manual,
+                led_density_per_meter, has_zones, zone_count, description, capabilities, manual,
                 configured, enabled, discovered, first_seen, last_seen,
                 stale, created_at, updated_at
             )
@@ -1045,8 +1062,8 @@ class DeviceStore:
                 led_density_per_meter=COALESCE(
                     excluded.led_density_per_meter, devices.led_density_per_meter
                 ),
-                has_segments=COALESCE(excluded.has_segments, devices.has_segments),
-                segment_count=COALESCE(excluded.segment_count, devices.segment_count),
+                has_zones=COALESCE(excluded.has_zones, devices.has_zones),
+                zone_count=COALESCE(excluded.zone_count, devices.zone_count),
                 description=COALESCE(excluded.description, devices.description),
                 capabilities=COALESCE(excluded.capabilities, devices.capabilities),
                 manual=1,
@@ -1063,8 +1080,8 @@ class DeviceStore:
                 metadata.get("length_meters"),
                 metadata.get("led_count"),
                 metadata.get("led_density_per_meter"),
-                metadata.get("has_segments"),
-                metadata.get("segment_count"),
+                metadata.get("has_zones"),
+                metadata.get("zone_count"),
                 device.description,
                 capabilities,
                 now,
@@ -1113,7 +1130,7 @@ class DeviceStore:
         if (
             result.capabilities is not None
             or metadata_input
-            or self._capability_cache.has_catalog_entry(result.model_number)
+            or cache.has_provider_entry(result.model_number)
         ):
             normalized = self._capability_cache.normalize(
                 result.model_number, result.capabilities, metadata=metadata_input
@@ -1126,7 +1143,7 @@ class DeviceStore:
             """
             INSERT INTO devices (
                 id, ip, protocol, model, model_number, device_type, length_meters, led_count,
-                led_density_per_meter, has_segments, segment_count, description, capabilities, manual, discovered,
+                led_density_per_meter, has_zones, zone_count, description, capabilities, manual, discovered,
                 configured, enabled, first_seen, last_seen, stale,
                 created_at, updated_at
             )
@@ -1142,8 +1159,8 @@ class DeviceStore:
                 led_density_per_meter=COALESCE(
                     excluded.led_density_per_meter, devices.led_density_per_meter
                 ),
-                has_segments=COALESCE(excluded.has_segments, devices.has_segments),
-                segment_count=COALESCE(excluded.segment_count, devices.segment_count),
+                has_zones=COALESCE(excluded.has_zones, devices.has_zones),
+                zone_count=COALESCE(excluded.zone_count, devices.zone_count),
                 description=COALESCE(excluded.description, devices.description),
                 capabilities=COALESCE(excluded.capabilities, devices.capabilities),
                 last_seen=excluded.last_seen,
@@ -1164,8 +1181,8 @@ class DeviceStore:
                 metadata.get("length_meters"),
                 metadata.get("led_count"),
                 metadata.get("led_density_per_meter"),
-                metadata.get("has_segments"),
-                metadata.get("segment_count"),
+                metadata.get("has_zones"),
+                metadata.get("zone_count"),
                 result.description,
                 capabilities,
                 1 if result.manual else 0,
@@ -1256,8 +1273,8 @@ class DeviceStore:
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 capabilities,
                 offline,
                 poll_failure_count
@@ -1301,8 +1318,8 @@ class DeviceStore:
                     length_meters=metadata.get("length_meters"),
                     led_count=metadata.get("led_count"),
                     led_density_per_meter=metadata.get("led_density_per_meter"),
-                    has_segments=metadata.get("has_segments"),
-                    segment_count=metadata.get("segment_count"),
+                    has_zones=metadata.get("has_zones"),
+                    zone_count=metadata.get("zone_count"),
                     capabilities=normalized.as_mapping(),
                     offline=bool(row["offline"]),
                     poll_failure_count=int(row["poll_failure_count"] or 0),
@@ -2011,8 +2028,8 @@ class DeviceStore:
                 length_meters = COALESCE(?, length_meters),
                 led_count = COALESCE(?, led_count),
                 led_density_per_meter = COALESCE(?, led_density_per_meter),
-                has_segments = COALESCE(?, has_segments),
-                segment_count = COALESCE(?, segment_count)
+                has_zones = COALESCE(?, has_zones),
+                zone_count = COALESCE(?, zone_count)
             WHERE id = ?
             """,
             (
@@ -2023,8 +2040,8 @@ class DeviceStore:
                 metadata.get("length_meters"),
                 metadata.get("led_count"),
                 metadata.get("led_density_per_meter"),
-                metadata.get("has_segments"),
-                metadata.get("segment_count"),
+                metadata.get("has_zones"),
+                metadata.get("zone_count"),
                 device_id,
             ),
         )
@@ -2201,8 +2218,8 @@ class DeviceStore:
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 capabilities,
                 offline,
                 failure_count,
@@ -2236,8 +2253,8 @@ class DeviceStore:
             length_meters=metadata.get("length_meters"),
             led_count=metadata.get("led_count"),
             led_density_per_meter=metadata.get("led_density_per_meter"),
-            has_segments=metadata.get("has_segments"),
-            segment_count=metadata.get("segment_count"),
+            has_zones=metadata.get("has_zones"),
+            zone_count=metadata.get("zone_count"),
             offline=bool(row["offline"]),
             failure_count=int(row["failure_count"] or 0),
             last_payload_hash=row["last_payload_hash"],
@@ -2679,8 +2696,8 @@ class DeviceStore:
             length_meters=metadata.get("length_meters"),
             led_count=metadata.get("led_count"),
             led_density_per_meter=metadata.get("led_density_per_meter"),
-            has_segments=metadata.get("has_segments"),
-            segment_count=metadata.get("segment_count"),
+            has_zones=metadata.get("has_zones"),
+            zone_count=metadata.get("zone_count"),
             description=row["description"],
             capabilities=normalized.as_mapping(),
             manual=bool(row["manual"]),

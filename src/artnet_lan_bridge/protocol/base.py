@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..capabilities import CapabilityProvider
 
 
 class ProtocolHandler(ABC):
@@ -103,3 +106,13 @@ class ProtocolHandler(ABC):
         raise NotImplementedError(
             f"{self.protocol_name} protocol does not support polling"
         )
+
+    @abstractmethod
+    def get_capability_provider(self) -> "CapabilityProvider":
+        """Get the capability provider for this protocol.
+
+        Returns:
+            CapabilityProvider instance that provides device capabilities.
+            May be catalog-based (for Govee, WiZ) or device-reported (for LIFX).
+        """
+        pass
