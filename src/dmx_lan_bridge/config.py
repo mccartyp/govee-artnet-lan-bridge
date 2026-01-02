@@ -25,14 +25,14 @@ MIN_SUPPORTED_CONFIG_VERSION = 1
 
 def _default_db_path() -> Path:
     base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return base / "artnet-lan-bridge" / "bridge.sqlite3"
+    return base / "dmx-lan-bridge" / "bridge.sqlite3"
 
 
 def _default_capability_catalog_dir() -> Path:
     """Get the directory containing protocol-specific capability catalogs."""
     repo_path = Path(__file__).resolve().parents[2] / "res"
     data_base = Path(sysconfig.get_path("data") or "").expanduser()
-    share_path = data_base / "share" / "artnet_lan_bridge"
+    share_path = data_base / "share" / "dmx_lan_bridge"
     # Return first existing directory, or repo path as default
     for path in (repo_path, share_path):
         if path.exists() and path.is_dir():

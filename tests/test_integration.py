@@ -1,11 +1,11 @@
 import asyncio
 from pathlib import Path
 
-from govee_artnet_lan_bridge.artnet import ArtNetPacket, ArtNetService
-from govee_artnet_lan_bridge.config import Config, ManualDevice
-from govee_artnet_lan_bridge.db import apply_migrations
-from govee_artnet_lan_bridge.devices import DeviceStore
-from govee_artnet_lan_bridge.sender import DeviceSenderService
+from dmx_lan_bridge.artnet import ArtNetPacket, ArtNetService
+from dmx_lan_bridge.config import Config, ManualDevice
+from dmx_lan_bridge.db import apply_migrations
+from dmx_lan_bridge.devices import DeviceStore
+from dmx_lan_bridge.sender import DeviceSenderService
 
 
 def test_dry_run_pipeline(tmp_path: Path) -> None:

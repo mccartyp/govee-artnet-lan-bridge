@@ -2,10 +2,10 @@ import asyncio
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from govee_artnet_lan_bridge.config import Config
-from govee_artnet_lan_bridge.db import apply_migrations
-from govee_artnet_lan_bridge.devices import DeviceStore
-from govee_artnet_lan_bridge.discovery import DiscoveryProtocol, _parse_payload
+from dmx_lan_bridge.config import Config
+from dmx_lan_bridge.db import apply_migrations
+from dmx_lan_bridge.devices import DeviceStore
+from dmx_lan_bridge.discovery import DiscoveryProtocol, _parse_payload
 
 
 def test_parse_payload_handles_common_keys() -> None:
