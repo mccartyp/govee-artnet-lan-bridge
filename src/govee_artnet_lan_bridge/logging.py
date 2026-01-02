@@ -218,7 +218,7 @@ def configure_logging(config: Config, log_buffer: Any = None) -> None:
                     "handlers": ["console"],
                     "propagate": False,
                 },
-                "devices.protocol": {
+                "artnet.protocol": {
                     "level": artnet_level,
                     "handlers": ["console"],
                     "propagate": False,
@@ -278,7 +278,7 @@ def configure_logging(config: Config, log_buffer: Any = None) -> None:
             "govee.discovery.protocol",
             "govee.sender",
             "devices.discovery",
-            "devices.protocol",
+            "artnet.protocol",
         ]:
             logger = logging.getLogger(logger_name)
             logger.addHandler(buffer_handler)
