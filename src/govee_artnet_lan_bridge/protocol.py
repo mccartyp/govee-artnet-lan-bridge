@@ -46,14 +46,9 @@ class GoveeProtocol(asyncio.DatagramProtocol):
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
-        sockname = transport.get_extra_info("sockname")
-        self.logger.debug(
-            f"Govee discovery listener started on port {sockname[1] if sockname else 'unknown'}",
-            extra={"local": sockname},
-        )
         self.logger.info(
             "Govee protocol ready",
-            extra={"local": sockname},
+            extra={"local": transport.get_extra_info("sockname")},
         )
 
     def connection_lost(self, exc: Optional[Exception]) -> None:
