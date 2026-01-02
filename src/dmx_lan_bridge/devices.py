@@ -1193,15 +1193,32 @@ class DeviceStore:
             ),
         )
         conn.commit()
-        self.logger.debug(
-            "Recorded discovery result",
-            extra={
-                "id": result.id,
-                "ip": result.ip,
-                "model_number": model_number,
-                "manual": result.manual,
-            },
-        )
+
+        # Log device addition/update
+        if is_new:
+            self.logger.debug(
+                "Added new device to database",
+                extra={
+                    "device_id": result.id,
+                    "ip": result.ip,
+                    "protocol": result.protocol,
+                    "model_number": model_number,
+                    "device_type": metadata.get("device_type"),
+                    "manual": result.manual,
+                },
+            )
+        else:
+            self.logger.debug(
+                "Updated existing device in database",
+                extra={
+                    "device_id": result.id,
+                    "ip": result.ip,
+                    "protocol": result.protocol,
+                    "model_number": model_number,
+                    "old_ip": old_ip,
+                    "manual": result.manual,
+                },
+            )
 
         # Track what changed for event publishing
         changed_fields = []
