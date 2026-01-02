@@ -67,7 +67,15 @@ class ManualDevice:
 class Config:
     """Application configuration."""
 
+    # Input Protocol Configuration
+    artnet_enabled: bool = True
     artnet_port: int = 6454
+    sacn_enabled: bool = False  # sACN disabled by default (new feature)
+    sacn_port: int = 5568
+    sacn_multicast: bool = True
+    sacn_universes: Sequence[int] = (1,)  # Universes to listen on (multicast mode)
+
+    # API Configuration
     api_port: int = 8000
     api_key: Optional[str] = None
     api_bearer_token: Optional[str] = None
@@ -157,7 +165,12 @@ class Config:
         ]
         base: Dict[str, Any] = {
             "config_version": self.config_version,
+            "artnet_enabled": self.artnet_enabled,
             "artnet_port": self.artnet_port,
+            "sacn_enabled": self.sacn_enabled,
+            "sacn_port": self.sacn_port,
+            "sacn_multicast": self.sacn_multicast,
+            "sacn_universes": list(self.sacn_universes),
             "api_port": self.api_port,
             "api_docs": self.api_docs,
             "db_path": str(self.db_path),
