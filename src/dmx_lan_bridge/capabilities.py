@@ -451,6 +451,18 @@ def _normalize_effects(capabilities: Any) -> Set[str]:
 def _extract_firmware(capabilities: Any) -> Optional[str]:
     if not isinstance(capabilities, Mapping):
         return None
+    if "lifx" in capabilities and isinstance(capabilities["lifx"], Mapping):
+        lifx_data = capabilities["lifx"]
+        major = lifx_data.get("firmware_major")
+        minor = lifx_data.get("firmware_minor")
+        build = lifx_data.get("firmware_build")
+        if major is not None or minor is not None:
+            version = f"{int(major or 0)}.{int(minor or 0)}"
+            if build is not None:
+                version = f"{version}+{build}"
+            return version
+        if build is not None:
+            return str(build)
     for key in ("firmware", "fwVersion", "fw_version", "version"):
         if key in capabilities and capabilities[key] is not None:
             return str(capabilities[key])

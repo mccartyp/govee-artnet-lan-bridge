@@ -87,6 +87,26 @@ def _deserialize_fields(value: Any) -> Tuple[str, ...]:
     return tuple()
 
 
+def _merge_capability_mappings(current: Any, incoming: Any) -> Any:
+    """Merge capability mappings while preserving protocol-specific extensions."""
+    if not isinstance(current, Mapping):
+        return incoming
+    if not isinstance(incoming, Mapping):
+        return incoming if incoming is not None else current
+
+    merged: Dict[str, Any] = dict(current)
+    for key, value in incoming.items():
+        if key == "lifx" and isinstance(value, Mapping):
+            existing = merged.get(key)
+            if isinstance(existing, Mapping):
+                nested = dict(existing)
+                nested.update(value)
+                merged[key] = nested
+                continue
+        merged[key] = value
+    return merged
+
+
 def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     """Wrap a device state payload in the Govee LAN API message format.
 
@@ -1176,25 +1196,38 @@ class DeviceStore:
 
         # Check if device exists before upsert
         existing = conn.execute(
-            "SELECT id, ip, model_number FROM devices WHERE id = ?",
+            "SELECT id, ip, model_number, model, capabilities FROM devices WHERE id = ?",
             (result.id,)
         ).fetchone()
         is_new = existing is None
         old_ip = existing["ip"] if existing else None
 
         cache = self._get_capability_cache(result.protocol)
+        existing_capabilities = (
+            _deserialize_capabilities(existing["capabilities"]) if existing and existing["capabilities"] else None
+        )
+        capabilities_input = result.capabilities
+        if isinstance(existing_capabilities, Mapping) and isinstance(result.capabilities, Mapping):
+            capabilities_input = _merge_capability_mappings(existing_capabilities, result.capabilities)
+        elif result.capabilities is None:
+            capabilities_input = existing_capabilities
+
+        model_number_input = result.model_number or (existing["model_number"] if existing else None)
+        if not model_number_input and existing and "model" in existing.keys():
+            model_number_input = existing["model"]
+
         metadata_input = _extract_metadata(result)
         normalized = None
         if (
-            result.capabilities is not None
+            capabilities_input is not None
             or metadata_input
-            or cache.has_provider_entry(result.model_number)
+            or cache.has_provider_entry(model_number_input)
         ):
             normalized = cache.normalize(
-                result.model_number, result.capabilities, metadata=metadata_input
+                model_number_input, capabilities_input, metadata=metadata_input
             )
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
-        model_number = result.model_number or (normalized.model_number if normalized else None)
+        model_number = model_number_input or (normalized.model_number if normalized else None)
         metadata = _coerce_metadata_for_db(_merge_metadata(normalized.metadata if normalized else {}, result))
 
         conn.execute(
