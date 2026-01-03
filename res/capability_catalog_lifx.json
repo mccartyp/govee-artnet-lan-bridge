@@ -1097,7 +1097,7 @@
           "color": true,
           "chain": false,
           "matrix": false,
-          "infrared": fal,
+          "infrared": false,
           "multizone": false,
           "temperature_range": [
             1500,
@@ -1659,7 +1659,7 @@
           "color": true,
           "chain": false,
           "matrix": false,
-          "infrared":alse,
+          "infrared": false,
           "multizone": true,
           "temperature_range": [
             1500,
@@ -2218,7 +2218,7 @@
             1500,
             9000
           ],
-          "extended_multizone":rue
+          "extended_multizone": true
         },
         "upgrades": []
       },
