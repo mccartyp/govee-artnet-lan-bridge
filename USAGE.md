@@ -37,9 +37,6 @@ dmx-lan-bridge --config /path/to/config.toml
 
 # Start with custom API port
 dmx-lan-bridge --api-port 9000
-
-# Legacy command (still works)
-artnet-lan-bridge
 ```
 
 See [INSTALL.md](INSTALL.md) for systemd service setup and other installation options.
@@ -112,12 +109,7 @@ The `dmx-lan-cli` tool communicates with the bridge server via its REST API and 
 ```bash
 # Run CLI commands
 dmx-lan-cli devices list
-
-# Legacy command (still works)
-artnet-lan-cli devices list
 ```
-
-**Note:** Both `dmx-lan-cli` and `artnet-lan-cli` commands work identically. The legacy names are maintained for backwards compatibility.
 
 For an interactive shell experience with real-time monitoring, log viewing, and enhanced features, see the dedicated console tool: **[artnet-console](https://github.com/mccartyp/artnet-console)**
 
@@ -191,13 +183,13 @@ For individual field control, use single channel mappings instead of templates:
 | `ct` | `color_temp` | Color temperature in Kelvin | `color_temperature` |
 
 **Capability Summary:**
-- **None** - Works on all Govee devices (plugs, lights, bulbs, switches)
+- **None** - Works on all devices across all protocols (plugs, lights, bulbs, switches)
 - **`brightness`** - Dimmable devices only (lights, bulbs) - NOT plugs or switches
 - **`color`** - Color-capable devices (RGB lights, RGB strips)
 - **`color_temperature`** - Color temperature devices (tunable white lights)
 
-**Important**: Device capabilities are validated when creating mappings. Not all Govee devices support all features:
-- **All devices** support `power` control (on/off)
+**Important**: Device capabilities are validated when creating mappings. Not all devices support all features:
+- **All devices** (Govee, LIFX, etc.) support `power` control (on/off)
 - **Brightness-capable devices** (lights, bulbs) support `dimmer` field
 - **Non-dimmable devices** (plugs, switches) do NOT support `dimmer` field
 - **Color-capable devices** support `r`, `g`, `b` fields
@@ -389,7 +381,7 @@ Not all templates work with all devices. The bridge validates device capabilitie
 
 #### Device Capabilities
 
-Govee devices report their capabilities:
+Smart devices (Govee, LIFX, etc.) report their capabilities:
 - **`brightness`**: Device has adjustable brightness/dimming
 - **`color`**: Device supports RGB color control
 - **`color_temperature`**: Device supports color temperature (warm/cool white)
@@ -403,7 +395,7 @@ Govee devices report their capabilities:
 | `DimRGBCT` | Yes | Yes | Yes | Devices with brightness, color, and color temperature |
 | `DimCT` | Yes | No | Yes | Devices with brightness and color temperature |
 
-**Note**: For individual field control (dimmer only, power, color channels, etc.), use single channel mappings instead of templates. All Govee devices support `power` mappings, but `dimmer`, color, and color temperature mappings require the corresponding device capabilities.
+**Note**: For individual field control (dimmer only, power, color channels, etc.), use single channel mappings instead of templates. All devices across all protocols support `power` mappings, but `dimmer`, color, and color temperature mappings require the corresponding device capabilities.
 
 #### Checking Device Capabilities
 
@@ -568,10 +560,10 @@ Mapping overlaps an existing entry
 
 ```bash
 # Check API health
-govee-artnet health
+dmx-lan-cli health
 
 # Show server status and metrics
-govee-artnet status
+dmx-lan-cli status
 ```
 
 ### Device Management
@@ -580,10 +572,11 @@ govee-artnet status
 # List all discovered devices
 dmx-lan-cli devices list
 
-# Add a manual device
+# Add a manual device (specify protocol: govee, lifx, etc.)
 dmx-lan-cli devices add \
   --id "AA:BB:CC:DD:EE:FF" \
   --ip "192.168.1.100" \
+  --protocol govee \
   --model-number "H6160" \
   --device-type "led_strip" \
   --length-meters 5 \
@@ -608,7 +601,7 @@ dmx-lan-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 32
 ```
 
 The `devices command` helper accepts the following actions:
-- `--on` / `--off`: convenience toggles (sends the Govee LAN `turn` command without forcing brightness)
+- `--on` / `--off`: convenience toggles (sends the native protocol `turn` command without forcing brightness)
 - `--brightness <0-255>`: raw brightness level
 - `--color <hex>`: RGB hex string (`ff3366`, `#00ccff`, or three-digit shorthand like `0cf`)
 - `--kelvin <0-255>` or `--ct <0-255>`: 0-255 slider scaled to the device's supported color-temperature range (defaults to 2000-9000K when the range is unknown)

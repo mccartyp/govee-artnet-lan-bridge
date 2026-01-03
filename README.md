@@ -48,8 +48,6 @@ pip install -e .
 pip install dmx-lan-bridge
 ```
 
-**Legacy Command Aliases:** For backwards compatibility, `artnet-lan-bridge` and `artnet-lan-cli` commands are still available and work identically to the new `dmx-lan-bridge` and `dmx-lan-cli` commands.
-
 ### 2. Start the Bridge Server
 
 ```bash
@@ -58,9 +56,6 @@ dmx-lan-bridge
 
 # Or with custom configuration
 dmx-lan-bridge --config /path/to/config.toml
-
-# Legacy command (still works)
-artnet-lan-bridge
 ```
 
 The server will:
@@ -75,9 +70,6 @@ Use the CLI to list discovered devices:
 
 ```bash
 dmx-lan-cli devices list
-
-# Or use legacy command
-artnet-lan-cli devices list
 ```
 
 Discovery responses that include a `model_number` automatically pull metadata from the bundled capability catalog. Device payloads now surface `model_number`, `device_type`, and length/segment hints so mappings can be validated without guesswork:
@@ -136,7 +128,7 @@ Point your lighting software at the bridge server's IP address and start control
 
 ## Interactive Console
 
-The `dmx-lan-cli` tool (or legacy `artnet-lan-cli`) provides direct command-line access to the bridge API.
+The `dmx-lan-cli` tool provides direct command-line access to the bridge API.
 
 For an interactive shell experience with features like:
 - 📊 **Real-time monitoring** - Live dashboards for devices, ArtNet, queue, and health
@@ -178,17 +170,17 @@ For individual field control, use single channel mappings instead of templates:
 - **`color`** - Color-capable devices (RGB lights, RGB strips)
 - **`color_temperature`** - Color temperature devices (tunable white lights)
 
-**Note**: Device capabilities are validated when creating mappings. Not all devices support all features (e.g., plug-type devices only support power control). Use `artnet-lan-cli devices list` to check device capabilities.
+**Note**: Device capabilities are validated when creating mappings. Not all devices support all features (e.g., plug-type devices only support power control). Use `dmx-lan-cli devices list` to check device capabilities.
 
 ```bash
 # Create a power control mapping (works on all devices)
-artnet-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power
+dmx-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power
 
 # Create a brightness control mapping (requires brightness capability)
-artnet-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness
+dmx-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness
 
 # Use field aliases for convenience (requires color capability)
-artnet-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --field red
+dmx-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --field red
 ```
 
 ## CLI Commands
@@ -197,18 +189,18 @@ artnet-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --fiel
 
 ```bash
 # List all devices
-artnet-lan-cli devices list
+dmx-lan-cli devices list
 
 # Add a manual device (specify protocol: govee, lifx, etc.)
-artnet-lan-cli devices add --id "..." --ip "192.168.1.100" --protocol govee --model-number "H61XX" --device-type "led_strip"
+dmx-lan-cli devices add --id "..." --ip "192.168.1.100" --protocol govee --model-number "H61XX" --device-type "led_strip"
 
 # Enable/disable a device
-artnet-lan-cli devices enable "AA:BB:CC:DD:EE:FF"
-artnet-lan-cli devices disable "AA:BB:CC:DD:EE:FF"
+dmx-lan-cli devices enable "AA:BB:CC:DD:EE:FF"
+dmx-lan-cli devices disable "AA:BB:CC:DD:EE:FF"
 
 # Send a quick command (on/off/brightness/color/kelvin)
-artnet-lan-cli devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
-artnet-lan-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
+dmx-lan-cli devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
+dmx-lan-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
 ```
 
 - `--on`/`--off` send the native LAN protocol `turn` command instead of manipulating brightness.
@@ -219,30 +211,30 @@ artnet-lan-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
 
 ```bash
 # List all mappings
-artnet-lan-cli mappings list
+dmx-lan-cli mappings list
 
 # Create mapping with template
-artnet-lan-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 1 \
   --start-channel 1 \
   --template RGB
 
 # Delete a mapping
-artnet-lan-cli mappings delete <mapping_id>
+dmx-lan-cli mappings delete <mapping_id>
 
 # View channel map
-artnet-lan-cli mappings channel-map
+dmx-lan-cli mappings channel-map
 ```
 
 ### Server Status
 
 ```bash
 # Check server health
-artnet-lan-cli health
+dmx-lan-cli health
 
 # View server status and metrics
-artnet-lan-cli status
+dmx-lan-cli status
 ```
 
 ## Remote Server Connection
@@ -251,14 +243,14 @@ The CLI can connect to a remote bridge server:
 
 ```bash
 # Connect to remote server
-artnet-lan-cli --server-url http://192.168.1.100:8000 devices list
+dmx-lan-cli --server-url http://192.168.1.100:8000 devices list
 
 # Or set environment variable
-export ARTNET_LAN_CLI_SERVER_URL=http://192.168.1.100:8000
-artnet-lan-cli devices list
+export DMX_LAN_CLI_SERVER_URL=http://192.168.1.100:8000
+dmx-lan-cli devices list
 
 # With authentication
-artnet-lan-cli --api-key your-key devices list
+dmx-lan-cli --api-key your-key devices list
 ```
 
 ## Configuration
@@ -311,17 +303,17 @@ curl http://localhost:8000/metrics | grep artnet_rate_limit
 **Devices not discovered?**
 - Check that devices are on the same network
 - Ensure multicast traffic is allowed
-- Try adding devices manually with `artnet-lan-cli devices add`
+- Try adding devices manually with `dmx-lan-cli devices add`
 
 **Mappings not working?**
-- Verify device capabilities: `artnet-lan-cli devices list`
+- Verify device capabilities: `dmx-lan-cli devices list`
 - Check mapping compatibility with device capabilities
-- View active mappings: `artnet-lan-cli mappings channel-map`
+- View active mappings: `dmx-lan-cli mappings channel-map`
 
 **Can't connect to server?**
 - Ensure the bridge server is running
 - Check firewall rules for port 8000
-- Verify server URL with `artnet-lan-cli health`
+- Verify server URL with `dmx-lan-cli health`
 
 See [USAGE.md](USAGE.md#troubleshooting-mapping-errors) for detailed troubleshooting.
 
