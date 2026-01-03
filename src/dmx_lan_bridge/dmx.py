@@ -484,6 +484,11 @@ class DmxMappingService:
         """Return a copy of last delivered payloads for state persistence."""
         return copy.deepcopy(self._last_payloads)
 
+    def get_active_universes(self) -> List[int]:
+        """Return the universes that currently have configured mappings."""
+
+        return sorted(self._universe_mappings.keys())
+
     def get_merger_stats(self) -> Dict[str, Any]:
         """Get statistics about priority merging."""
         return {
