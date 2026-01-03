@@ -607,7 +607,7 @@ def create_app(
                 # Publish event for each created mapping
                 if event_bus:
                     for row in rows:
-                        await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe, "field": row.field, "fields": list(row.fields)})
+                        await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe, "channel": row.channel, "device_id": row.device_id, "field": row.field, "fields": list(row.fields)})
                 return result
             channel = payload.channel or payload.start_channel
             if channel is None:
@@ -631,7 +631,7 @@ def create_app(
             result = MappingOut(**row.__dict__)
             # Publish event after successfully creating mapping
             if event_bus:
-                await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe, "field": row.field, "fields": list(row.fields)})
+                await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe, "channel": row.channel, "device_id": row.device_id, "field": row.field, "fields": list(row.fields)})
             return result
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
