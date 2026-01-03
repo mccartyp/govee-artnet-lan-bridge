@@ -12,9 +12,10 @@ import socket
 import struct
 import time
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 from .config import Config
+from .events import EVENT_MAPPING_CREATED, EVENT_MAPPING_DELETED, EVENT_MAPPING_UPDATED, SystemEvent
 from .logging import get_logger
 
 
@@ -304,6 +305,9 @@ class SacnService:
         self._log_sample_rate = max(0.0, min(1.0, config.noisy_log_sample_rate))
         self._source_id = f"sacn-{id(self)}"  # Unique source identifier
         self._multicast_groups: set[str] = set()
+        self._multicast_sock: Optional[socket.socket] = None
+        self._refresh_lock = asyncio.Lock()
+        self._mapping_event_unsubscribes: list[Callable[[], None]] = []
 
     async def start(self) -> None:
         """Start sACN listener on configured port."""
@@ -322,23 +326,12 @@ class SacnService:
         multicast_enabled = getattr(self.config, 'sacn_multicast', True)
 
         sock = _create_sacn_socket(self.config, multicast=multicast_enabled)
+        self._multicast_sock = sock
 
         # Join multicast groups for configured universes if multicast enabled
         if multicast_enabled:
-            universes = getattr(self.config, 'sacn_universes', [1])  # Default to universe 1
-            for universe in universes:
-                if 1 <= universe <= MAX_UNIVERSE:
-                    multicast_addr = self._get_multicast_address(universe)
-                    try:
-                        mreq = struct.pack("4sL", socket.inet_aton(multicast_addr), socket.INADDR_ANY)
-                        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-                        self._multicast_groups.add(multicast_addr)
-                        self.logger.debug(f"Joined multicast group {multicast_addr} for universe {universe}")
-                    except OSError as e:
-                        self.logger.warning(
-                            f"Failed to join multicast group for universe {universe}",
-                            extra={"error": str(e), "multicast_addr": multicast_addr}
-                        )
+            await self._refresh_multicast_memberships()
+            await self._subscribe_mapping_events()
 
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: SacnProtocol(self),
@@ -360,10 +353,13 @@ class SacnService:
 
     async def stop(self) -> None:
         """Stop sACN listener and leave multicast groups."""
+        await self._leave_multicast_groups()
+        await self._unsubscribe_mapping_events()
         if self._transport:
             self._transport.close()
         self._transport = None
         self._protocol = None
+        self._multicast_sock = None
         self._multicast_groups.clear()
         self.logger.info("sACN input protocol stopped")
         self._error_event.set()
@@ -497,3 +493,150 @@ class SacnService:
         octet3 = (universe >> 8) & 0xFF
         octet4 = universe & 0xFF
         return f"239.255.{octet3}.{octet4}"
+
+    def _get_event_bus(self):
+        """Return the event bus from the DMX mapper if available."""
+
+        return getattr(self.dmx_mapper, "event_bus", None) if self.dmx_mapper else None
+
+    async def _subscribe_mapping_events(self) -> None:
+        """Subscribe to mapping change events to refresh multicast memberships."""
+
+        event_bus = self._get_event_bus()
+        if not event_bus:
+            return
+
+        for event_type in (EVENT_MAPPING_CREATED, EVENT_MAPPING_UPDATED, EVENT_MAPPING_DELETED):
+            unsubscribe = await event_bus.subscribe(event_type, self._handle_mapping_event)
+            self._mapping_event_unsubscribes.append(unsubscribe)
+
+        self.logger.info("Subscribed to mapping events for sACN multicast refresh")
+
+    async def _unsubscribe_mapping_events(self) -> None:
+        """Unsubscribe from mapping change events."""
+
+        for unsubscribe in self._mapping_event_unsubscribes:
+            unsubscribe()
+        self._mapping_event_unsubscribes.clear()
+
+    async def _handle_mapping_event(self, event: SystemEvent) -> None:
+        """Refresh multicast memberships when mappings change."""
+
+        if not getattr(self.config, 'sacn_multicast', True):
+            return
+
+        if random.random() <= self._log_sample_rate:
+            self.logger.debug(
+                "sACN refreshing multicast memberships due to mapping change",
+                extra={"event_type": event.event_type, "data": event.data},
+            )
+
+        await self._refresh_multicast_memberships(use_config_fallback=False)
+
+    def _desired_multicast_addresses(self, use_config_fallback: bool) -> dict[str, int]:
+        """Determine desired multicast addresses keyed by address -> universe."""
+
+        universes: list[int] = []
+
+        if self.dmx_mapper and hasattr(self.dmx_mapper, "get_active_universes"):
+            try:
+                universes = list(self.dmx_mapper.get_active_universes())
+            except Exception as exc:  # pragma: no cover - defensive
+                self.logger.warning(
+                    "Failed to read active universes from DMX mapper",
+                    extra={"error": str(exc)},
+                )
+
+        if not universes and use_config_fallback:
+            universes = list(getattr(self.config, 'sacn_universes', (1,)))
+
+        valid_universes = [u for u in universes if 1 <= u <= MAX_UNIVERSE]
+        if len(valid_universes) != len(universes):
+            self.logger.warning(
+                "Ignoring out-of-range universes for sACN multicast",
+                extra={"universes": universes},
+            )
+
+        return {self._get_multicast_address(universe): universe for universe in valid_universes}
+
+    async def _refresh_multicast_memberships(self, use_config_fallback: bool = True) -> None:
+        """Join/leave multicast groups based on active universes."""
+
+        if not getattr(self.config, 'sacn_multicast', True):
+            return
+
+        sock = self._multicast_sock or (
+            self._transport.get_extra_info('socket') if self._transport else None  # type: ignore[union-attr]
+        )
+        if not sock:
+            self.logger.debug("sACN multicast refresh skipped; socket unavailable")
+            return
+
+        async with self._refresh_lock:
+            desired = self._desired_multicast_addresses(use_config_fallback)
+            desired_addrs = set(desired.keys())
+            current_addrs = set(self._multicast_groups)
+
+            to_join = desired_addrs - current_addrs
+            to_leave = current_addrs - desired_addrs
+
+            for addr in to_join:
+                universe = desired[addr]
+                try:
+                    mreq = struct.pack("4sL", socket.inet_aton(addr), socket.INADDR_ANY)
+                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+                    self._multicast_groups.add(addr)
+                    self.logger.info(
+                        "Joined sACN multicast group",
+                        extra={"multicast_addr": addr, "universe": universe},
+                    )
+                except OSError as exc:  # pragma: no cover - platform specific
+                    self.logger.warning(
+                        "Failed to join sACN multicast group",
+                        extra={"multicast_addr": addr, "universe": universe, "error": str(exc)},
+                    )
+
+            for addr in to_leave:
+                try:
+                    mreq = struct.pack("4sL", socket.inet_aton(addr), socket.INADDR_ANY)
+                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, mreq)
+                    self._multicast_groups.discard(addr)
+                    self.logger.info(
+                        "Left sACN multicast group",
+                        extra={"multicast_addr": addr},
+                    )
+                except OSError as exc:  # pragma: no cover - platform specific
+                    self.logger.warning(
+                        "Failed to leave sACN multicast group",
+                        extra={"multicast_addr": addr, "error": str(exc)},
+                    )
+
+    async def _leave_multicast_groups(self) -> None:
+        """Drop all joined multicast groups."""
+
+        if not self._multicast_groups:
+            return
+
+        if not getattr(self.config, 'sacn_multicast', True):
+            self._multicast_groups.clear()
+            return
+
+        sock = self._multicast_sock or (
+            self._transport.get_extra_info('socket') if self._transport else None  # type: ignore[union-attr]
+        )
+        if not sock:
+            self._multicast_groups.clear()
+            return
+
+        async with self._refresh_lock:
+            for addr in list(self._multicast_groups):
+                try:
+                    mreq = struct.pack("4sL", socket.inet_aton(addr), socket.INADDR_ANY)
+                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, mreq)
+                    self.logger.info("Left sACN multicast group", extra={"multicast_addr": addr})
+                except OSError as exc:  # pragma: no cover - platform specific
+                    self.logger.warning(
+                        "Failed to leave sACN multicast group",
+                        extra={"multicast_addr": addr, "error": str(exc)},
+                    )
+            self._multicast_groups.clear()
