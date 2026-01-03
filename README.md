@@ -130,7 +130,10 @@ Point your lighting software at the bridge server's IP address and start control
 
 The `dmx-lan-cli` tool provides direct command-line access to the bridge API.
 
-For an interactive shell experience with features like:
+### 🚀 Want a Better Experience? Try the Interactive Console!
+
+For a powerful interactive shell experience, check out **[dmx-lan-console](https://github.com/mccartyp/dmx-lan-console)** — a feature-rich TUI (Terminal User Interface) for managing your DMX LAN Bridge with:
+
 - 📊 **Real-time monitoring** - Live dashboards for devices, ArtNet, queue, and health
 - 📝 **Log viewing & tailing** - View, search, and stream logs with filtering
 - ⌨️  **Command history & autocomplete** - Tab completion and persistent history
@@ -138,9 +141,7 @@ For an interactive shell experience with features like:
 - 📜 **Scripting support** - Execute batch commands from files
 - 🎨 **Rich formatting** - Beautiful tables and colored output
 
-Check out the dedicated interactive console tool:
-
-**[artnet-console](https://github.com/mccartyp/artnet-console)**
+**➡️ Get it here: [github.com/mccartyp/dmx-lan-console](https://github.com/mccartyp/dmx-lan-console)**
 
 ## Available Templates
 
