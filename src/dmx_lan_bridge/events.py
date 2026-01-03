@@ -140,6 +140,8 @@ class EventBus:
 # Predefined event types
 EVENT_DEVICE_DISCOVERED = "device_discovered"
 EVENT_DEVICE_UPDATED = "device_updated"
+EVENT_DEVICE_ENABLED = "device_enabled"
+EVENT_DEVICE_DISABLED = "device_disabled"
 EVENT_DEVICE_OFFLINE = "device_offline"
 EVENT_DEVICE_ONLINE = "device_online"
 EVENT_MAPPING_CREATED = "mapping_created"

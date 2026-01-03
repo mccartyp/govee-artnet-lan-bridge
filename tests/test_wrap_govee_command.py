@@ -1,6 +1,6 @@
 """Tests for wrap_govee_command function."""
 
-from govee_artnet_lan_bridge.devices import wrap_govee_command
+from dmx_lan_bridge.devices import wrap_govee_command
 
 
 def test_wrap_govee_command_color_and_turn_on() -> None:

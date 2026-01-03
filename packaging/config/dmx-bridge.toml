@@ -1,15 +1,15 @@
 # ==============================================================================
-# Govee ArtNet LAN Bridge - Configuration File
+# DMX LAN Bridge - Configuration File
 # ==============================================================================
 # This is the minimal configuration template. For comprehensive documentation
-# of all options, see: /usr/share/doc/govee-artnet-bridge/govee-bridge.toml.example
+# of all options, see: /usr/share/doc/dmx-lan-bridge/dmx-bridge.toml.example
 #
 # Location:
-#   System service: /etc/govee-bridge/config.toml
-#   User service: ~/.config/govee-bridge/config.toml
+#   System service: /etc/dmx-bridge/config.toml
+#   User service: ~/.config/dmx-bridge/config.toml
 #
 # Reload after changes:
-#   sudo systemctl reload govee-bridge.service
+#   sudo systemctl reload dmx-bridge.service
 #   OR: POST /reload via API
 # ==============================================================================
 
@@ -17,8 +17,9 @@
 # Network Settings
 # ------------------------------------------------------------------------------
 
-# ArtNet DMX input port (standard ArtNet port)
+# DMX input ports (ArtNet on 6454, sACN on 5568)
 artnet_port = 6454
+sacn_port = 5568
 
 # HTTP API server port
 api_port = 8000
@@ -38,10 +39,10 @@ api_port = 8000
 # ------------------------------------------------------------------------------
 
 # SQLite database path (stores devices, mappings, state)
-db_path = "/var/lib/govee-bridge/bridge.sqlite3"
+db_path = "/var/lib/dmx-bridge/bridge.sqlite3"
 
-# Capability catalog path (device capabilities definition)
-capability_catalog_path = "/usr/share/govee_artnet_lan_bridge/capability_catalog.json"
+# Capability catalog directory (device capabilities definitions for multiple protocols)
+capability_catalog_path = "/usr/share/dmx_lan_bridge"
 
 # ------------------------------------------------------------------------------
 # Logging
@@ -86,5 +87,5 @@ device_poll_batch_size = 50
 # ------------------------------------------------------------------------------
 # Advanced Options
 # ------------------------------------------------------------------------------
-# See govee-bridge.toml.example for full list of advanced configuration options
+# See dmx-bridge.toml.example for full list of advanced configuration options
 # including rate limiting, health monitoring, manual device configuration, etc.

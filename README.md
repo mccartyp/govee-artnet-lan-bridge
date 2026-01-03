@@ -1,24 +1,36 @@
-# Govee ArtNet LAN Bridge
+# DMX LAN Bridge
 
 [![Latest Release](https://img.shields.io/github/v/release/mccartyp/govee-artnet-lan-bridge)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
 [![Download DEB](https://img.shields.io/badge/download-.deb-blue)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/github/license/mccartyp/govee-artnet-lan-bridge)](LICENSE)
 
-This project bridges ArtNet DMX input to Govee LAN devices, allowing you to control Govee smart lights using standard lighting control software like QLC+, Chamsys MagicQ, or any other ArtNet-compatible controller.
+A multi-protocol DMX to LAN device bridge with priority-based source merging. Control smart lights using professional lighting control protocols (ArtNet, sACN) and software like QLC+, Chamsys MagicQ, or any DMX-compatible controller.
+
+**Supported Input Protocols:**
+- ✅ **ArtNet** (fully supported with configurable priority)
+- ✅ **sACN/E1.31** (fully supported with native priority control)
+
+**Supported Device Protocols:**
+- ✅ **Govee** (JSON-based LAN control)
+- ✅ **LIFX** (binary LAN protocol)
+- 🔜 **WiZ** (planned)
+- 🔜 **TPLink/Kasa** (planned)
 
 ## Architecture
 
 The bridge consists of two components:
 
-1. **Bridge Server** (`govee-artnet-bridge`) - Runs as a daemon and provides:
-   - ArtNet listener (default port 6454)
+1. **Bridge Server** (`dmx-lan-bridge`) - Runs as a daemon and provides:
+   - **Multi-protocol DMX input** (ArtNet on port 6454, sACN/E1.31 on port 5568)
+   - **Priority-based source merging** (multiple consoles, graceful failover)
    - REST API server (default port 8000)
+   - Multi-protocol device support (Govee, LIFX, and more)
    - Automatic device discovery
    - Device health monitoring
 
-2. **CLI Client** (`govee-artnet-cli`) - Command-line tool for managing the bridge:
-   - List and manage devices
+2. **CLI Client** (`dmx-lan-cli`) - Command-line tool for managing the bridge:
+   - List and manage devices across all supported protocols
    - Create and manage DMX channel mappings
    - Query server status
 
@@ -33,30 +45,39 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions.
 pip install -e .
 
 # Or install from package
-pip install govee-artnet-lan-bridge
+pip install dmx-lan-bridge
 ```
+
+**Legacy Command Aliases:** For backwards compatibility, `artnet-lan-bridge` and `artnet-lan-cli` commands are still available and work identically to the new `dmx-lan-bridge` and `dmx-lan-cli` commands.
 
 ### 2. Start the Bridge Server
 
 ```bash
 # Start with default settings
-govee-artnet-bridge
+dmx-lan-bridge
 
 # Or with custom configuration
-govee-artnet-bridge --config /path/to/config.toml
+dmx-lan-bridge --config /path/to/config.toml
+
+# Legacy command (still works)
+artnet-lan-bridge
 ```
 
 The server will:
-- Listen for ArtNet packets on port 6454
+- Listen for DMX input protocols (ArtNet on port 6454, sACN on port 5568 if enabled)
 - Start the REST API on port 8000
-- Automatically discover Govee devices on your network
+- Automatically discover devices on your network (Govee, LIFX, etc.)
+- Apply priority-based merging if multiple sources detected
 
 ### 3. Discover Devices
 
 Use the CLI to list discovered devices:
 
 ```bash
-govee-artnet-cli devices list
+dmx-lan-cli devices list
+
+# Or use legacy command
+artnet-lan-cli devices list
 ```
 
 Discovery responses that include a `model_number` automatically pull metadata from the bundled capability catalog. Device payloads now surface `model_number`, `device_type`, and length/segment hints so mappings can be validated without guesswork:
@@ -85,27 +106,35 @@ Map DMX channels to your devices using templates:
 
 ```bash
 # Map an RGB light strip to channels 1-3 on universe 0
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
   --template RGB
 
 # Map an RGB+CT light to channels 10-13
-govee-artnet-cli mappings create \
+dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
   --universe 0 \
   --start-channel 10 \
   --template RGBc
 ```
 
-### 5. Send ArtNet
+**Note:** Mappings are protocol-agnostic. The same mapping works whether you send ArtNet or sACN (when supported) to that universe.
+
+### 5. Send DMX Data
 
 Point your lighting software at the bridge server's IP address and start controlling your lights!
 
+**Priority-Based Source Merging:**
+- If multiple sources send to the same universe, highest priority wins
+- ArtNet: Configurable priority (default 25, well below sACN default)
+- sACN: Uses native priority from packets (0-200, default 100)
+- Graceful failover: If primary source stops, backup takes over automatically (2.5s timeout)
+
 ## Interactive Console
 
-The `govee-artnet-cli` tool provides direct command-line access to the bridge API.
+The `dmx-lan-cli` tool (or legacy `artnet-lan-cli`) provides direct command-line access to the bridge API.
 
 For an interactive shell experience with features like:
 - 📊 **Real-time monitoring** - Live dashboards for devices, ArtNet, queue, and health
@@ -117,7 +146,7 @@ For an interactive shell experience with features like:
 
 Check out the dedicated interactive console tool:
 
-**[govee-artnet-console](https://github.com/mccartyp/govee-artnet-console)**
+**[artnet-console](https://github.com/mccartyp/artnet-console)**
 
 ## Available Templates
 
@@ -142,22 +171,22 @@ For individual field control, use single channel mappings instead of templates:
 | `ct` | `color_temp` | Color temperature in Kelvin | `color_temperature` |
 
 **Capability Summary:**
-- **`power`** - Works on all Govee devices (plugs, lights, bulbs, switches)
+- **`power`** - Works on all devices (plugs, lights, bulbs, switches)
 - **`brightness`** - Dimmable devices only (lights, bulbs) - NOT plugs or switches
 - **`color`** - Color-capable devices (RGB lights, RGB strips)
 - **`color_temperature`** - Color temperature devices (tunable white lights)
 
-**Note**: Device capabilities are validated when creating mappings. Not all Govee devices support all features (e.g., plug-type devices only support power control). Use `govee-artnet-cli devices list` to check device capabilities.
+**Note**: Device capabilities are validated when creating mappings. Not all devices support all features (e.g., plug-type devices only support power control). Use `artnet-lan-cli devices list` to check device capabilities.
 
 ```bash
 # Create a power control mapping (works on all devices)
-govee-artnet-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power
+artnet-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 1 --field power
 
 # Create a brightness control mapping (requires brightness capability)
-govee-artnet-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness
+artnet-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 5 --field brightness
 
 # Use field aliases for convenience (requires color capability)
-govee-artnet-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --field red
+artnet-lan-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --field red
 ```
 
 ## CLI Commands
@@ -166,21 +195,21 @@ govee-artnet-cli mappings create --device-id AA:BB:CC:DD:EE:FF --channel 10 --fi
 
 ```bash
 # List all devices
-govee-artnet-cli devices list
+artnet-lan-cli devices list
 
-# Add a manual device
-govee-artnet-cli devices add --id "..." --ip "192.168.1.100" --model-number "H61XX" --device-type "led_strip"
+# Add a manual device (specify protocol: govee, lifx, etc.)
+artnet-lan-cli devices add --id "..." --ip "192.168.1.100" --protocol govee --model-number "H61XX" --device-type "led_strip"
 
 # Enable/disable a device
-govee-artnet-cli devices enable "AA:BB:CC:DD:EE:FF"
-govee-artnet-cli devices disable "AA:BB:CC:DD:EE:FF"
+artnet-lan-cli devices enable "AA:BB:CC:DD:EE:FF"
+artnet-lan-cli devices disable "AA:BB:CC:DD:EE:FF"
 
 # Send a quick command (on/off/brightness/color/kelvin)
-govee-artnet-cli devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
-govee-artnet-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
+artnet-lan-cli devices command "AA:BB:CC:DD:EE:FF" --on --brightness 200 --color ff8800
+artnet-lan-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
 ```
 
-- `--on`/`--off` send the native Govee LAN `turn` command instead of manipulating brightness.
+- `--on`/`--off` send the native LAN protocol `turn` command instead of manipulating brightness.
 - `--brightness` and `--kelvin` accept 0-255 sliders. Kelvin values are scaled to the device's supported color-temperature range when available.
 - `--color` accepts RGB hex strings (e.g., `ff3366` or `#ff3366`); shorthand three-character forms expand automatically.
 
@@ -188,30 +217,30 @@ govee-artnet-cli devices command "AA:BB:CC:DD:EE:FF" --kelvin 64
 
 ```bash
 # List all mappings
-govee-artnet-cli mappings list
+artnet-lan-cli mappings list
 
 # Create mapping with template
-govee-artnet-cli mappings create \
+artnet-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
   --universe 0 \
   --start-channel 1 \
   --template RGB
 
 # Delete a mapping
-govee-artnet-cli mappings delete <mapping_id>
+artnet-lan-cli mappings delete <mapping_id>
 
 # View channel map
-govee-artnet-cli mappings channel-map
+artnet-lan-cli mappings channel-map
 ```
 
 ### Server Status
 
 ```bash
 # Check server health
-govee-artnet-cli health
+artnet-lan-cli health
 
 # View server status and metrics
-govee-artnet-cli status
+artnet-lan-cli status
 ```
 
 ## Remote Server Connection
@@ -220,14 +249,14 @@ The CLI can connect to a remote bridge server:
 
 ```bash
 # Connect to remote server
-govee-artnet-cli --server-url http://192.168.1.100:8000 devices list
+artnet-lan-cli --server-url http://192.168.1.100:8000 devices list
 
 # Or set environment variable
-export GOVEE_ARTNET_CLI_SERVER_URL=http://192.168.1.100:8000
-govee-artnet-cli devices list
+export ARTNET_LAN_CLI_SERVER_URL=http://192.168.1.100:8000
+artnet-lan-cli devices list
 
 # With authentication
-govee-artnet-cli --api-key your-key devices list
+artnet-lan-cli --api-key your-key devices list
 ```
 
 ## Configuration
@@ -262,7 +291,7 @@ See [USAGE.md](USAGE.md) for detailed configuration options.
 
 ## Rate Limiting
 
-The bridge uses a token-bucket limiter to prevent overwhelming Govee devices:
+The bridge uses a token-bucket limiter to prevent overwhelming devices:
 
 - Refills at `rate_limit_per_second` tokens per second (default: 10)
 - Holds up to `rate_limit_burst` tokens (default: 20)
@@ -272,7 +301,7 @@ The bridge uses a token-bucket limiter to prevent overwhelming Govee devices:
 Monitor rate limiting:
 ```bash
 # View current metrics
-curl http://localhost:8000/metrics | grep govee_rate_limit
+curl http://localhost:8000/metrics | grep artnet_rate_limit
 ```
 
 ## Troubleshooting
@@ -280,17 +309,17 @@ curl http://localhost:8000/metrics | grep govee_rate_limit
 **Devices not discovered?**
 - Check that devices are on the same network
 - Ensure multicast traffic is allowed
-- Try adding devices manually with `govee-artnet-cli devices add`
+- Try adding devices manually with `artnet-lan-cli devices add`
 
 **Mappings not working?**
-- Verify device capabilities: `govee-artnet-cli devices list`
+- Verify device capabilities: `artnet-lan-cli devices list`
 - Check mapping compatibility with device capabilities
-- View active mappings: `govee-artnet-cli mappings channel-map`
+- View active mappings: `artnet-lan-cli mappings channel-map`
 
 **Can't connect to server?**
 - Ensure the bridge server is running
 - Check firewall rules for port 8000
-- Verify server URL with `govee-artnet-cli health`
+- Verify server URL with `artnet-lan-cli health`
 
 See [USAGE.md](USAGE.md#troubleshooting-mapping-errors) for detailed troubleshooting.
 

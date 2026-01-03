@@ -13,7 +13,7 @@ from .config import Config
 from .logging import get_logger
 
 
-MessageHandler = Callable[[Mapping[str, Any], Tuple[str, int]], None]
+MessageHandler = Callable[[Mapping[str, Any], Tuple[str, int], bytes], None]
 
 
 def _create_multicast_socket(address: str, port: int) -> socket.socket:
@@ -40,15 +40,20 @@ class GoveeProtocol(asyncio.DatagramProtocol):
         self.config = config
         self.loop = loop
         self.transport: Optional[asyncio.DatagramTransport] = None
-        self.logger = get_logger("govee.protocol")
+        self.logger = get_logger("devices.protocol")
         self._handlers: Dict[str, MessageHandler] = {}
         self._default_handler: Optional[MessageHandler] = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
+        sockname = transport.get_extra_info("sockname")
+        self.logger.debug(
+            f"Govee discovery listener started on port {sockname[1] if sockname else 'unknown'}",
+            extra={"local": sockname},
+        )
         self.logger.info(
             "Govee protocol ready",
-            extra={"local": transport.get_extra_info("sockname")},
+            extra={"local": sockname},
         )
 
     def connection_lost(self, exc: Optional[Exception]) -> None:
@@ -63,7 +68,7 @@ class GoveeProtocol(asyncio.DatagramProtocol):
     def register_handler(self, cmd: str, handler: MessageHandler) -> None:
         """Register a handler for a specific message cmd type."""
         self._handlers[cmd] = handler
-        self.logger.debug(f"Registered handler for cmd: {cmd}")
+        self.logger.info(f"Registered handler for cmd: {cmd}", extra={"cmd": cmd})
 
     def register_default_handler(self, handler: MessageHandler) -> None:
         """Register a fallback handler for unrecognized message types."""
@@ -71,8 +76,10 @@ class GoveeProtocol(asyncio.DatagramProtocol):
         self.logger.debug("Registered default handler")
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]) -> None:
+        """Parse inbound datagrams and dispatch registered handlers with both parsed and raw payloads."""
+        raw_payload = data
         try:
-            message = data.decode("utf-8")
+            message = raw_payload.decode("utf-8")
         except UnicodeDecodeError:
             self.logger.debug("Ignoring non-UTF8 message", extra={"from": addr})
             return
@@ -104,16 +111,16 @@ class GoveeProtocol(asyncio.DatagramProtocol):
                 extra={"cmd": cmd, "from": addr},
             )
             try:
-                self._handlers[cmd](payload, addr)
-            except Exception as exc:
+                self._handlers[cmd](payload, addr, raw_payload)
+            except Exception:
                 self.logger.exception(
                     "Handler error",
                     extra={"cmd": cmd, "from": addr},
                 )
         elif self._default_handler:
             try:
-                self._default_handler(payload, addr)
-            except Exception as exc:
+                self._default_handler(payload, addr, raw_payload)
+            except Exception:
                 self.logger.exception(
                     "Default handler error",
                     extra={"from": addr},
@@ -146,15 +153,17 @@ class GoveeProtocolService:
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.logger = get_logger("govee.protocol.service")
+        self.logger = get_logger("artnet.protocol.service")
         self._protocol: Optional[GoveeProtocol] = None
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket: Optional[socket.socket] = None
+        self._ready_event = asyncio.Event()
 
     async def start(self) -> None:
         """Start the shared UDP listener on port 4002."""
         if self.config.dry_run:
             self.logger.info("Protocol service running in dry-run mode; socket not opened.")
+            self._ready_event.set()
             return
 
         loop = asyncio.get_running_loop()
@@ -176,6 +185,7 @@ class GoveeProtocolService:
                 "port": self.config.discovery_reply_port,
             },
         )
+        self._ready_event.set()
 
     async def stop(self) -> None:
         """Stop the shared UDP listener."""
@@ -186,7 +196,24 @@ class GoveeProtocolService:
         self._protocol = None
         self._transport = None
         self._socket = None
+        self._ready_event.clear()
         self.logger.info("Protocol service stopped")
+
+    async def wait_ready(self, timeout: float = 5.0) -> None:
+        """Wait for the protocol service to be ready.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+
+        Raises:
+            TimeoutError: If protocol doesn't become ready within timeout
+        """
+        try:
+            await asyncio.wait_for(self._ready_event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"Protocol service failed to start within {timeout} seconds"
+            )
 
     @property
     def protocol(self) -> Optional[GoveeProtocol]:

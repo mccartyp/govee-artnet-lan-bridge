@@ -4,9 +4,9 @@ set -e
 case "$1" in
     remove|upgrade|deconfigure)
         # Stop the service before removal or upgrade
-        if systemctl is-active --quiet govee-bridge.service; then
-            echo "Stopping govee-bridge service..."
-            systemctl stop govee-bridge.service || true
+        if systemctl is-active --quiet dmx-bridge.service; then
+            echo "Stopping dmx-bridge service..."
+            systemctl stop dmx-bridge.service || true
         fi
         ;;
 

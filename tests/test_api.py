@@ -4,10 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
-from govee_artnet_lan_bridge.api import create_app
-from govee_artnet_lan_bridge.config import Config, ManualDevice
-from govee_artnet_lan_bridge.db import apply_migrations
-from govee_artnet_lan_bridge.devices import DeviceStore, DiscoveryResult
+from dmx_lan_bridge.api import create_app
+from dmx_lan_bridge.config import Config, ManualDevice
+from dmx_lan_bridge.db import apply_migrations
+from dmx_lan_bridge.devices import DeviceStore, DiscoveryResult
 
 
 def test_reload_endpoint_triggers_callback() -> None:

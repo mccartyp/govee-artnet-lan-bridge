@@ -170,7 +170,7 @@ jobs:
         echo "=== Verifying installation ==="
 
         # Check if package is installed
-        if dpkg -l govee-artnet-bridge 2>/dev/null | grep -q '^ii'; then
+        if dpkg -l dmx-lan-bridge 2>/dev/null | grep -q '^ii'; then
           echo "✓ Package found in dpkg"
         else
           echo "ERROR: Package not installed in dpkg"
@@ -180,35 +180,45 @@ jobs:
         # Check if binaries exist
         echo ""
         echo "Checking binaries..."
-        if which govee-artnet-bridge; then
-          echo "✓ govee-artnet-bridge found in PATH"
+        if which dmx-lan-bridge; then
+          echo "✓ dmx-lan-bridge found in PATH"
         else
-          echo "ERROR: govee-artnet-bridge not found in PATH"
+          echo "ERROR: dmx-lan-bridge not found in PATH"
           exit 1
         fi
 
-        if which govee-artnet-cli; then
-          echo "✓ govee-artnet-cli found in PATH"
+        if which dmx-lan-cli; then
+          echo "✓ dmx-lan-cli found in PATH"
         else
-          echo "ERROR: govee-artnet-cli not found in PATH"
+          echo "ERROR: dmx-lan-cli not found in PATH"
           exit 1
         fi
 
         # Test binaries run
         echo ""
         echo "Testing binary execution..."
-        if govee-artnet-bridge --help | head -10; then
-          echo "✓ govee-artnet-bridge --help succeeded"
+        if dmx-lan-bridge --help | head -10; then
+          echo "✓ dmx-lan-bridge --help succeeded"
         else
-          echo "ERROR: govee-artnet-bridge --help failed"
+          echo "ERROR: dmx-lan-bridge --help failed"
           exit 1
         fi
 
-        if govee-artnet-cli --help | head -10; then
-          echo "✓ govee-artnet-cli --help succeeded"
+        if dmx-lan-cli --help | head -10; then
+          echo "✓ dmx-lan-cli --help succeeded"
         else
-          echo "ERROR: govee-artnet-cli --help failed"
+          echo "ERROR: dmx-lan-cli --help failed"
           exit 1
+        fi
+
+        # Test legacy aliases for backward compatibility
+        echo ""
+        echo "Testing legacy aliases..."
+        if which govee-artnet-bridge >/dev/null 2>&1; then
+          echo "✓ Legacy govee-artnet-bridge alias available"
+        fi
+        if which govee-artnet-cli >/dev/null 2>&1; then
+          echo "✓ Legacy govee-artnet-cli alias available"
         fi
 
         # Check systemd service installed
@@ -217,41 +227,49 @@ jobs:
         echo "Debug: Checking for service file on disk..."
 
         # Check if service file exists (works reliably in all environments)
-        if [ -f /lib/systemd/system/govee-bridge.service ] || [ -f /usr/lib/systemd/system/govee-bridge.service ]; then
+        if [ -f /lib/systemd/system/dmx-bridge.service ] || [ -f /usr/lib/systemd/system/dmx-bridge.service ]; then
           echo "✓ Systemd service file installed"
-          ls -la /lib/systemd/system/govee-bridge.service 2>/dev/null || true
-          ls -la /usr/lib/systemd/system/govee-bridge.service 2>/dev/null || true
+          ls -la /lib/systemd/system/dmx-bridge.service 2>/dev/null || true
+          ls -la /usr/lib/systemd/system/dmx-bridge.service 2>/dev/null || true
         else
           echo "ERROR: Systemd service file not found"
           echo "Searched locations:"
-          ls -la /lib/systemd/system/ 2>/dev/null | grep govee || echo "  /lib/systemd/system/ - not found"
-          ls -la /usr/lib/systemd/system/ 2>/dev/null | grep govee || echo "  /usr/lib/systemd/system/ - not found"
+          ls -la /lib/systemd/system/ 2>/dev/null | grep dmx || echo "  /lib/systemd/system/ - not found"
+          ls -la /usr/lib/systemd/system/ 2>/dev/null | grep dmx || echo "  /usr/lib/systemd/system/ - not found"
           exit 1
         fi
 
         # Check config file installed
         echo ""
         echo "Checking configuration files..."
-        if [ -f /etc/govee-bridge/config.toml ]; then
-          echo "✓ Config file installed at /etc/govee-bridge/config.toml"
+        if [ -f /etc/dmx-bridge/config.toml ]; then
+          echo "✓ Config file installed at /etc/dmx-bridge/config.toml"
         else
           echo "ERROR: Config file not found"
           exit 1
         fi
 
-        # Check capability catalog installed
-        echo "Checking for capability catalog..."
-        if [ -f /usr/share/govee_artnet_lan_bridge/capability_catalog.json ]; then
-          echo "✓ Capability catalog found"
-          ls -la /usr/share/govee_artnet_lan_bridge/capability_catalog.json
-          echo "Verifying config points to it..."
-          ${{ matrix.use_sudo && 'sudo' || '' }} grep capability_catalog_path /etc/govee-bridge/config.toml || echo "NOT FOUND IN CONFIG"
-        else
-          echo "ERROR: Capability catalog not found"
+        # Check capability catalogs installed
+        echo "Checking for capability catalogs..."
+        all_found=true
+        for catalog in capability_catalog_govee.json capability_catalog_lifx.json; do
+          if [ -f "/usr/share/dmx_lan_bridge/$catalog" ]; then
+            echo "✓ $catalog found"
+            ls -la "/usr/share/dmx_lan_bridge/$catalog"
+          else
+            echo "ERROR: $catalog not found"
+            all_found=false
+          fi
+        done
+
+        if [ "$all_found" = "false" ]; then
           echo "Contents of /usr/share/:"
-          ls -la /usr/share/ | grep govee || echo "No govee directories"
+          ls -la /usr/share/ | grep dmx || echo "No dmx directories"
           exit 1
         fi
+
+        echo "Verifying config points to catalog directory..."
+        ${{ matrix.use_sudo && 'sudo' || '' }} grep capability_catalog /etc/dmx-bridge/config.toml || echo "NOT FOUND IN CONFIG"
 
         echo ""
         echo "✓ Installation verified successfully on ${{ matrix.name }}"
@@ -275,19 +293,21 @@ jobs:
         echo "=== Testing systemd service ==="
 
         # Debug: verify files exist before testing service
-        echo "Debug: Checking capability catalog and config..."
-        ls -la /usr/share/govee_artnet_lan_bridge/capability_catalog.json || echo "ERROR: Catalog file missing!"
-        echo "Config file contents (capability_catalog_path line):"
-        sudo grep capability_catalog /etc/govee-bridge/config.toml || echo "ERROR: Not in config!"
+        echo "Debug: Checking capability catalogs and config..."
+        for catalog in capability_catalog_govee.json capability_catalog_lifx.json; do
+          ls -la "/usr/share/dmx_lan_bridge/$catalog" || echo "ERROR: $catalog missing!"
+        done
+        echo "Config file contents (capability_catalog line):"
+        sudo grep capability_catalog /etc/dmx-bridge/config.toml || echo "ERROR: Not in config!"
         echo ""
 
         # Service should already be started by postinst
         # Check if service is active
-        if sudo systemctl is-active --quiet govee-bridge.service; then
+        if sudo systemctl is-active --quiet dmx-bridge.service; then
           echo "✓ Service is running"
 
           # Check service status
-          sudo systemctl status govee-bridge.service --no-pager -l || true
+          sudo systemctl status dmx-bridge.service --no-pager -l || true
 
           # Give it a moment to initialize
           sleep 3
@@ -298,31 +318,31 @@ jobs:
           else
             echo "⚠ API not responding (this may be normal if no devices configured)"
             echo "Service logs:"
-            sudo journalctl -u govee-bridge.service --no-pager -n 50
+            sudo journalctl -u dmx-bridge.service --no-pager -n 50
           fi
 
           # Test restart
           echo ""
           echo "Testing service restart..."
-          sudo systemctl restart govee-bridge.service
+          sudo systemctl restart dmx-bridge.service
           sleep 2
 
-          if sudo systemctl is-active --quiet govee-bridge.service; then
+          if sudo systemctl is-active --quiet dmx-bridge.service; then
             echo "✓ Service restart successful"
           else
             echo "ERROR: Service failed to restart"
-            sudo systemctl status govee-bridge.service --no-pager -l || true
+            sudo systemctl status dmx-bridge.service --no-pager -l || true
             exit 1
           fi
 
           # Stop service for cleanup
-          sudo systemctl stop govee-bridge.service
+          sudo systemctl stop dmx-bridge.service
         else
           echo "ERROR: Service is not active"
-          sudo systemctl status govee-bridge.service --no-pager -l || true
+          sudo systemctl status dmx-bridge.service --no-pager -l || true
           echo ""
           echo "Service logs:"
-          sudo journalctl -u govee-bridge.service --no-pager -n 100
+          sudo journalctl -u dmx-bridge.service --no-pager -n 100
           exit 1
         fi
 
@@ -333,12 +353,12 @@ jobs:
     - name: Test uninstallation
       run: |
         echo "=== Testing package removal ==="
-        if dpkg -l govee-artnet-bridge 2>/dev/null | grep -q '^ii'; then
-          ${{ matrix.use_sudo && 'sudo' || '' }} dpkg -r govee-artnet-bridge
+        if dpkg -l dmx-lan-bridge 2>/dev/null | grep -q '^ii'; then
+          ${{ matrix.use_sudo && 'sudo' || '' }} dpkg -r dmx-lan-bridge
           echo "✓ Package removed successfully"
 
           # Verify binaries are gone
-          if ! which govee-artnet-bridge >/dev/null 2>&1; then
+          if ! which dmx-lan-bridge >/dev/null 2>&1; then
             echo "✓ Binaries removed"
           else
             echo "ERROR: Binaries still present after removal"
@@ -346,7 +366,7 @@ jobs:
           fi
 
           # Verify config is still present (should be kept on remove, not purge)
-          if [ -f /etc/govee-bridge/config.toml ]; then
+          if [ -f /etc/dmx-bridge/config.toml ]; then
             echo "✓ Config file preserved (expected behavior)"
           fi
         else
