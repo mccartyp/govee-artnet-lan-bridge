@@ -115,6 +115,7 @@ class DiscoveryService:
         self.logger = get_logger("devices.discovery")
         self._seen: Dict[str, str] = {}
         self._lifx_version_requests: set[tuple[str, str]] = set()
+        self._lifx_label_requests: set[tuple[str, str]] = set()
         self._probe_payload = self.config.discovery_probe_payload.encode("utf-8")
         self._lifx_socket: Optional[socket.socket] = None
         self._lifx_task: Optional[asyncio.Task] = None
@@ -218,6 +219,7 @@ class DiscoveryService:
         """Clear seen devices for a new discovery cycle."""
         self._seen.clear()
         self._lifx_version_requests.clear()
+        self._lifx_label_requests.clear()
 
     async def run_cycle(self) -> None:
         """Run a discovery cycle by sending probes for all protocols."""
@@ -376,6 +378,22 @@ class DiscoveryService:
                             "Failed to send LIFX version request",
                             extra={"device_id": device_id, "ip": ip, "error": str(exc)},
                         )
+                label_key = (device_id, ip)
+                if label_key not in self._lifx_label_requests and self._lifx_socket:
+                    try:
+                        label_request = lifx_handler.build_get_label_request(parsed["mac"])
+                        self._lifx_socket.sendto(label_request, (ip, port))
+                        self._lifx_label_requests.add(label_key)
+                        self.logger.debug(
+                            "Sent LIFX GetLabel request",
+                            extra={"device_id": device_id, "ip": ip, "port": port},
+                        )
+                    except Exception as exc:
+                        record_discovery_error("lifx_label_request_error")
+                        self.logger.debug(
+                            "Failed to send LIFX label request",
+                            extra={"device_id": device_id, "ip": ip, "error": str(exc)},
+                        )
 
                 if previous_ip and previous_ip == ip:
                     self.logger.debug(
@@ -452,6 +470,48 @@ class DiscoveryService:
                 record_discovery_response("lifx_version")
                 self.logger.debug(
                     "Scheduling LIFX version record to database",
+                    extra={"device_id": device_id, "ip": ip}
+                )
+                self._schedule(self.store.record_discovery(discovery_result))
+                return
+
+            if header["type"] == lifx_handler.MSG_STATE_LABEL:
+                try:
+                    label_details = lifx_handler.parse_state_label(header["payload"])
+                except Exception as exc:
+                    record_discovery_error("lifx_label_parse_error")
+                    self.logger.debug(
+                        "Failed to parse LIFX label response",
+                        extra={"from": addr, "error": str(exc)},
+                    )
+                    return
+
+                device_mac = header.get("target", b"")
+                device_id = ":".join(f"{b:02X}" for b in device_mac)
+                ip = addr[0]
+                label = label_details.get("label") or None
+                discovery_result = DiscoveryResult(
+                    id=device_id,
+                    ip=ip,
+                    protocol="lifx",
+                    model_number=None,
+                    device_type="light",
+                    length_meters=None,
+                    led_count=None,
+                    led_density_per_meter=None,
+                    has_zones=None,
+                    zone_count=None,
+                    description=label,
+                    capabilities=None,
+                    manual=False,
+                )
+                self.logger.info(
+                    "Received LIFX label",
+                    extra={"device_id": device_id, "ip": ip, "label": label},
+                )
+                record_discovery_response("lifx_label")
+                self.logger.debug(
+                    "Scheduling LIFX label record to database",
                     extra={"device_id": device_id, "ip": ip}
                 )
                 self._schedule(self.store.record_discovery(discovery_result))
