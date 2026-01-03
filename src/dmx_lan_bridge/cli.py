@@ -437,8 +437,8 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
         "--type",
         dest="mapping_type",
         choices=["range", "discrete"],
-        default="range",
-        help="Mapping type (default: range). Use discrete for single-field channels.",
+        default=None,
+        help="Mapping type. Defaults to 'discrete' if --field is provided, otherwise 'range'.",
     )
     create.add_argument(
         "--template",
