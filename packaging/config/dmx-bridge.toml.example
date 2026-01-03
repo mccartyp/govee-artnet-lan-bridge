@@ -57,6 +57,10 @@ sacn_multicast = true
 # List of universe numbers to listen on via multicast (1-63999)
 # Each universe joins multicast group 239.255.(universe>>8).(universe&0xFF)
 # Default: [1] (universe 1 only)
+#
+# IMPORTANT: sACN (E1.31) universes are 1–63999. Art-Net supports universe 0.
+# Universe 0 is Art-Net-only in this application; universes 1+ are mergeable across protocols.
+#
 # Examples:
 #   [1]           - Listen only to universe 1
 #   [1, 2, 3]     - Listen to universes 1, 2, 3

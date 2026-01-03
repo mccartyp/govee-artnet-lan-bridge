@@ -105,22 +105,24 @@ Discovery responses that include a `model_number` automatically pull metadata fr
 Map DMX channels to your devices using templates:
 
 ```bash
-# Map an RGB light strip to channels 1-3 on universe 0
+# Map an RGB light strip to channels 1-3 on universe 1
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --start-channel 1 \
   --template RGB
 
 # Map an RGB+CT light to channels 10-13
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
-  --universe 0 \
+  --universe 1 \
   --start-channel 10 \
   --template RGBc
 ```
 
-**Note:** Mappings are protocol-agnostic. The same mapping works whether you send ArtNet or sACN (when supported) to that universe.
+**Note:** Mappings are protocol-agnostic. The same mapping works whether you send ArtNet or sACN to that universe.
+
+**Universe Defaults:** sACN (E1.31) universes are 1–63999. Art-Net supports universe 0. Universe 0 is Art-Net-only in this application; universes 1+ are mergeable across protocols.
 
 ### 5. Send DMX Data
 
@@ -222,7 +224,7 @@ artnet-lan-cli mappings list
 # Create mapping with template
 artnet-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --start-channel 1 \
   --template RGB
 
