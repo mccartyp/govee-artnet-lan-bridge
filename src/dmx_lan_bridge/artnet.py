@@ -324,6 +324,17 @@ class UniverseMapping:
                 aggregated[device_id] = {}
                 device_order.append(device_id)
             _merge_payloads(aggregated[device_id], payload)
+        if not aggregated and random.random() <= self._log_sample_rate:
+            self.logger.debug(
+                "ArtNet data did not match any mappings",
+                extra={
+                    "universe": self.universe,
+                    "payload_length": len(data),
+                    "payload_preview": list(data[: min(16, len(data))]),
+                    "mapping_count": len(self._mappings),
+                    "context_id": context_id,
+                },
+            )
         return [
             DeviceStateUpdate(device_id=device_id, payload=aggregated[device_id], context_id=context_id)
             for device_id in device_order
