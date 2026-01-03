@@ -28,7 +28,7 @@ Usage: scripts/install.sh <install|uninstall> [--system|--user] [options]
 
 Options:
   --no-start           Install unit files but do not start them immediately.
-  --setcap             Apply cap_net_bind_service to the govee-artnet-bridge binary.
+  --setcap             Apply cap_net_bind_service to the dmx-lan-bridge binary.
   --python PATH        Python interpreter to use (default: python3 or $PYTHON env).
   -h, --help           Show this help message.
 
@@ -67,9 +67,9 @@ maybe_setcap() {
   fi
 
   local bin_path
-  bin_path="$(command -v govee-artnet-bridge || true)"
+  bin_path="$(command -v dmx-lan-bridge || command -v govee-artnet-bridge || true)"
   if [[ -z "${bin_path}" ]]; then
-    warn "Could not find govee-artnet-bridge binary to apply capabilities."
+    warn "Could not find dmx-lan-bridge binary to apply capabilities."
     return
   fi
 
@@ -123,34 +123,34 @@ install_system() {
   log "Installing Python package (system)..."
   "${PYTHON_BIN}" -m pip install --break-system-packages --upgrade "${REPO_ROOT}"
 
-  if id -u govee-bridge >/dev/null 2>&1; then
-    log "User govee-bridge already exists."
+  if id -u dmx-bridge >/dev/null 2>&1; then
+    log "User dmx-bridge already exists."
   else
-    log "Creating system user govee-bridge..."
-    useradd --system --home /var/lib/govee-bridge --create-home \
-      --shell /usr/sbin/nologin --comment "Govee Artnet bridge service user" \
-      govee-bridge
+    log "Creating system user dmx-bridge..."
+    useradd --system --home /var/lib/dmx-bridge --create-home \
+      --shell /usr/sbin/nologin --comment "DMX LAN bridge service user" \
+      dmx-bridge
   fi
 
-  log "Ensuring configuration directory /etc/govee-bridge..."
-  install -d -m 755 /etc/govee-bridge
-  if [[ ! -f /etc/govee-bridge/config.toml ]]; then
-    install -m 640 -o root -g govee-bridge "${CONFIG_TEMPLATE}" /etc/govee-bridge/config.toml
+  log "Ensuring configuration directory /etc/dmx-bridge..."
+  install -d -m 755 /etc/dmx-bridge
+  if [[ ! -f /etc/dmx-bridge/config.toml ]]; then
+    install -m 640 -o root -g dmx-bridge "${CONFIG_TEMPLATE}" /etc/dmx-bridge/config.toml
   else
-    log "Existing /etc/govee-bridge/config.toml preserved."
+    log "Existing /etc/dmx-bridge/config.toml preserved."
   fi
 
-  log "Ensuring data directory /var/lib/govee-bridge..."
-  install -d -o govee-bridge -g govee-bridge -m 750 /var/lib/govee-bridge
+  log "Ensuring data directory /var/lib/dmx-bridge..."
+  install -d -o dmx-bridge -g dmx-bridge -m 750 /var/lib/dmx-bridge
 
   log "Installing systemd unit..."
-  install -m 644 "${SYSTEM_UNIT}" /etc/systemd/system/govee-bridge.service
+  install -m 644 "${SYSTEM_UNIT}" /etc/systemd/system/dmx-bridge.service
   systemctl daemon-reload
 
   if [[ "${START_SERVICE}" -eq 1 ]]; then
-    systemctl enable --now govee-bridge.service
+    systemctl enable --now dmx-bridge.service
   else
-    systemctl enable govee-bridge.service
+    systemctl enable dmx-bridge.service
     log "Service installed but not started (--no-start)."
   fi
 
@@ -165,15 +165,15 @@ install_user() {
   "${PYTHON_BIN}" -m pip install --user --upgrade "${REPO_ROOT}"
 
   local config_dir data_dir unit_dir config_path
-  config_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/govee-bridge"
-  data_dir="${XDG_DATA_HOME:-${HOME}/.local/share}/govee-artnet-lan-bridge"
+  config_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/dmx-bridge"
+  data_dir="${XDG_DATA_HOME:-${HOME}/.local/share}/dmx-lan-bridge"
   unit_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
   config_path="${config_dir}/config.toml"
 
   install -d -m 755 "${config_dir}" "${data_dir}" "${unit_dir}"
 
   if [[ ! -f "${config_path}" ]]; then
-    sed "s|/var/lib/govee-bridge/bridge.sqlite3|${data_dir}/bridge.sqlite3|g" \
+    sed "s|/var/lib/dmx-bridge/bridge.sqlite3|${data_dir}/bridge.sqlite3|g" \
       "${CONFIG_TEMPLATE}" >"${config_path}"
     log "Wrote user config template to ${config_path}"
   else
@@ -181,13 +181,13 @@ install_user() {
   fi
 
   log "Installing user systemd unit..."
-  install -m 644 "${USER_UNIT}" "${unit_dir}/govee-bridge-user.service"
+  install -m 644 "${USER_UNIT}" "${unit_dir}/dmx-bridge-user.service"
   systemctl --user daemon-reload
 
   if [[ "${START_SERVICE}" -eq 1 ]]; then
-    systemctl --user enable --now govee-bridge-user.service
+    systemctl --user enable --now dmx-bridge-user.service
   else
-    systemctl --user enable govee-bridge-user.service
+    systemctl --user enable dmx-bridge-user.service
     log "User service installed but not started (--no-start)."
   fi
 
@@ -199,24 +199,24 @@ uninstall_system() {
   require_root
   require_command systemctl
 
-  systemctl stop govee-bridge.service 2>/dev/null || true
-  systemctl disable govee-bridge.service 2>/dev/null || true
-  rm -f /etc/systemd/system/govee-bridge.service
+  systemctl stop dmx-bridge.service 2>/dev/null || true
+  systemctl disable dmx-bridge.service 2>/dev/null || true
+  rm -f /etc/systemd/system/dmx-bridge.service
   systemctl daemon-reload
 
-  "${PYTHON_BIN}" -m pip uninstall --break-system-packages -y govee-artnet-lan-bridge || true
+  "${PYTHON_BIN}" -m pip uninstall --break-system-packages -y dmx-lan-bridge || true
   log "System files removed. Configuration and data were left in place."
 }
 
 uninstall_user() {
   require_command systemctl
 
-  systemctl --user stop govee-bridge-user.service 2>/dev/null || true
-  systemctl --user disable govee-bridge-user.service 2>/dev/null || true
-  rm -f "${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user/govee-bridge-user.service"
+  systemctl --user stop dmx-bridge-user.service 2>/dev/null || true
+  systemctl --user disable dmx-bridge-user.service 2>/dev/null || true
+  rm -f "${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user/dmx-bridge-user.service"
   systemctl --user daemon-reload
 
-  "${PYTHON_BIN}" -m pip uninstall -y govee-artnet-lan-bridge || true
+  "${PYTHON_BIN}" -m pip uninstall -y dmx-lan-bridge || true
   log "User files removed. Configuration and data were left in place."
 }
 

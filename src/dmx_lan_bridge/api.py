@@ -17,7 +17,13 @@ import uvicorn
 from .capabilities import NormalizedCapabilities, validate_command_payload
 from .config import Config, ManualDevice
 from .devices import DeviceStateUpdate, DeviceStore
-from .events import EVENT_MAPPING_CREATED, EVENT_MAPPING_DELETED, EVENT_MAPPING_UPDATED
+from .events import (
+    EVENT_DEVICE_DISABLED,
+    EVENT_DEVICE_ENABLED,
+    EVENT_MAPPING_CREATED,
+    EVENT_MAPPING_DELETED,
+    EVENT_MAPPING_UPDATED,
+)
 from .health import HealthMonitor
 from .logging import get_logger, redact_mapping
 from .metrics import (
@@ -56,6 +62,7 @@ class DeviceCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     id: str
     ip: str
+    protocol: str = "govee"
     model_number: Optional[str] = Field(
         default=None, alias="model"
     )
@@ -65,9 +72,21 @@ class DeviceCreate(BaseModel):
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[int] = None
     enabled: bool = True
+
+    @field_validator("protocol")
+    @classmethod
+    def validate_protocol(cls, v: str) -> str:
+        """Validate that protocol is supported."""
+        from .protocol import get_supported_protocols
+        supported = get_supported_protocols()
+        if v not in supported:
+            raise ValueError(
+                f"Unsupported protocol '{v}'. Supported protocols: {', '.join(supported)}"
+            )
+        return v
 
 
 class DeviceUpdate(BaseModel):
@@ -85,8 +104,8 @@ class DeviceUpdate(BaseModel):
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[int] = None
     enabled: Optional[bool] = None
 
 
@@ -96,14 +115,16 @@ class DeviceOut(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     id: str
     ip: Optional[str]
+    protocol: str
+    name: Optional[str] = None
     model_number: Optional[str]
     model: Optional[str] = None
     device_type: Optional[str] = None
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[str] = None
     description: Optional[str]
     capabilities: Optional[Any]
     manual: bool
@@ -112,6 +133,7 @@ class DeviceOut(BaseModel):
     enabled: bool
     stale: bool
     offline: bool
+    poll_health: str = "healthy"
     last_seen: Optional[str]
     first_seen: Optional[str]
     poll_last_success_at: Optional[str] = None
@@ -133,10 +155,14 @@ class DeviceOut(BaseModel):
 
 
 class MappingCreate(BaseModel):
-    """Payload for creating a mapping."""
+    """Payload for creating a mapping.
+
+    Note: sACN (E1.31) universes are 1–63999. Art-Net supports universe 0.
+    Universe 0 is Art-Net-only in this application; universes 1+ are mergeable across protocols.
+    """
 
     device_id: str
-    universe: int = Field(ge=0)
+    universe: int = Field(default=1, ge=0, description="DMX universe (0=Art-Net only, 1+=multi-protocol)")
     channel: Optional[int] = Field(default=None, gt=0)
     start_channel: Optional[int] = Field(default=None, gt=0)
     length: Optional[int] = Field(default=1, gt=0)
@@ -339,11 +365,12 @@ def create_app(
 ) -> FastAPI:
     """Create and configure a FastAPI application."""
 
-    logger = get_logger("govee.api")
-    request_logger = get_logger("govee.api.middleware")
+    logger = get_logger("artnet.api")
+    request_logger = get_logger("artnet.api.middleware")
     auth_dependency = _build_auth_dependency(config)
     app = FastAPI(
-        title="Govee Artnet LAN Bridge API",
+        title="ArtNet LAN Bridge API",
+        description="Multi-protocol ArtNet to LAN device bridge (Govee, LIFX, and more)",
         docs_url="/docs" if config.api_docs else None,
         redoc_url="/redoc" if config.api_docs else None,
         openapi_url="/openapi.json" if config.api_docs else None,
@@ -422,6 +449,7 @@ def create_app(
         payload: dict[str, Any] = dict(await store.stats())
         payload.update(await store.polling_stats())
         payload["device_polling_enabled"] = config.device_poll_enabled
+        payload["protocols"] = await store.protocol_stats()
         return payload
 
     @app.get("/metrics")
@@ -445,8 +473,8 @@ def create_app(
             length_meters=payload.length_meters,
             led_count=payload.led_count,
             led_density_per_meter=payload.led_density_per_meter,
-            has_segments=payload.has_segments,
-            segment_count=payload.segment_count,
+            has_zones=payload.has_zones,
+            zone_count=payload.zone_count,
         )
         device = await store.create_manual_device(manual)
         if payload.enabled is not None and not payload.enabled:
@@ -471,14 +499,20 @@ def create_app(
             length_meters=payload.length_meters,
             led_count=payload.led_count,
             led_density_per_meter=payload.led_density_per_meter,
-            has_segments=payload.has_segments,
-            segment_count=payload.segment_count,
+            has_zones=payload.has_zones,
+            zone_count=payload.zone_count,
             description=payload.description,
             capabilities=payload.capabilities,
             enabled=payload.enabled,
         )
         if not updated:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+
+        # Emit device enabled/disabled event if enabled state was changed
+        if payload.enabled is not None and event_bus:
+            event_type = EVENT_DEVICE_ENABLED if payload.enabled else EVENT_DEVICE_DISABLED
+            await event_bus.publish(event_type, {"device_id": device_id, "enabled": payload.enabled})
+
         return DeviceOut(**updated.__dict__)
 
     @app.post("/devices/{device_id}/test", dependencies=[Depends(auth_dependency)], status_code=status.HTTP_202_ACCEPTED)
@@ -573,7 +607,7 @@ def create_app(
                 # Publish event for each created mapping
                 if event_bus:
                     for row in rows:
-                        await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe})
+                        await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe, "channel": row.channel, "device_id": row.device_id, "field": row.field, "fields": list(row.fields)})
                 return result
             channel = payload.channel or payload.start_channel
             if channel is None:
@@ -597,7 +631,7 @@ def create_app(
             result = MappingOut(**row.__dict__)
             # Publish event after successfully creating mapping
             if event_bus:
-                await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe})
+                await event_bus.publish(EVENT_MAPPING_CREATED, {"mapping_id": row.id, "universe": row.universe, "channel": row.channel, "device_id": row.device_id, "field": row.field, "fields": list(row.fields)})
             return result
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -896,7 +930,7 @@ class ApiService:
         self._reload_callback = reload_callback
         self.log_buffer = log_buffer
         self.event_bus = event_bus
-        self.logger = get_logger("govee.api")
+        self.logger = get_logger("artnet.api")
         self._server: Optional[uvicorn.Server] = None
         self._server_task: Optional[Any] = None
 

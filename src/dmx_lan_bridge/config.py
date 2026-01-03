@@ -1,4 +1,4 @@
-"""Configuration loading for the Govee Artnet LAN bridge."""
+"""Configuration loading for the DMX LAN bridge."""
 
 from __future__ import annotations
 
@@ -18,24 +18,31 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreter
     import tomli as tomllib  # type: ignore
 
 
-CONFIG_ENV_PREFIX = "GOVEE_ARTNET_"
-CONFIG_VERSION = 1
+CONFIG_ENV_PREFIX = "DMX_BRIDGE_"
+CONFIG_VERSION = 2
 MIN_SUPPORTED_CONFIG_VERSION = 1
 
 
 def _default_db_path() -> Path:
     base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return base / "govee-artnet-lan-bridge" / "bridge.sqlite3"
+    return base / "dmx-lan-bridge" / "bridge.sqlite3"
+
+
+def _default_capability_catalog_dir() -> Path:
+    """Get the directory containing protocol-specific capability catalogs."""
+    repo_path = Path(__file__).resolve().parents[2] / "res"
+    data_base = Path(sysconfig.get_path("data") or "").expanduser()
+    share_path = data_base / "share" / "dmx_lan_bridge"
+    # Return first existing directory, or repo path as default
+    for path in (repo_path, share_path):
+        if path.exists() and path.is_dir():
+            return path
+    return repo_path
 
 
 def _default_capability_catalog_path() -> Path:
-    repo_path = Path(__file__).resolve().parents[2] / "res" / "capability_catalog.json"
-    data_base = Path(sysconfig.get_path("data") or "").expanduser()
-    share_path = data_base / "share" / "govee_artnet_lan_bridge" / "capability_catalog.json"
-    for path in (repo_path, share_path):
-        if path.exists():
-            return path
-    return repo_path
+    """Legacy function for backwards compatibility - returns directory now."""
+    return _default_capability_catalog_dir()
 
 
 @dataclass(frozen=True)
@@ -44,6 +51,7 @@ class ManualDevice:
 
     id: str
     ip: str
+    protocol: str = "govee"
     model_number: Optional[str] = None
     device_type: Optional[str] = None
     description: Optional[str] = None
@@ -51,21 +59,30 @@ class ManualDevice:
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[int] = None
 
 
 @dataclass(frozen=True)
 class Config:
     """Application configuration."""
 
+    # Input Protocol Configuration
+    artnet_enabled: bool = True
     artnet_port: int = 6454
+    artnet_priority: int = 25  # Fixed priority for ArtNet (0-200, below sACN default)
+    sacn_enabled: bool = True  # sACN/E1.31 enabled by default
+    sacn_port: int = 5568
+    sacn_multicast: bool = True
+    sacn_universes: Sequence[int] = (1,)  # Universes to listen on (multicast mode)
+
+    # API Configuration
     api_port: int = 8000
     api_key: Optional[str] = None
     api_bearer_token: Optional[str] = None
     api_docs: bool = True
     db_path: Path = _default_db_path()
-    capability_catalog_path: Path = _default_capability_catalog_path()
+    capability_catalog_dir: Path = _default_capability_catalog_dir()
     discovery_interval: float = 30.0
     rate_limit_per_second: float = 10.0
     rate_limit_burst: int = 20
@@ -120,8 +137,8 @@ class Config:
     event_bus_enabled: bool = True
 
     def __post_init__(self) -> None:
-        # Validate all fields except capability_catalog_path
-        # (capability_catalog_path is validated after loading config file in from_sources)
+        # Validate all fields except capability_catalog_dir
+        # (capability_catalog_dir is validated after loading config file in from_sources)
         _validate_config(self, skip_capability_catalog_check=True)
 
     def logging_dict(self) -> Dict[str, Any]:
@@ -149,11 +166,17 @@ class Config:
         ]
         base: Dict[str, Any] = {
             "config_version": self.config_version,
+            "artnet_enabled": self.artnet_enabled,
             "artnet_port": self.artnet_port,
+            "artnet_priority": self.artnet_priority,
+            "sacn_enabled": self.sacn_enabled,
+            "sacn_port": self.sacn_port,
+            "sacn_multicast": self.sacn_multicast,
+            "sacn_universes": list(self.sacn_universes),
             "api_port": self.api_port,
             "api_docs": self.api_docs,
             "db_path": str(self.db_path),
-            "capability_catalog_path": str(self.capability_catalog_path),
+            "capability_catalog_dir": str(self.capability_catalog_dir),
             "discovery_interval": self.discovery_interval,
             "discovery_multicast_address": self.discovery_multicast_address,
             "discovery_multicast_port": self.discovery_multicast_port,
@@ -233,6 +256,7 @@ class Config:
 def _validate_config(config: Config, skip_capability_catalog_check: bool = False) -> None:
     _validate_version(config.config_version)
     _validate_range("artnet_port", config.artnet_port, 1, 65535)
+    _validate_range("artnet_priority", config.artnet_priority, 0, 200)
     _validate_range("api_port", config.api_port, 1, 65535)
     _validate_range("discovery_interval", config.discovery_interval, 1.0, 3600.0)
     _validate_range(
@@ -254,7 +278,7 @@ def _validate_config(config: Config, skip_capability_catalog_check: bool = False
     _validate_range("device_poll_timeout", config.device_poll_timeout, 0.05, 60.0)
     _validate_range("device_poll_rate_per_second", config.device_poll_rate_per_second, 0.0, 10000.0)
     _validate_range("device_poll_rate_burst", config.device_poll_rate_burst, 0, 100000)
-    _validate_range("device_poll_offline_threshold", config.device_poll_offline_threshold, 1, 1000)
+    _validate_range("device_poll_offline_threshold", config.device_poll_offline_threshold, 2, 1000)
     _validate_range("device_poll_backoff_base", config.device_poll_backoff_base, 0.0, 300.0)
     _validate_range("device_poll_backoff_factor", config.device_poll_backoff_factor, 1.0, 10.0)
     _validate_range("device_poll_backoff_max", config.device_poll_backoff_max, 0.1, 3600.0)
@@ -267,8 +291,10 @@ def _validate_config(config: Config, skip_capability_catalog_check: bool = False
     _validate_range("noisy_log_sample_rate", config.noisy_log_sample_rate, 0.0, 1.0)
     _validate_range("trace_context_sample_rate", config.trace_context_sample_rate, 0.0, 1.0)
     if not skip_capability_catalog_check:
-        if not config.capability_catalog_path or not Path(config.capability_catalog_path).exists():
-            raise ValueError("capability_catalog_path must point to an existing file.")
+        if not config.capability_catalog_dir or not Path(config.capability_catalog_dir).exists():
+            raise ValueError("capability_catalog_dir must point to an existing directory.")
+        if not Path(config.capability_catalog_dir).is_dir():
+            raise ValueError("capability_catalog_dir must be a directory, not a file.")
     for field_name, value in (
         ("log_level", config.log_level),
         ("discovery_log_level", config.discovery_log_level),
@@ -305,8 +331,8 @@ def _validate_log_level_value(value: Optional[str], name: str) -> None:
 
 def _parse_cli(cli_args: Optional[Iterable[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="govee-artnet-bridge",
-        description="Run the Govee Artnet LAN bridge.",
+        prog="artnet-lan-bridge",
+        description="Run the ArtNet LAN bridge (multi-protocol support).",
     )
     parser.add_argument("--config", type=Path, help="Path to TOML config file.")
     parser.add_argument("--artnet-port", type=int, help="UDP port for Artnet traffic.")
@@ -635,10 +661,15 @@ def _apply_mapping(config: Config, overrides: Mapping[str, Any]) -> Config:
     for key, value in overrides.items():
         if value is None:
             continue
-        if key in {"db_path", "capability_catalog_path"}:
-            data[key] = _coerce_path(value)
+        if key in {"db_path", "capability_catalog_dir", "capability_catalog_path"}:
+            # capability_catalog_path is legacy name, map to capability_catalog_dir
+            if key == "capability_catalog_path":
+                data["capability_catalog_dir"] = _coerce_path(value)
+            else:
+                data[key] = _coerce_path(value)
         elif key in {
             "artnet_port",
+            "artnet_priority",
             "api_port",
             "rate_limit_burst",
             "device_max_queue_depth",

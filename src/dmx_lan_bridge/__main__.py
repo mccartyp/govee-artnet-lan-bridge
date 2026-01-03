@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable, List, Mapping, Optional
 
-from .capabilities import CapabilityCatalog
 from .config import Config, load_config
 from .db import apply_migrations
 from .devices import DeviceStore
@@ -19,7 +18,7 @@ from .artnet import ArtNetService
 from .discovery import DiscoveryService
 from .health import BackoffPolicy, HealthMonitor
 from .poller import DevicePollerService
-from .protocol import GoveeProtocolService
+from .udp_protocol import GoveeProtocolService
 from .sender import DeviceSenderService
 from .logging import configure_logging, get_logger
 
@@ -30,6 +29,7 @@ class RunningServices:
 
     protocol: Optional[GoveeProtocolService] = None
     discovery: Optional[DiscoveryService] = None
+    dmx_mapping: Optional[Any] = None  # DmxMappingService (imported in loop to avoid circular)
     artnet: Optional[ArtNetService] = None
     sender: Optional[DeviceSenderService] = None
     poller: Optional[DevicePollerService] = None
@@ -41,7 +41,7 @@ async def _protocol_loop(
     config: Config,
     services: Optional[RunningServices] = None,
 ) -> None:
-    logger = get_logger("govee.protocol")
+    logger = get_logger("artnet.protocol")
     service = GoveeProtocolService(config)
     if services is not None:
         services.protocol = service
@@ -64,7 +64,7 @@ async def _discovery_loop(
     protocol: Optional[GoveeProtocolService] = None,
     services: Optional[RunningServices] = None,
 ) -> None:
-    logger = get_logger("govee.discovery")
+    logger = get_logger("artnet.discovery")
     backoff = BackoffPolicy(
         base=config.device_backoff_base,
         factor=config.device_backoff_factor,
@@ -132,7 +132,7 @@ async def _discovery_loop(
 
 
 async def _rate_limit_monitor(stop_event: asyncio.Event, config: Config) -> None:
-    logger = get_logger("govee.rate_limit")
+    logger = get_logger("artnet.rate_limit")
     logger.info(
         "Rate limit monitor starting",
         extra={
@@ -154,43 +154,125 @@ async def _rate_limit_monitor(stop_event: asyncio.Event, config: Config) -> None
         logger.info("Rate limit monitor stopped")
 
 
-async def _artnet_loop(
+async def _dmx_mapping_loop(
     stop_event: asyncio.Event,
     config: Config,
     store: DeviceStore,
     health: HealthMonitor,
     services: Optional[RunningServices] = None,
-    artnet_state: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    dmx_state: Optional[Mapping[str, Mapping[str, Any]]] = None,
     event_bus: Optional[Any] = None,
 ) -> None:
-    logger = get_logger("govee.artnet")
-    service = ArtNetService(config, store, initial_last_payloads=artnet_state, event_bus=event_bus)
+    """DMX mapping service loop - handles protocol-agnostic DMX→Device mapping."""
+    logger = get_logger("dmx.mapping")
+
+    # Import here to avoid circular dependency
+    from .dmx import DmxMappingService
+
+    service = DmxMappingService(config, store, initial_last_payloads=dmx_state, event_bus=event_bus)
     if services is not None:
-        services.artnet = service
+        services.dmx_mapping = service
+
     backoff = BackoffPolicy(
         base=config.device_backoff_base,
         factor=config.device_backoff_factor,
         maximum=config.device_backoff_max,
     )
     failures = 0
+
     while not stop_event.is_set():
-        allowed, remaining = await health.allow_attempt("artnet")
+        allowed, remaining = await health.allow_attempt("dmx_mapping")
         if not allowed:
             logger.warning(
-                "ArtNet listener suppressed after repeated failures",
+                "DMX mapping service suppressed after repeated failures",
                 extra={"cooldown_seconds": round(remaining, 2)},
             )
             await _wait_or_stop(stop_event, remaining)
             continue
+
+        try:
+            await service.start()
+            await health.record_success("dmx_mapping")
+        except Exception as exc:
+            failures += 1
+            logger.exception("DMX mapping service failed to start; will retry")
+            await health.record_failure("dmx_mapping", exc)
+            await _wait_or_stop(stop_event, backoff.delay(failures))
+            continue
+
+        failures = 0
+        logger.info("DMX mapping service running")
+
+        # Service runs until stop requested
+        try:
+            await stop_event.wait()
+        except asyncio.CancelledError:
+            pass
+
+        break
+
+    await service.stop()
+    if services is not None:
+        services.dmx_mapping = None
+    logger.info("DMX mapping loop stopped")
+
+
+async def _artnet_loop(
+    stop_event: asyncio.Event,
+    config: Config,
+    health: HealthMonitor,
+    services: Optional[RunningServices] = None,
+) -> None:
+    """ArtNet input protocol loop - receives ArtNet packets and forwards to DMX mapper."""
+    logger = get_logger("artnet.input")
+
+    # Wait for DMX mapping service to be available
+    while not stop_event.is_set():
+        if services and services.dmx_mapping:
+            break
+        logger.debug("Waiting for DMX mapping service to start...")
+        await asyncio.sleep(0.1)
+
+    if stop_event.is_set():
+        logger.info("ArtNet loop cancelled before start")
+        return
+
+    dmx_mapper = services.dmx_mapping if services else None
+    if not dmx_mapper:
+        logger.error("DMX mapping service not available, ArtNet cannot start")
+        return
+
+    service = ArtNetService(config, dmx_mapper=dmx_mapper)
+    if services is not None:
+        services.artnet = service
+
+    backoff = BackoffPolicy(
+        base=config.device_backoff_base,
+        factor=config.device_backoff_factor,
+        maximum=config.device_backoff_max,
+    )
+    failures = 0
+
+    while not stop_event.is_set():
+        allowed, remaining = await health.allow_attempt("artnet")
+        if not allowed:
+            logger.warning(
+                "ArtNet input suppressed after repeated failures",
+                extra={"cooldown_seconds": round(remaining, 2)},
+            )
+            await _wait_or_stop(stop_event, remaining)
+            continue
+
         try:
             await service.start()
             await health.record_success("artnet")
         except Exception as exc:
             failures += 1
-            logger.exception("ArtNet service failed to start; will retry")
+            logger.exception("ArtNet input failed to start; will retry")
             await health.record_failure("artnet", exc)
             await _wait_or_stop(stop_event, backoff.delay(failures))
             continue
+
         failures = 0
         wait_tasks = [
             asyncio.create_task(stop_event.wait()),
@@ -199,16 +281,101 @@ async def _artnet_loop(
         done, pending = await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
+
         if stop_event.is_set():
             break
-        logger.warning("ArtNet listener restarting after error")
+
+        logger.warning("ArtNet input restarting after error")
         await health.record_failure("artnet")
         failures += 1
         await _wait_or_stop(stop_event, backoff.delay(failures))
+
     await service.stop()
     if services is not None:
         services.artnet = None
     logger.info("ArtNet loop stopped")
+
+
+async def _sacn_loop(
+    stop_event: asyncio.Event,
+    config: Config,
+    health: HealthMonitor,
+    services: Optional[RunningServices] = None,
+) -> None:
+    """sACN/E1.31 input protocol loop - receives sACN packets and forwards to DMX mapper."""
+    logger = get_logger("sacn.input")
+
+    # Wait for DMX mapping service to be available
+    while not stop_event.is_set():
+        if services and services.dmx_mapping:
+            break
+        logger.debug("Waiting for DMX mapping service to start...")
+        await asyncio.sleep(0.1)
+
+    if stop_event.is_set():
+        logger.info("sACN loop cancelled before start")
+        return
+
+    dmx_mapper = services.dmx_mapping if services else None
+    if not dmx_mapper:
+        logger.error("DMX mapping service not available, sACN cannot start")
+        return
+
+    # Import here to avoid importing if not enabled
+    from .sacn import SacnService
+
+    service = SacnService(config, dmx_mapper=dmx_mapper)
+    if services is not None:
+        services.sacn = service  # type: ignore[attr-defined]
+
+    backoff = BackoffPolicy(
+        base=config.device_backoff_base,
+        factor=config.device_backoff_factor,
+        maximum=config.device_backoff_max,
+    )
+    failures = 0
+
+    while not stop_event.is_set():
+        allowed, remaining = await health.allow_attempt("sacn")
+        if not allowed:
+            logger.warning(
+                "sACN input suppressed after repeated failures",
+                extra={"cooldown_seconds": round(remaining, 2)},
+            )
+            await _wait_or_stop(stop_event, remaining)
+            continue
+
+        try:
+            await service.start()
+            await health.record_success("sacn")
+        except Exception as exc:
+            failures += 1
+            logger.exception("sACN input failed to start; will retry")
+            await health.record_failure("sacn", exc)
+            await _wait_or_stop(stop_event, backoff.delay(failures))
+            continue
+
+        failures = 0
+        wait_tasks = [
+            asyncio.create_task(stop_event.wait()),
+            asyncio.create_task(service.error_event.wait()),
+        ]
+        done, pending = await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+
+        if stop_event.is_set():
+            break
+
+        logger.warning("sACN input restarting after error")
+        await health.record_failure("sacn")
+        failures += 1
+        await _wait_or_stop(stop_event, backoff.delay(failures))
+
+    await service.stop()
+    if services is not None:
+        services.sacn = None  # type: ignore[attr-defined]
+    logger.info("sACN loop stopped")
 
 
 async def _sender_loop(
@@ -218,7 +385,7 @@ async def _sender_loop(
     health: HealthMonitor,
     services: Optional[RunningServices] = None,
 ) -> None:
-    logger = get_logger("govee.sender")
+    logger = get_logger("artnet.sender")
     service = DeviceSenderService(config, store, health=health)
     if services is not None:
         services.sender = service
@@ -242,7 +409,7 @@ async def _api_loop(
     log_buffer: Optional[Any] = None,
     event_bus: Optional[Any] = None,
 ) -> None:
-    logger = get_logger("govee.api")
+    logger = get_logger("artnet.api")
     service = ApiService(
         config,
         store,
@@ -271,7 +438,7 @@ async def _poller_loop(
     protocol: Optional[GoveeProtocolService] = None,
     services: Optional[RunningServices] = None,
 ) -> None:
-    logger = get_logger("govee.poller")
+    logger = get_logger("artnet.poller")
     proto_inst = protocol.protocol if protocol else None
     service = DevicePollerService(config, store, protocol=proto_inst, health=health)
     if services is not None:
@@ -318,24 +485,7 @@ def _load_reloaded_config(
             extra={"current_db_path": str(current_config.db_path), "new_db_path": str(new_config.db_path)},
         )
         return None
-    if new_config.capability_catalog_path != current_config.capability_catalog_path:
-        logger.error(
-            "Config reload rejected because capability_catalog_path changed; restart required",
-            extra={
-                "current_catalog_path": str(current_config.capability_catalog_path),
-                "new_catalog_path": str(new_config.capability_catalog_path),
-            },
-        )
-        return None
     return new_config
-
-
-def _load_capability_catalog(path: Path, logger: logging.Logger) -> CapabilityCatalog:
-    try:
-        return CapabilityCatalog.from_path(path)
-    except Exception:
-        logger.exception("Failed to load capability catalog", extra={"path": str(path)})
-        raise
 
 
 async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -> None:
@@ -356,8 +506,7 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
         event_bus = EventBus()
         logger.info("Event bus enabled")
 
-    catalog = _load_capability_catalog(config.capability_catalog_path, logger)
-    store = DeviceStore(config.db_path, capability_catalog=catalog, event_bus=event_bus)
+    store = DeviceStore(config.db_path, event_bus=event_bus)
     await store.start()
     await store.refresh_metrics()
 
@@ -382,13 +531,21 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
     with contextlib.suppress(NotImplementedError):
         loop.add_signal_handler(signal.SIGHUP, _request_reload, "SIGHUP")
 
-    artnet_state: Optional[Mapping[str, Mapping[str, Any]]] = None
+    dmx_state: Optional[Mapping[str, Mapping[str, Any]]] = None
     current_config = config
 
     while not shutdown_event.is_set():
         await store.sync_manual_devices(current_config.manual_devices)
+
+        # Build subsystem list based on enabled protocols
+        subsystems = ["discovery", "dmx_mapping", "sender", "api", "poller"]
+        if current_config.artnet_enabled:
+            subsystems.append("artnet")
+        if current_config.sacn_enabled:
+            subsystems.append("sacn")
+
         health = HealthMonitor(
-            ("discovery", "sender", "artnet", "api", "poller"),
+            tuple(subsystems),
             failure_threshold=current_config.subsystem_failure_threshold,
             cooldown_seconds=current_config.subsystem_failure_cooldown,
             event_bus=event_bus,
@@ -396,25 +553,46 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
         services = RunningServices()
         stop_event = asyncio.Event()
 
-        # Start protocol service first (provides shared UDP listener)
+        # Start protocol service first (provides shared UDP listener for devices)
         protocol_task = asyncio.create_task(_protocol_loop(stop_event, current_config, services))
-        # Wait for protocol to be ready
-        await asyncio.sleep(0.1)
+        # Wait for protocol to be ready using event-based signaling
+        while not services.protocol:
+            await asyncio.sleep(0.01)  # Wait for service object to be set
+        await services.protocol.wait_ready(timeout=5.0)
         protocol_service = services.protocol
 
+        # Build task list (conditionally add input protocols)
         tasks: List[asyncio.Task[None]] = [
             protocol_task,
             asyncio.create_task(_discovery_loop(stop_event, current_config, store, health, protocol_service, services)),
             asyncio.create_task(_rate_limit_monitor(stop_event, current_config)),
-            asyncio.create_task(_artnet_loop(stop_event, current_config, store, health, services, artnet_state, event_bus)),
+            asyncio.create_task(_dmx_mapping_loop(stop_event, current_config, store, health, services, dmx_state, event_bus)),
+        ]
+
+        # Conditionally start input protocol services
+        if current_config.artnet_enabled:
+            tasks.append(asyncio.create_task(_artnet_loop(stop_event, current_config, health, services)))
+        if current_config.sacn_enabled:
+            tasks.append(asyncio.create_task(_sacn_loop(stop_event, current_config, health, services)))
+
+        # Add remaining services
+        tasks.extend([
             asyncio.create_task(_sender_loop(stop_event, current_config, store, health, services)),
             asyncio.create_task(_poller_loop(stop_event, current_config, store, health, protocol_service, services)),
             asyncio.create_task(_api_loop(stop_event, current_config, store, health, services, _request_reload, log_buffer, event_bus)),
-        ]
+        ])
+
+        # Build logging info
+        input_protocols = []
+        if current_config.artnet_enabled:
+            input_protocols.append(f"ArtNet:{current_config.artnet_port}")
+        if current_config.sacn_enabled:
+            input_protocols.append(f"sACN:{current_config.sacn_port}")
+
         logger.info(
             "Bridge services started",
             extra={
-                "artnet_port": current_config.artnet_port,
+                "input_protocols": ", ".join(input_protocols) if input_protocols else "none",
                 "api_port": current_config.api_port,
                 "db_path": str(current_config.db_path),
                 "dry_run": current_config.dry_run,
@@ -443,10 +621,10 @@ async def _run_async(config: Config, cli_args: Optional[Iterable[str]] = None) -
                 logger.warning("Continuing with existing configuration after failed reload")
                 continue
 
-            artnet_service = services.artnet
+            dmx_mapping_service = services.dmx_mapping
             await _stop_services(stop_event, tasks, logger)
-            if artnet_service is not None:
-                artnet_state = artnet_service.snapshot_last_payloads()
+            if dmx_mapping_service is not None:
+                dmx_state = dmx_mapping_service.snapshot_last_payloads()
             current_config = new_config
             configure_logging(current_config, log_buffer)
             logger = get_logger("govee")  # Get logger again after reconfiguration

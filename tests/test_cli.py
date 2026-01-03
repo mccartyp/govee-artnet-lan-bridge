@@ -5,7 +5,7 @@ from typing import Any
 import httpx
 import pytest
 
-from govee_artnet_lan_bridge.cli import (
+from dmx_lan_bridge.cli import (
     CliError,
     ClientConfig,
     _cmd_devices_command,

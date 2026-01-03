@@ -1,4 +1,4 @@
-from govee_artnet_lan_bridge.capabilities import (
+from dmx_lan_bridge.capabilities import (
     CapabilityCache,
     CapabilityCatalog,
     load_embedded_catalog,

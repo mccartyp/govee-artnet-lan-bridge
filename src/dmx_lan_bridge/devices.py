@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import sqlite3
 from dataclasses import dataclass
@@ -12,14 +13,19 @@ from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional,
 from .capabilities import (
     CapabilityCache,
     CapabilityCatalog,
+    CapabilityProvider,
     NormalizedCapabilities,
-    load_embedded_catalog,
     validate_mapping_mode,
 )
 from .config import ManualDevice
 from .db import DatabaseManager
 from .logging import get_logger
-from .metrics import set_offline_devices, set_queue_depth, set_total_queue_depth
+from .metrics import (
+    set_offline_devices,
+    set_poll_health_devices,
+    set_queue_depth,
+    set_total_queue_depth,
+)
 
 # Import EventBus type for type hints (avoid circular import at runtime)
 if False:  # TYPE_CHECKING
@@ -33,6 +39,11 @@ def _now_iso() -> str:
 def _serialize_capabilities(value: Any) -> Optional[str]:
     if value is None:
         return None
+    # Handle binary payloads (e.g., LIFX binary packets)
+    if isinstance(value, bytes):
+        # Encode as base64 with a special prefix for detection
+        encoded = base64.b64encode(value).decode('ascii')
+        return f"base64:{encoded}"
     if isinstance(value, (dict, list)):
         try:
             return json.dumps(value, ensure_ascii=False)
@@ -74,6 +85,26 @@ def _deserialize_fields(value: Any) -> Tuple[str, ...]:
                 result.append(item.strip().lower())
         return tuple(result)
     return tuple()
+
+
+def _merge_capability_mappings(current: Any, incoming: Any) -> Any:
+    """Merge capability mappings while preserving protocol-specific extensions."""
+    if not isinstance(current, Mapping):
+        return incoming
+    if not isinstance(incoming, Mapping):
+        return incoming if incoming is not None else current
+
+    merged: Dict[str, Any] = dict(current)
+    for key, value in incoming.items():
+        if key == "lifx" and isinstance(value, Mapping):
+            existing = merged.get(key)
+            if isinstance(existing, Mapping):
+                nested = dict(existing)
+                nested.update(value)
+                merged[key] = nested
+                continue
+        merged[key] = value
+    return merged
 
 
 def wrap_govee_command(payload: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -288,8 +319,8 @@ _METADATA_FIELDS = (
     "length_meters",
     "led_count",
     "led_density_per_meter",
-    "has_segments",
-    "segment_count",
+    "has_zones",
+    "zone_count",
 )
 
 
@@ -305,9 +336,9 @@ def _extract_metadata(source: Any) -> Dict[str, Any]:
             return
         if key in {"length_meters", "led_density_per_meter"}:
             coerced = _coerce_optional_float(value)
-        elif key in {"led_count", "segment_count"}:
+        elif key in {"led_count", "zone_count"}:
             coerced = _coerce_optional_int(value)
-        elif key == "has_segments":
+        elif key == "has_zones":
             coerced = _coerce_optional_bool(value)
         else:
             coerced = str(value)
@@ -316,15 +347,15 @@ def _extract_metadata(source: Any) -> Dict[str, Any]:
 
     if isinstance(source, Mapping):
         for key in _METADATA_FIELDS:
-            if key in source or key in {"lengthMeters", "ledCount", "ledDensityPerMeter", "hasSegments", "segmentCount"}:
+            if key in source or key in {"lengthMeters", "ledCount", "ledDensityPerMeter", "hasZones", "zoneCount"}:
                 lookup = {
                     "length_meters": source.get("length_meters", source.get("lengthMeters")),
                     "led_count": source.get("led_count", source.get("ledCount")),
                     "led_density_per_meter": source.get(
                         "led_density_per_meter", source.get("ledDensityPerMeter")
                     ),
-                    "has_segments": source.get("has_segments", source.get("hasSegments")),
-                    "segment_count": source.get("segment_count", source.get("segmentCount")),
+                    "has_zones": source.get("has_zones", source.get("hasZones")),
+                    "zone_count": source.get("zone_count", source.get("zoneCount")),
                     "device_type": source.get("device_type"),
                 }
                 _assign(key, lookup.get(key))
@@ -356,11 +387,11 @@ def _coerce_metadata_for_db(metadata: Mapping[str, Any]) -> Dict[str, Any]:
             coerced = _coerce_optional_float(value)
             if coerced is not None:
                 db_values[key] = coerced
-        elif key in {"led_count", "segment_count"}:
+        elif key in {"led_count", "zone_count"}:
             coerced = _coerce_optional_int(value)
             if coerced is not None:
                 db_values[key] = coerced
-        elif key == "has_segments":
+        elif key == "has_zones":
             coerced_bool = _coerce_optional_bool(value)
             if coerced_bool is not None:
                 db_values[key] = 1 if coerced_bool else 0
@@ -506,13 +537,15 @@ class DiscoveryResult:
 
     id: str
     ip: str
+    protocol: str = "govee"
+    name: Optional[str] = None
     model_number: Optional[str] = None
     device_type: Optional[str] = None
     length_meters: Optional[float] = None
     led_count: Optional[int] = None
     led_density_per_meter: Optional[float] = None
-    has_segments: Optional[bool] = None
-    segment_count: Optional[int] = None
+    has_zones: Optional[bool] = None
+    zone_count: Optional[int] = None
     description: Optional[str] = None
     capabilities: Any = None
     manual: bool = False
@@ -574,16 +607,18 @@ class DeviceInfo:
 
     id: str
     ip: Optional[str]
+    protocol: str
     capabilities: Any
     model_number: Optional[str]
     device_type: Optional[str]
     length_meters: Optional[float]
     led_count: Optional[int]
     led_density_per_meter: Optional[float]
-    has_segments: Optional[bool]
-    segment_count: Optional[int]
+    has_zones: Optional[bool]
+    zone_count: Optional[int]
     normalized_capabilities: Optional[NormalizedCapabilities]
     offline: bool
+    poll_health: str
     failure_count: int
     last_payload_hash: Optional[str]
     last_payload_at: Optional[str]
@@ -599,14 +634,15 @@ class DeviceRow:
 
     id: str
     ip: Optional[str]
+    protocol: str
     name: Optional[str]
     model_number: Optional[str]
     device_type: Optional[str]
     length_meters: Optional[float]
     led_count: Optional[int]
     led_density_per_meter: Optional[float]
-    has_segments: Optional[bool]
-    segment_count: Optional[int]
+    has_zones: Optional[bool]
+    zone_count: Optional[int]
     description: Optional[str]
     capabilities: Any
     manual: bool
@@ -615,6 +651,7 @@ class DeviceRow:
     enabled: bool
     stale: bool
     offline: bool
+    poll_health: str
     last_seen: Optional[str]
     first_seen: Optional[str]
     poll_last_success_at: Optional[str]
@@ -633,13 +670,15 @@ class PollTarget:
 
     id: str
     ip: str
+    protocol: str
+    port: int
     model_number: Optional[str]
     device_type: Optional[str]
     length_meters: Optional[float]
     led_count: Optional[int]
     led_density_per_meter: Optional[float]
-    has_segments: Optional[bool]
-    segment_count: Optional[int]
+    has_zones: Optional[bool]
+    zone_count: Optional[int]
     capabilities: Any
     offline: bool
     poll_failure_count: int
@@ -667,14 +706,48 @@ class DeviceStore:
     def __init__(
         self,
         db_path: Path,
+        event_bus: Optional[Any] = None,
         capability_catalog: Optional[CapabilityCatalog] = None,
-        event_bus: Optional[Any] = None
     ) -> None:
         self.db = DatabaseManager(db_path)
-        self.logger = get_logger("govee.devices")
-        self._capability_catalog = capability_catalog or load_embedded_catalog()
-        self._capability_cache = CapabilityCache(self._capability_catalog)
+        self.logger = get_logger("devices.store")
         self._event_bus = event_bus
+        self._capability_catalog = capability_catalog
+        # Cache capability caches per protocol
+        self._capability_caches: Dict[str, CapabilityCache] = {}
+
+    def _get_capability_cache(self, protocol: str) -> CapabilityCache:
+        """Get or create capability cache for a protocol.
+
+        Args:
+            protocol: Protocol name (e.g., 'govee', 'lifx')
+
+        Returns:
+            CapabilityCache instance for this protocol
+        """
+        if protocol not in self._capability_caches:
+            provider: Optional[CapabilityProvider] = None
+            if self._capability_catalog is not None:
+                class _InjectedCatalogProvider(CapabilityProvider):
+                    def __init__(self, catalog: CapabilityCatalog):
+                        self._catalog = catalog
+
+                    def get_capabilities(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+                        entry = self._catalog.lookup(model) if self._catalog else None
+                        return dict(entry.capabilities) if entry else None
+
+                    def get_metadata(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+                        entry = self._catalog.lookup(model) if self._catalog else None
+                        return dict(entry.metadata) if entry else None
+
+                provider = _InjectedCatalogProvider(self._capability_catalog)
+
+            if provider is None:
+                from .protocol import get_protocol_handler
+                handler = get_protocol_handler(protocol)
+                provider = handler.get_capability_provider()
+            self._capability_caches[protocol] = CapabilityCache(provider)
+        return self._capability_caches[protocol]
 
     async def start(self) -> None:
         await self.db.start_integrity_checks()
@@ -685,12 +758,17 @@ class DeviceStore:
     async def devices(self) -> List[DeviceRow]:
         return await self.db.run(self._devices)
 
+    async def device_id_by_ip(self, ip: str) -> Optional[str]:
+        """Look up a device id by its last known IP address."""
+        return await self.db.run(lambda conn: self._device_id_by_ip(conn, ip))
+
     def _devices(self, conn: sqlite3.Connection) -> List[DeviceRow]:
         rows = conn.execute(
             """
             SELECT
                 d.id,
                 d.ip,
+                d.protocol,
                 d.name,
                 d.model,
                 d.model_number,
@@ -698,8 +776,8 @@ class DeviceStore:
                 d.length_meters,
                 d.led_count,
                 d.led_density_per_meter,
-                d.has_segments,
-                d.segment_count,
+                d.has_zones,
+                d.zone_count,
                 d.description,
                 d.capabilities,
                 d.manual,
@@ -708,6 +786,7 @@ class DeviceStore:
                 d.enabled,
                 d.stale,
                 d.offline,
+                d.poll_health,
                 d.last_seen,
                 d.first_seen,
                 d.poll_last_success_at,
@@ -726,6 +805,19 @@ class DeviceStore:
         ).fetchall()
         return [self._row_to_device(row) for row in rows]
 
+    def _device_id_by_ip(self, conn: sqlite3.Connection, ip: str) -> Optional[str]:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM devices
+            WHERE ip = ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (ip,),
+        ).fetchone()
+        return row["id"] if row else None
+
     async def device(self, device_id: str) -> Optional[DeviceRow]:
         return await self.db.run(lambda conn: self._device(conn, device_id))
 
@@ -735,6 +827,7 @@ class DeviceStore:
             SELECT
                 d.id,
                 d.ip,
+                d.protocol,
                 d.name,
                 d.model,
                 d.model_number,
@@ -742,8 +835,8 @@ class DeviceStore:
                 d.length_meters,
                 d.led_count,
                 d.led_density_per_meter,
-                d.has_segments,
-                d.segment_count,
+                d.has_zones,
+                d.zone_count,
                 d.description,
                 d.capabilities,
                 d.manual,
@@ -752,6 +845,7 @@ class DeviceStore:
                 d.enabled,
                 d.stale,
                 d.offline,
+                d.poll_health,
                 d.last_seen,
                 d.first_seen,
                 d.poll_last_success_at,
@@ -784,6 +878,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                protocol,
                 name,
                 model,
                 model_number,
@@ -791,8 +886,8 @@ class DeviceStore:
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 description,
                 capabilities,
                 manual,
@@ -801,6 +896,7 @@ class DeviceStore:
                 enabled,
                 stale,
                 offline,
+                poll_health,
                 last_seen,
                 first_seen,
                 poll_last_success_at,
@@ -831,8 +927,8 @@ class DeviceStore:
         length_meters: Optional[float] = None,
         led_count: Optional[int] = None,
         led_density_per_meter: Optional[float] = None,
-        has_segments: Optional[bool] = None,
-        segment_count: Optional[int] = None,
+        has_zones: Optional[bool] = None,
+        zone_count: Optional[int] = None,
         description: Optional[str] = None,
         capabilities: Optional[Any] = None,
         enabled: Optional[bool] = None,
@@ -848,8 +944,8 @@ class DeviceStore:
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 description,
                 capabilities,
                 enabled,
@@ -867,8 +963,8 @@ class DeviceStore:
         length_meters: Optional[float],
         led_count: Optional[int],
         led_density_per_meter: Optional[float],
-        has_segments: Optional[bool],
-        segment_count: Optional[int],
+        has_zones: Optional[bool],
+        zone_count: Optional[int],
         description: Optional[str],
         capabilities: Optional[Any],
         enabled: Optional[bool],
@@ -879,13 +975,17 @@ class DeviceStore:
         ).fetchone()
         if not row:
             return None
+        # Get protocol from row, defaulting to 'govee' for backwards compatibility
+        protocol = row["protocol"] if "protocol" in row.keys() else "govee"
+        cache = self._get_capability_cache(protocol)
+
         metadata_input = {
             "device_type": device_type,
             "length_meters": length_meters,
             "led_count": led_count,
             "led_density_per_meter": led_density_per_meter,
-            "has_segments": has_segments,
-            "segment_count": segment_count,
+            "has_zones": has_zones,
+            "zone_count": zone_count,
         }
         model_hint = model_number or row["model_number"] or row["model"]
         normalized = None
@@ -893,8 +993,8 @@ class DeviceStore:
         if capabilities_source is None:
             capabilities_source = _deserialize_capabilities(row["capabilities"])
         has_metadata_input = any(value is not None for value in metadata_input.values())
-        if capabilities_source is not None or has_metadata_input or self._capability_cache.has_catalog_entry(model_hint):
-            normalized = self._capability_cache.normalize(
+        if capabilities_source is not None or has_metadata_input or cache.has_provider_entry(model_hint):
+            normalized = cache.normalize(
                 model_hint, capabilities_source, metadata=metadata_input if has_metadata_input else None
             )
         serialized_caps = (
@@ -917,8 +1017,8 @@ class DeviceStore:
                 length_meters = COALESCE(?, length_meters),
                 led_count = COALESCE(?, led_count),
                 led_density_per_meter = COALESCE(?, led_density_per_meter),
-                has_segments = COALESCE(?, has_segments),
-                segment_count = COALESCE(?, segment_count),
+                has_zones = COALESCE(?, has_zones),
+                zone_count = COALESCE(?, zone_count),
                 description = COALESCE(?, description),
                 capabilities = ?,
                 enabled = COALESCE(?, enabled)
@@ -933,8 +1033,8 @@ class DeviceStore:
                 db_metadata.get("length_meters"),
                 db_metadata.get("led_count"),
                 db_metadata.get("led_density_per_meter"),
-                db_metadata.get("has_segments"),
-                db_metadata.get("segment_count"),
+                db_metadata.get("has_zones"),
+                db_metadata.get("zone_count"),
                 description,
                 serialized_caps,
                 int(enabled) if enabled is not None else None,
@@ -947,6 +1047,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                protocol,
                 name,
                 model,
                 model_number,
@@ -954,8 +1055,8 @@ class DeviceStore:
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 description,
                 capabilities,
                 manual,
@@ -964,6 +1065,7 @@ class DeviceStore:
                 enabled,
                 stale,
                 offline,
+                poll_health,
                 last_seen,
                 first_seen,
                 poll_last_success_at,
@@ -1001,14 +1103,15 @@ class DeviceStore:
 
     def _upsert_manual(self, conn: sqlite3.Connection, device: ManualDevice) -> None:
         now = _now_iso()
+        cache = self._get_capability_cache(device.protocol)
         metadata_input = _extract_metadata(device)
         normalized = None
         if (
             device.capabilities is not None
             or metadata_input
-            or self._capability_cache.has_catalog_entry(device.model_number)
+            or cache.has_provider_entry(device.model_number)
         ):
-            normalized = self._capability_cache.normalize(
+            normalized = cache.normalize(
                 device.model_number, device.capabilities, metadata=metadata_input
             )
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
@@ -1017,14 +1120,16 @@ class DeviceStore:
         conn.execute(
             """
             INSERT INTO devices (
-                id, ip, model, model_number, device_type, length_meters, led_count,
-                led_density_per_meter, has_segments, segment_count, description, capabilities, manual,
+                id, ip, protocol, name, model, model_number, device_type, length_meters, led_count,
+                led_density_per_meter, has_zones, zone_count, description, capabilities, manual,
                 configured, enabled, discovered, first_seen, last_seen,
                 stale, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
+                protocol=excluded.protocol,
+                name=COALESCE(excluded.name, devices.name),
                 model=COALESCE(excluded.model, devices.model),
                 model_number=COALESCE(excluded.model_number, devices.model_number, devices.model),
                 device_type=COALESCE(excluded.device_type, devices.device_type),
@@ -1033,8 +1138,8 @@ class DeviceStore:
                 led_density_per_meter=COALESCE(
                     excluded.led_density_per_meter, devices.led_density_per_meter
                 ),
-                has_segments=COALESCE(excluded.has_segments, devices.has_segments),
-                segment_count=COALESCE(excluded.segment_count, devices.segment_count),
+                has_zones=COALESCE(excluded.has_zones, devices.has_zones),
+                zone_count=COALESCE(excluded.zone_count, devices.zone_count),
                 description=COALESCE(excluded.description, devices.description),
                 capabilities=COALESCE(excluded.capabilities, devices.capabilities),
                 manual=1,
@@ -1044,14 +1149,16 @@ class DeviceStore:
             (
                 device.id,
                 device.ip,
+                device.protocol,
+                None,
                 model_number,
                 model_number,
                 metadata.get("device_type"),
                 metadata.get("length_meters"),
                 metadata.get("led_count"),
                 metadata.get("led_density_per_meter"),
-                metadata.get("has_segments"),
-                metadata.get("segment_count"),
+                metadata.get("has_zones"),
+                metadata.get("zone_count"),
                 device.description,
                 capabilities,
                 now,
@@ -1089,37 +1196,53 @@ class DeviceStore:
 
         # Check if device exists before upsert
         existing = conn.execute(
-            "SELECT id, ip, model_number FROM devices WHERE id = ?",
+            "SELECT id, ip, model_number, model, capabilities FROM devices WHERE id = ?",
             (result.id,)
         ).fetchone()
         is_new = existing is None
         old_ip = existing["ip"] if existing else None
 
+        cache = self._get_capability_cache(result.protocol)
+        existing_capabilities = (
+            _deserialize_capabilities(existing["capabilities"]) if existing and existing["capabilities"] else None
+        )
+        capabilities_input = result.capabilities
+        if isinstance(existing_capabilities, Mapping) and isinstance(result.capabilities, Mapping):
+            capabilities_input = _merge_capability_mappings(existing_capabilities, result.capabilities)
+        elif result.capabilities is None:
+            capabilities_input = existing_capabilities
+
+        model_number_input = result.model_number or (existing["model_number"] if existing else None)
+        if not model_number_input and existing and "model" in existing.keys():
+            model_number_input = existing["model"]
+
         metadata_input = _extract_metadata(result)
         normalized = None
         if (
-            result.capabilities is not None
+            capabilities_input is not None
             or metadata_input
-            or self._capability_cache.has_catalog_entry(result.model_number)
+            or cache.has_provider_entry(model_number_input)
         ):
-            normalized = self._capability_cache.normalize(
-                result.model_number, result.capabilities, metadata=metadata_input
+            normalized = cache.normalize(
+                model_number_input, capabilities_input, metadata=metadata_input
             )
         capabilities = _serialize_capabilities(normalized.as_mapping()) if normalized else None
-        model_number = result.model_number or (normalized.model_number if normalized else None)
+        model_number = model_number_input or (normalized.model_number if normalized else None)
         metadata = _coerce_metadata_for_db(_merge_metadata(normalized.metadata if normalized else {}, result))
 
         conn.execute(
             """
             INSERT INTO devices (
-                id, ip, model, model_number, device_type, length_meters, led_count,
-                led_density_per_meter, has_segments, segment_count, description, capabilities, manual, discovered,
+                id, ip, protocol, name, model, model_number, device_type, length_meters, led_count,
+                led_density_per_meter, has_zones, zone_count, description, capabilities, manual, discovered,
                 configured, enabled, first_seen, last_seen, stale,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
+                protocol=excluded.protocol,
+                name=COALESCE(excluded.name, devices.name),
                 model=COALESCE(excluded.model, devices.model),
                 model_number=COALESCE(excluded.model_number, devices.model_number, devices.model),
                 device_type=COALESCE(excluded.device_type, devices.device_type),
@@ -1128,8 +1251,8 @@ class DeviceStore:
                 led_density_per_meter=COALESCE(
                     excluded.led_density_per_meter, devices.led_density_per_meter
                 ),
-                has_segments=COALESCE(excluded.has_segments, devices.has_segments),
-                segment_count=COALESCE(excluded.segment_count, devices.segment_count),
+                has_zones=COALESCE(excluded.has_zones, devices.has_zones),
+                zone_count=COALESCE(excluded.zone_count, devices.zone_count),
                 description=COALESCE(excluded.description, devices.description),
                 capabilities=COALESCE(excluded.capabilities, devices.capabilities),
                 last_seen=excluded.last_seen,
@@ -1143,14 +1266,16 @@ class DeviceStore:
             (
                 result.id,
                 result.ip,
+                result.protocol,
+                result.name,
                 model_number,
                 model_number,
                 metadata.get("device_type"),
                 metadata.get("length_meters"),
                 metadata.get("led_count"),
                 metadata.get("led_density_per_meter"),
-                metadata.get("has_segments"),
-                metadata.get("segment_count"),
+                metadata.get("has_zones"),
+                metadata.get("zone_count"),
                 result.description,
                 capabilities,
                 1 if result.manual else 0,
@@ -1159,15 +1284,32 @@ class DeviceStore:
             ),
         )
         conn.commit()
-        self.logger.debug(
-            "Recorded discovery result",
-            extra={
-                "id": result.id,
-                "ip": result.ip,
-                "model_number": model_number,
-                "manual": result.manual,
-            },
-        )
+
+        # Log device addition/update
+        if is_new:
+            self.logger.debug(
+                "Added new device to database",
+                extra={
+                    "device_id": result.id,
+                    "ip": result.ip,
+                    "protocol": result.protocol,
+                    "model_number": model_number,
+                    "device_type": metadata.get("device_type"),
+                    "manual": result.manual,
+                },
+            )
+        else:
+            self.logger.debug(
+                "Updated existing device in database",
+                extra={
+                    "device_id": result.id,
+                    "ip": result.ip,
+                    "protocol": result.protocol,
+                    "model_number": model_number,
+                    "old_ip": old_ip,
+                    "manual": result.manual,
+                },
+            )
 
         # Track what changed for event publishing
         changed_fields = []
@@ -1234,14 +1376,15 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                protocol,
                 model,
                 model_number,
                 device_type,
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 capabilities,
                 offline,
                 poll_failure_count
@@ -1257,17 +1400,36 @@ class DeviceStore:
             model_number = row["model_number"] if "model_number" in row.keys() else None
             if not model_number:
                 model_number = row["model"]
+
+            # Get protocol and determine port
+            protocol = row["protocol"] if "protocol" in row.keys() else "govee"
+            from .protocol import get_protocol_handler
+            handler = get_protocol_handler(protocol)
+
+            # Use protocol default port, but allow capability override
+            port = handler.get_default_port()
+            if isinstance(normalized.as_mapping(), Mapping):
+                for key in ("port", "control_port", "device_port"):
+                    if key in normalized.as_mapping():
+                        try:
+                            port = int(normalized.as_mapping()[key])
+                            break
+                        except (TypeError, ValueError):
+                            continue
+
             targets.append(
                 PollTarget(
                     id=row["id"],
                     ip=row["ip"],
+                    protocol=protocol,
+                    port=port,
                     model_number=model_number,
                     device_type=metadata.get("device_type"),
                     length_meters=metadata.get("length_meters"),
                     led_count=metadata.get("led_count"),
                     led_density_per_meter=metadata.get("led_density_per_meter"),
-                    has_segments=metadata.get("has_segments"),
-                    segment_count=metadata.get("segment_count"),
+                    has_zones=metadata.get("has_zones"),
+                    zone_count=metadata.get("zone_count"),
                     capabilities=normalized.as_mapping(),
                     offline=bool(row["offline"]),
                     poll_failure_count=int(row["poll_failure_count"] or 0),
@@ -1291,7 +1453,8 @@ class DeviceStore:
                 m.fields,
                 d.model,
                 d.model_number,
-                d.capabilities
+                d.capabilities,
+                d.protocol
             FROM mappings m
             JOIN devices d ON d.id = m.device_id
             WHERE d.enabled = 1
@@ -1300,7 +1463,9 @@ class DeviceStore:
         ).fetchall()
         results: List[MappingRecord] = []
         for row in rows:
-            normalized = self._capability_cache.normalize(
+            protocol = row["protocol"] if "protocol" in row.keys() else "govee"
+            cache = self._get_capability_cache(protocol)
+            normalized = cache.normalize(
                 row["model_number"] or row["model"],
                 _deserialize_capabilities(row["capabilities"]),
             )
@@ -1398,6 +1563,7 @@ class DeviceStore:
                 d.ip,
                 d.model,
                 d.model_number,
+                d.protocol,
                 d.capabilities
             FROM mappings m
             JOIN devices d ON d.id = m.device_id
@@ -1495,7 +1661,7 @@ class DeviceStore:
         if normalized_mapping_type == "discrete" and length != 1:
             raise ValueError("Discrete mappings must have a length of 1")
         device_row = conn.execute(
-            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities, protocol FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not device_row:
@@ -1595,7 +1761,7 @@ class DeviceStore:
 
         segments = _template_segments(template)
         device_row = conn.execute(
-            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities, protocol FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not device_row:
@@ -1706,7 +1872,7 @@ class DeviceStore:
         if new_channel <= 0 or new_length <= 0:
             raise ValueError("Channel and length must be positive")
         device_row = conn.execute(
-            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities, protocol FROM devices WHERE id = ?",
             (new_device_id,),
         ).fetchone()
         if not device_row:
@@ -1956,13 +2122,26 @@ class DeviceStore:
         self, conn: sqlite3.Connection, device_id: str, capabilities: Mapping[str, Any]
     ) -> None:
         device_row = conn.execute(
-            "SELECT model, model_number FROM devices WHERE id = ?",
+            "SELECT model, model_number, protocol, capabilities FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         model = None
+        protocol = "govee"
         if device_row:
             model = device_row["model_number"] or device_row["model"]
-        normalized = self._capability_cache.normalize(model, capabilities)
+            protocol = device_row["protocol"] if "protocol" in device_row.keys() else "govee"
+
+        # Enrich capabilities using protocol-specific handler
+        from .protocol import get_protocol_handler
+        handler = get_protocol_handler(protocol)
+
+        existing_caps = _deserialize_capabilities(device_row["capabilities"]) if device_row and device_row["capabilities"] else {}
+        incoming_caps = dict(capabilities) if capabilities else {}
+
+        enriched_caps = handler.enrich_capabilities(existing_caps, incoming_caps)
+
+        cache = self._get_capability_cache(protocol)
+        normalized = cache.normalize(model, enriched_caps)
         serialized = _serialize_capabilities(normalized.as_mapping())
         metadata = _coerce_metadata_for_db(normalized.metadata)
         conn.execute(
@@ -1976,8 +2155,8 @@ class DeviceStore:
                 length_meters = COALESCE(?, length_meters),
                 led_count = COALESCE(?, led_count),
                 led_density_per_meter = COALESCE(?, led_density_per_meter),
-                has_segments = COALESCE(?, has_segments),
-                segment_count = COALESCE(?, segment_count)
+                has_zones = COALESCE(?, has_zones),
+                zone_count = COALESCE(?, zone_count)
             WHERE id = ?
             """,
             (
@@ -1988,8 +2167,8 @@ class DeviceStore:
                 metadata.get("length_meters"),
                 metadata.get("led_count"),
                 metadata.get("led_density_per_meter"),
-                metadata.get("has_segments"),
-                metadata.get("segment_count"),
+                metadata.get("has_zones"),
+                metadata.get("zone_count"),
                 device_id,
             ),
         )
@@ -2003,10 +2182,33 @@ class DeviceStore:
         await self.db.run(lambda conn: self._enqueue_state(conn, update))
 
     def _enqueue_state(self, conn: sqlite3.Connection, update: DeviceStateUpdate) -> None:
-        # Wrap payload in Govee LAN API format
-        wrapped_payload = wrap_govee_command(update.payload)
+        # Get device protocol
+        device_row = conn.execute(
+            "SELECT protocol FROM devices WHERE id = ?",
+            (update.device_id,)
+        ).fetchone()
+        protocol = device_row["protocol"] if device_row else "govee"
 
-        # Handle multiple commands (e.g., color + brightness)
+        # Prepare payload for protocol-specific wrapping
+        payload_to_wrap = dict(update.payload)
+
+        # For LIFX, add target MAC address from device ID
+        if protocol == "lifx":
+            # Device ID for LIFX is the MAC address string (e.g., "AA:BB:CC:DD:EE:FF")
+            # Convert to bytes for the protocol handler
+            try:
+                mac_bytes = bytes.fromhex(update.device_id.replace(":", ""))
+                payload_to_wrap["_target_mac"] = mac_bytes
+            except (ValueError, AttributeError):
+                # If MAC parsing fails, let the protocol handler handle it
+                pass
+
+        # Use protocol-specific handler to wrap payload
+        from .protocol import get_protocol_handler
+        handler = get_protocol_handler(protocol)
+        wrapped_payload = handler.wrap_command(payload_to_wrap)
+
+        # Handle multiple commands (e.g., color + brightness for Govee)
         if isinstance(wrapped_payload, dict) and "_multiple" in wrapped_payload:
             payloads = wrapped_payload["_multiple"]
         else:
@@ -2029,29 +2231,90 @@ class DeviceStore:
             "Enqueued device update",
             extra={
                 "device_id": update.device_id,
+                "protocol": protocol,
                 "context_id": update.context_id,
                 "command_count": len(payloads)
             },
         )
 
     async def set_last_seen(
-        self, device_ids: Iterable[str], timestamp: Optional[str] = None
+        self, device_ids: Iterable[str], timestamp: Optional[str] = None, mark_online: bool = True
     ) -> None:
-        await self.db.run(lambda conn: self._set_last_seen(conn, device_ids, timestamp))
+        event_data = await self.db.run(lambda conn: self._set_last_seen(conn, device_ids, timestamp, mark_online))
+
+        # Publish device_online event if device transitioned from offline to online
+        if self._event_bus and mark_online and event_data and event_data.get("went_online"):
+            from .events import EVENT_DEVICE_ONLINE
+
+            for device_id in event_data["went_online"]:
+                self.logger.info(
+                    "Device came online from activity",
+                    extra={
+                        "device_id": device_id,
+                        "previous_offline_reason": "activity",
+                    },
+                )
+                await self._event_bus.publish(
+                    EVENT_DEVICE_ONLINE,
+                    {
+                        "device_id": device_id,
+                        "previous_offline_reason": "activity",
+                    },
+                )
 
     def _set_last_seen(
-        self, conn: sqlite3.Connection, device_ids: Iterable[str], timestamp: Optional[str] = None
-    ) -> None:
+        self,
+        conn: sqlite3.Connection,
+        device_ids: Iterable[str],
+        timestamp: Optional[str] = None,
+        mark_online: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        ids = list(device_ids)
+        if not ids:
+            return None
         ts = timestamp or _now_iso()
+        params = [(ts, device_id) for device_id in ids]
+
+        # Always update last_seen/stale
         conn.executemany(
             """
             UPDATE devices
             SET last_seen = ?, stale = 0
             WHERE id = ?
             """,
-            [(ts, device_id) for device_id in device_ids],
+            params,
         )
+
+        if mark_online:
+            placeholders = ",".join(["?"] * len(ids))
+            rows = conn.execute(
+                f"SELECT id, offline FROM devices WHERE id IN ({placeholders})",
+                ids,
+            ).fetchall()
+            offline_ids = [row["id"] for row in rows if bool(row["offline"])]
+
+            if offline_ids:
+                conn.executemany(
+                    """
+                    UPDATE devices
+                    SET
+                        offline = 0,
+                        poll_failure_count = 0,
+                        poll_health = 'healthy',
+                        poll_last_failure_at = NULL,
+                        poll_last_success_at = ?,
+                        failure_count = 0,
+                        last_failure_at = NULL
+                    WHERE id = ?
+                    """,
+                    [(ts, device_id) for device_id in offline_ids],
+                )
+                conn.commit()
+                self._update_offline_metric(conn)
+                return {"went_online": offline_ids}
+
         conn.commit()
+        return None
 
     async def pending_device_ids(self) -> List[str]:
         return await self.db.run(self._pending_device_ids)
@@ -2122,7 +2385,7 @@ class DeviceStore:
         self, conn: sqlite3.Connection, device_id: str
     ) -> Optional[NormalizedCapabilities]:
         row = conn.execute(
-            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities, protocol FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not row:
@@ -2135,16 +2398,18 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                protocol,
                 model,
                 model_number,
                 device_type,
                 length_meters,
                 led_count,
                 led_density_per_meter,
-                has_segments,
-                segment_count,
+                has_zones,
+                zone_count,
                 capabilities,
                 offline,
+                poll_health,
                 failure_count,
                 last_payload_hash,
                 last_payload_at,
@@ -2169,15 +2434,17 @@ class DeviceStore:
         return DeviceInfo(
             id=row["id"],
             ip=row["ip"],
+            protocol=row["protocol"] or "govee",
             capabilities=normalized.as_mapping(),
             model_number=model_number,
             device_type=metadata.get("device_type"),
             length_meters=metadata.get("length_meters"),
             led_count=metadata.get("led_count"),
             led_density_per_meter=metadata.get("led_density_per_meter"),
-            has_segments=metadata.get("has_segments"),
-            segment_count=metadata.get("segment_count"),
+            has_zones=metadata.get("has_zones"),
+            zone_count=metadata.get("zone_count"),
             offline=bool(row["offline"]),
+            poll_health=row["poll_health"] or "healthy",
             failure_count=int(row["failure_count"] or 0),
             last_payload_hash=row["last_payload_hash"],
             last_payload_at=row["last_payload_at"],
@@ -2194,6 +2461,13 @@ class DeviceStore:
         # Publish device_online event if device transitioned from offline to online
         if self._event_bus and event_data and event_data.get("went_online"):
             from .events import EVENT_DEVICE_ONLINE
+            self.logger.info(
+                "Device came online",
+                extra={
+                    "device_id": device_id,
+                    "previous_offline_reason": "send_failures",
+                },
+            )
             await self._event_bus.publish(EVENT_DEVICE_ONLINE, {
                 "device_id": device_id,
                 "previous_offline_reason": "send_failures",
@@ -2226,56 +2500,227 @@ class DeviceStore:
         # Return event data if status changed
         return {"went_online": was_offline}
 
-    async def record_poll_success(self, device_id: str, state: Optional[Mapping[str, Any]]) -> None:
-        event_data = await self.db.run(lambda conn: self._record_poll_success(conn, device_id, state))
+    async def record_poll_success(
+        self,
+        device_id: str,
+        state: Optional[Mapping[str, Any]],
+        *,
+        ip: Optional[str] = None,
+        protocol: Optional[str] = None,
+        port: Optional[int] = None,
+    ) -> None:
+        event_data = await self.db.run(
+            lambda conn: self._record_poll_success(
+                conn,
+                device_id,
+                state,
+                ip=ip,
+                protocol=protocol,
+                port=port,
+            )
+        )
 
         # Publish device_online event if device transitioned from offline to online
         if self._event_bus and event_data and event_data.get("went_online"):
             from .events import EVENT_DEVICE_ONLINE
+            self.logger.info(
+                "Device came online",
+                extra={
+                    "device_id": device_id,
+                    "previous_offline_reason": "poll_failures",
+                    "protocol": event_data.get("protocol"),
+                    "ip": event_data.get("ip"),
+                    "port": event_data.get("port"),
+                    "poll_failure_count_before": event_data.get("poll_failure_count_before"),
+                    "poll_failure_count_after": event_data.get("poll_failure_count_after"),
+                    "offline_before": event_data.get("offline_before"),
+                    "offline_after": event_data.get("offline_after"),
+                },
+            )
             await self._event_bus.publish(EVENT_DEVICE_ONLINE, {
                 "device_id": device_id,
                 "previous_offline_reason": "poll_failures",
             })
 
     def _record_poll_success(
-        self, conn: sqlite3.Connection, device_id: str, state: Optional[Mapping[str, Any]]
+        self,
+        conn: sqlite3.Connection,
+        device_id: str,
+        state: Optional[Mapping[str, Any]],
+        *,
+        ip: Optional[str] = None,
+        protocol: Optional[str] = None,
+        port: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
-        # Check current offline status before update
-        row = conn.execute("SELECT offline FROM devices WHERE id = ?", (device_id,)).fetchone()
-        was_offline = row["offline"] if row else False
+        # Get current device info for capability refinement
+        device_row = conn.execute(
+            """
+            SELECT offline, capabilities, protocol, model, model_number, ip, poll_failure_count
+            FROM devices
+            WHERE id = ?
+            """,
+            (device_id,)
+        ).fetchone()
+        was_offline = device_row["offline"] if device_row else False
+        failure_count_before = int(device_row["poll_failure_count"]) if device_row else 0
+        protocol = protocol or (device_row["protocol"] if device_row and "protocol" in device_row.keys() else None)
+        ip = ip or (device_row["ip"] if device_row and "ip" in device_row.keys() else None)
+
+        self.logger.debug(
+            "Recording poll success",
+            extra={
+                "device_id": device_id,
+                "protocol": protocol,
+                "ip": ip,
+                "port": port,
+                "poll_failure_count_before": failure_count_before,
+                "offline_before": was_offline,
+                "state_present": state is not None,
+            },
+        )
+
+        # Refine capabilities additively from observed state
+        refined_capabilities = None
+        if state and device_row:
+            from .capabilities import refine_capabilities_from_state
+
+            current_caps = _deserialize_capabilities(device_row["capabilities"])
+            protocol = device_row["protocol"] if "protocol" in device_row.keys() else "govee"
+            model = device_row["model_number"] or device_row["model"]
+
+            # Get current normalized capabilities
+            cache = self._get_capability_cache(protocol)
+            current_normalized = cache.normalize(model, current_caps)
+
+            # Refine based on observed state (additive only)
+            refined_raw = refine_capabilities_from_state(current_normalized.as_mapping(), state)
+
+            # Re-normalize the refined capabilities
+            refined_normalized = cache.normalize(model, refined_raw)
+
+            # Only update if capabilities actually changed
+            if refined_normalized.fingerprint != current_normalized.fingerprint:
+                refined_capabilities = _serialize_capabilities(refined_normalized.as_mapping())
 
         now = _now_iso()
         serialized_state = _serialize_capabilities(state) if state is not None else None
-        conn.execute(
-            """
-            UPDATE devices
-            SET
-                poll_failure_count = 0,
-                poll_last_success_at = ?,
-                poll_last_failure_at = NULL,
-                poll_state = ?,
-                poll_state_updated_at = CASE
-                    WHEN ? IS NOT NULL THEN ?
-                    ELSE poll_state_updated_at
-                END,
-                offline = 0,
-                last_seen = ?,
-                stale = 0
-            WHERE id = ?
-            """,
-            (now, serialized_state, serialized_state, now, now, device_id),
-        )
+
+        if refined_capabilities is not None:
+            # Update with refined capabilities
+            conn.execute(
+                """
+                UPDATE devices
+                SET
+                    poll_failure_count = 0,
+                    poll_health = 'healthy',
+                    poll_last_success_at = ?,
+                    poll_last_failure_at = NULL,
+                    poll_state = ?,
+                    poll_state_updated_at = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE poll_state_updated_at
+                    END,
+                    capabilities = ?,
+                    offline = 0,
+                    last_seen = ?,
+                    stale = 0
+                WHERE id = ?
+                """,
+                (now, serialized_state, serialized_state, now, refined_capabilities, now, device_id),
+            )
+        else:
+            # Update without changing capabilities
+            conn.execute(
+                """
+                UPDATE devices
+                SET
+                    poll_failure_count = 0,
+                    poll_health = 'healthy',
+                    poll_last_success_at = ?,
+                    poll_last_failure_at = NULL,
+                    poll_state = ?,
+                    poll_state_updated_at = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE poll_state_updated_at
+                    END,
+                    offline = 0,
+                    last_seen = ?,
+                    stale = 0
+                WHERE id = ?
+                """,
+                (now, serialized_state, serialized_state, now, now, device_id),
+            )
+
         conn.commit()
         self._update_offline_metric(conn)
 
-        return {"went_online": was_offline}
+        self.logger.debug(
+            "Recorded poll success",
+            extra={
+                "device_id": device_id,
+                "protocol": protocol,
+                "ip": ip,
+                "port": port,
+                "poll_failure_count_before": failure_count_before,
+                "poll_failure_count_after": 0,
+                "offline_before": was_offline,
+                "offline_after": False,
+                "state_present": state is not None,
+            },
+        )
 
-    async def record_poll_failure(self, device_id: str, offline_threshold: int) -> None:
-        event_data = await self.db.run(lambda conn: self._record_poll_failure(conn, device_id, offline_threshold))
+        return {
+            "went_online": was_offline,
+            "protocol": protocol,
+            "ip": ip,
+            "port": port,
+            "poll_failure_count_before": failure_count_before,
+            "poll_failure_count_after": 0,
+            "offline_before": was_offline,
+            "offline_after": False,
+        }
+
+    async def record_poll_failure(
+        self,
+        device_id: str,
+        offline_threshold: int,
+        *,
+        failure_reason: Optional[str] = None,
+        ip: Optional[str] = None,
+        protocol: Optional[str] = None,
+        port: Optional[int] = None,
+    ) -> None:
+        event_data = await self.db.run(
+            lambda conn: self._record_poll_failure(
+                conn,
+                device_id,
+                offline_threshold,
+                failure_reason=failure_reason,
+                ip=ip,
+                protocol=protocol,
+                port=port,
+            )
+        )
 
         # Publish device_offline event if device transitioned to offline
         if self._event_bus and event_data and event_data.get("went_offline"):
             from .events import EVENT_DEVICE_OFFLINE
+            self.logger.info(
+                "Device went offline",
+                extra={
+                    "device_id": device_id,
+                    "reason": "poll_failures",
+                    "failure_count": event_data.get("failure_count", 0),
+                    "protocol": event_data.get("protocol"),
+                    "ip": event_data.get("ip"),
+                    "port": event_data.get("port"),
+                    "poll_failure_count_before": event_data.get("poll_failure_count_before"),
+                    "poll_failure_count_after": event_data.get("poll_failure_count_after"),
+                    "offline_before": event_data.get("offline_before"),
+                    "offline_after": event_data.get("offline_after"),
+                    "failure_reason": event_data.get("failure_reason"),
+                },
+            )
             await self._event_bus.publish(EVENT_DEVICE_OFFLINE, {
                 "device_id": device_id,
                 "reason": "poll_failures",
@@ -2283,15 +2728,38 @@ class DeviceStore:
             })
 
     def _record_poll_failure(
-        self, conn: sqlite3.Connection, device_id: str, offline_threshold: int
+        self,
+        conn: sqlite3.Connection,
+        device_id: str,
+        offline_threshold: int,
+        *,
+        failure_reason: Optional[str] = None,
+        ip: Optional[str] = None,
+        protocol: Optional[str] = None,
+        port: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         # Check current status before update
         row = conn.execute(
-            "SELECT offline, poll_failure_count FROM devices WHERE id = ?",
+            "SELECT offline, poll_failure_count, protocol, ip FROM devices WHERE id = ?",
             (device_id,)
         ).fetchone()
         was_offline = row["offline"] if row else False
         old_failure_count = row["poll_failure_count"] if row else 0
+        protocol = protocol or (row["protocol"] if row and "protocol" in row.keys() else None)
+        ip = ip or (row["ip"] if row and "ip" in row.keys() else None)
+
+        self.logger.debug(
+            "Recording poll failure",
+            extra={
+                "device_id": device_id,
+                "protocol": protocol,
+                "ip": ip,
+                "port": port,
+                "poll_failure_count_before": old_failure_count,
+                "offline_before": was_offline,
+                "failure_reason": failure_reason or "unknown",
+            },
+        )
 
         now = _now_iso()
         conn.execute(
@@ -2300,13 +2768,18 @@ class DeviceStore:
             SET
                 poll_failure_count = poll_failure_count + 1,
                 poll_last_failure_at = ?,
+                poll_health = CASE
+                    WHEN (poll_failure_count + 1) >= ? THEN 'offline'
+                    WHEN (poll_failure_count + 1) >= 1 THEN 'degraded'
+                    ELSE poll_health
+                END,
                 offline = CASE
                     WHEN (poll_failure_count + 1) >= ? THEN 1
                     ELSE offline
                 END
             WHERE id = ?
             """,
-            (now, offline_threshold, device_id),
+            (now, offline_threshold, offline_threshold, device_id),
         )
         conn.commit()
         self._update_offline_metric(conn)
@@ -2315,9 +2788,34 @@ class DeviceStore:
         new_failure_count = old_failure_count + 1
         went_offline = not was_offline and new_failure_count >= offline_threshold
 
+        offline_after = bool(was_offline or new_failure_count >= offline_threshold)
+
+        self.logger.debug(
+            "Recorded poll failure",
+            extra={
+                "device_id": device_id,
+                "protocol": protocol,
+                "ip": ip,
+                "port": port,
+                "poll_failure_count_before": old_failure_count,
+                "poll_failure_count_after": new_failure_count,
+                "offline_before": was_offline,
+                "offline_after": offline_after,
+                "failure_reason": failure_reason or "unknown",
+            },
+        )
+
         return {
             "went_offline": went_offline,
             "failure_count": new_failure_count,
+            "protocol": protocol,
+            "ip": ip,
+            "port": port,
+            "poll_failure_count_before": old_failure_count,
+            "poll_failure_count_after": new_failure_count,
+            "offline_before": was_offline,
+            "offline_after": offline_after,
+            "failure_reason": failure_reason or "unknown",
         }
 
     async def record_send_failure(
@@ -2330,6 +2828,14 @@ class DeviceStore:
         # Publish device_offline event if device transitioned to offline
         if self._event_bus and event_data and event_data.get("went_offline"):
             from .events import EVENT_DEVICE_OFFLINE
+            self.logger.info(
+                "Device went offline",
+                extra={
+                    "device_id": device_id,
+                    "reason": "send_failures",
+                    "failure_count": event_data.get("failure_count", 0),
+                },
+            )
             await self._event_bus.publish(EVENT_DEVICE_OFFLINE, {
                 "device_id": device_id,
                 "reason": "send_failures",
@@ -2426,6 +2932,38 @@ class DeviceStore:
             "poll_successes": int(rows["ever_polled"] or 0),
             "poll_failures": int(rows["failures"] or 0),
         }
+
+    async def protocol_stats(self) -> Mapping[str, Mapping[str, int]]:
+        """Get device counts broken down by protocol."""
+        return await self.db.run(self._protocol_stats)
+
+    def _protocol_stats(self, conn: sqlite3.Connection) -> Mapping[str, Mapping[str, int]]:
+        rows = conn.execute(
+            """
+            SELECT
+                protocol,
+                COUNT(*) AS total,
+                SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled,
+                SUM(CASE WHEN offline = 1 THEN 1 ELSE 0 END) AS offline,
+                SUM(CASE WHEN discovered = 1 THEN 1 ELSE 0 END) AS discovered,
+                SUM(CASE WHEN manual = 1 THEN 1 ELSE 0 END) AS manual
+            FROM devices
+            GROUP BY protocol
+            ORDER BY protocol
+            """
+        ).fetchall()
+
+        result: Dict[str, Dict[str, int]] = {}
+        for row in rows:
+            protocol = row["protocol"] or "unknown"
+            result[protocol] = {
+                "total": int(row["total"] or 0),
+                "enabled": int(row["enabled"] or 0),
+                "offline": int(row["offline"] or 0),
+                "discovered": int(row["discovered"] or 0),
+                "manual": int(row["manual"] or 0),
+            }
+        return result
 
     async def refresh_metrics(self) -> None:
         """Refresh gauges derived from the database."""
@@ -2556,14 +3094,25 @@ class DeviceStore:
         count = int(row["offline"] if row else 0)
         set_offline_devices(count)
 
+        health_rows = conn.execute(
+            "SELECT poll_health, COUNT(*) AS count FROM devices GROUP BY poll_health"
+        ).fetchall()
+        counts = {
+            (health_row["poll_health"] or "unknown"): int(health_row["count"] or 0)
+            for health_row in health_rows
+        }
+        set_poll_health_devices(counts)
+
     def _normalized_capabilities_obj(self, row: sqlite3.Row) -> NormalizedCapabilities:
         model = None
         if "model_number" in row.keys() and row["model_number"]:
             model = row["model_number"]
         elif "model" in row.keys():
             model = row["model"]
+        protocol = row["protocol"] if "protocol" in row.keys() else "govee"
+        cache = self._get_capability_cache(protocol)
         raw_caps = _deserialize_capabilities(row["capabilities"])
-        return self._capability_cache.normalize(model, raw_caps)
+        return cache.normalize(model, raw_caps)
 
     def _normalized_capabilities_from_row(self, row: sqlite3.Row) -> Any:
         return self._normalized_capabilities_obj(row).as_mapping()
@@ -2576,17 +3125,19 @@ class DeviceStore:
         elif "model" in row.keys():
             model_number = row["model"]
         metadata = _merge_metadata(row, normalized.metadata)
+        name = row["name"] if "name" in row.keys() else None
         return DeviceRow(
             id=row["id"],
             ip=row["ip"],
-            name=row["name"] if "name" in row.keys() else None,
+            protocol=row["protocol"] if "protocol" in row.keys() else "govee",
+            name=name,
             model_number=model_number,
             device_type=metadata.get("device_type"),
             length_meters=metadata.get("length_meters"),
             led_count=metadata.get("led_count"),
             led_density_per_meter=metadata.get("led_density_per_meter"),
-            has_segments=metadata.get("has_segments"),
-            segment_count=metadata.get("segment_count"),
+            has_zones=metadata.get("has_zones"),
+            zone_count=metadata.get("zone_count"),
             description=row["description"],
             capabilities=normalized.as_mapping(),
             manual=bool(row["manual"]),
@@ -2595,6 +3146,7 @@ class DeviceStore:
             enabled=bool(row["enabled"]),
             stale=bool(row["stale"]),
             offline=bool(row["offline"]),
+            poll_health=row["poll_health"] if "poll_health" in row.keys() else "healthy",
             last_seen=row["last_seen"],
             first_seen=row["first_seen"],
             poll_last_success_at=row["poll_last_success_at"]

@@ -80,10 +80,10 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Command-line client for Govee Art-Net bridge. "
-            "Uses GOVEE_ARTNET_CLI_* env vars for defaults and prints JSON (default) or YAML. "
-            "Examples: `govee-artnet-cli devices list`, "
-            "`govee-artnet-cli mappings create --device-id <id> --universe 0 --start-channel 1 --template rgb`."
+            "Command-line client for ArtNet LAN Bridge (multi-protocol). "
+            "Uses ARTNET_LAN_CLI_* env vars for defaults and prints JSON (default) or YAML. "
+            "Examples: `artnet-lan-cli devices list`, "
+            "`artnet-lan-cli mappings create --device-id <id> --universe 1 --start-channel 1 --template rgb`."
         )
     )
     parser.add_argument(
@@ -195,6 +195,11 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
     add.add_argument("--id", required=True, help="Device identifier (e.g., MAC address)")
     add.add_argument("--ip", required=True, help="Device IP address")
     add.add_argument(
+        "--protocol",
+        default="govee",
+        help="Device protocol (e.g., govee, lifx). Defaults to 'govee'.",
+    )
+    add.add_argument(
         "--model-number",
         dest="model_number",
         help="Device model number/sku shown in responses (alias: --model)",
@@ -215,17 +220,17 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
     )
     add.add_argument(
         "--has-segments",
-        dest="has_segments",
+        dest="has_zones",
         action="store_true",
         help="Mark the device as segmented (overrides catalog default)",
     )
     add.add_argument(
         "--no-segments",
-        dest="has_segments",
+        dest="has_zones",
         action="store_false",
         help="Mark the device as non-segmented",
     )
-    add.set_defaults(has_segments=None)
+    add.set_defaults(has_zones=None)
     add.add_argument("--segment-count", type=int, help="Number of segments when segmented control is available")
     add.add_argument(
         "--capabilities",
@@ -274,17 +279,17 @@ def _add_device_commands(subparsers: argparse._SubParsersAction[argparse.Argumen
     update.add_argument("--led-density-per-meter", type=float, help="LED density per meter")
     update.add_argument(
         "--has-segments",
-        dest="has_segments",
+        dest="has_zones",
         action="store_true",
         help="Mark the device as segmented",
     )
     update.add_argument(
         "--no-segments",
-        dest="has_segments",
+        dest="has_zones",
         action="store_false",
         help="Mark the device as not segmented",
     )
-    update.set_defaults(has_segments=None)
+    update.set_defaults(has_zones=None)
     update.add_argument("--segment-count", type=int, help="Segment count when segmented control is supported")
     update.add_argument(
         "--capabilities",
@@ -409,14 +414,23 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
         help="Create a mapping (POST /mappings; supports templates or manual ranges)",
         description=(
             "Creates mappings for a device. Template example: "
-            "`--device-id <id> --universe 0 --start-channel 1 --template rgbw` "
+            "`--device-id <id> --universe 1 --start-channel 1 --template rgbw` "
             "expands to consecutive color fields. Manual example: "
             "`--channel 10 --length 3 --type range` for RGB. Prevents overlap unless "
             "--allow-overlap is set."
         ),
     )
     create.add_argument("--device-id", required=True, help="Device identifier to map")
-    create.add_argument("--universe", required=True, type=int, help="DMX universe number")
+    create.add_argument(
+        "--universe",
+        required=True,
+        type=int,
+        help=(
+            "DMX universe number (default: 1 if omitted). "
+            "Note: sACN (E1.31) universes are 1–63999. Art-Net supports universe 0. "
+            "Universe 0 is Art-Net-only; universes 1+ are mergeable across protocols."
+        )
+    )
     create.add_argument("--channel", type=int, help="Starting DMX channel")
     create.add_argument(
         "--start-channel",
@@ -432,8 +446,8 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
         "--type",
         dest="mapping_type",
         choices=["range", "discrete"],
-        default="range",
-        help="Mapping type (default: range). Use discrete for single-field channels.",
+        default=None,
+        help="Mapping type. Defaults to 'discrete' if --field is provided, otherwise 'range'.",
     )
     create.add_argument(
         "--template",
@@ -674,9 +688,10 @@ def _print_device_cards(devices: list[dict[str, Any]], console: Console, config:
         key_fields = [
             ("ID", "id"),
             ("IP", "ip"),
+            ("Protocol", "protocol"),
             ("Model", "model_number"),
             ("Type", "device_type"),
-            ("Description", "description"),
+            ("Name", "name"),
             ("Enabled", "enabled"),
             ("Manual", "manual"),
             ("Discovered", "discovered"),
@@ -705,7 +720,7 @@ def _print_device_cards(devices: list[dict[str, Any]], console: Console, config:
         metadata_fields = [
             ("LED Count", "led_count"),
             ("Length (m)", "length_meters"),
-            ("Segments", "segment_count"),
+            ("Segments", "zone_count"),
             ("Last Seen", "last_seen"),
             ("First Seen", "first_seen"),
         ]
@@ -952,10 +967,10 @@ def _cmd_devices_add(config: ClientConfig, client: httpx.Client, args: argparse.
         payload["led_count"] = args.led_count
     if args.led_density_per_meter is not None:
         payload["led_density_per_meter"] = args.led_density_per_meter
-    if args.has_segments is not None:
-        payload["has_segments"] = args.has_segments
-    if args.segment_count is not None:
-        payload["segment_count"] = args.segment_count
+    if args.has_zones is not None:
+        payload["has_zones"] = args.has_zones
+    if args.zone_count is not None:
+        payload["zone_count"] = args.zone_count
     if enabled is not None:
         payload["enabled"] = enabled
 
@@ -980,10 +995,10 @@ def _cmd_devices_update(config: ClientConfig, client: httpx.Client, args: argpar
         payload["led_count"] = args.led_count
     if args.led_density_per_meter is not None:
         payload["led_density_per_meter"] = args.led_density_per_meter
-    if args.has_segments is not None:
-        payload["has_segments"] = args.has_segments
-    if args.segment_count is not None:
-        payload["segment_count"] = args.segment_count
+    if args.has_zones is not None:
+        payload["has_zones"] = args.has_zones
+    if args.zone_count is not None:
+        payload["zone_count"] = args.zone_count
     if args.capabilities is not None:
         capabilities = _parse_json_arg(args.capabilities)
         payload["capabilities"] = _validate_capabilities(capabilities)
@@ -1210,8 +1225,8 @@ def _validate_device_payload(payload: dict[str, Any], operation: str = "create")
         if payload["led_density_per_meter"] <= 0:
             raise CliError("LED density must be greater than 0")
 
-    if "segment_count" in payload and payload["segment_count"] is not None:
-        if payload["segment_count"] <= 0:
+    if "zone_count" in payload and payload["zone_count"] is not None:
+        if payload["zone_count"] <= 0:
             raise CliError("Segment count must be greater than 0")
 
 
