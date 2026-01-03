@@ -72,16 +72,16 @@ Priority Levels (0-200, higher wins):
 
 **Scenario 1: sACN beats ArtNet (default)**
 ```
-Console A (sACN, priority 100) → Universe 0
-Console B (ArtNet, priority 25) → Universe 0
+Console A (sACN, priority 100) → Universe 1
+Console B (ArtNet, priority 25) → Universe 1
 
 Result: Console A controls devices (100 > 25)
 ```
 
 **Scenario 2: Graceful failover**
 ```
-Primary (sACN, priority 150) → Universe 0
-Backup (sACN, priority 50) → Universe 0
+Primary (sACN, priority 150) → Universe 1
+Backup (sACN, priority 50) → Universe 1
 
 Primary active: Devices controlled by Primary
 Primary stops: Backup takes over automatically after 2.5s timeout
@@ -90,11 +90,13 @@ Primary returns: Primary resumes control immediately
 
 **Scenario 3: Separate universes (no conflict)**
 ```
-Console A (ArtNet) → Universe 0
-Console B (sACN) → Universe 1
+Console A (ArtNet) → Universe 1
+Console B (sACN) → Universe 2
 
 Result: No conflict, both active simultaneously
 ```
+
+**Note on Universe Numbering:** sACN (E1.31) universes are 1–63999. Art-Net supports universe 0. Universe 0 is Art-Net-only in this application; universes 1+ are mergeable across protocols.
 
 ### Supported Input Protocols
 
@@ -230,7 +232,7 @@ dmx-lan-cli mappings create \
 ```bash
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --start-channel 1 \
   --template RGB
 ```
@@ -244,7 +246,7 @@ This creates mappings for:
 ```bash
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --start-channel 10 \
   --template RGBc
 ```
@@ -275,7 +277,7 @@ This creates mappings for:
 ```bash
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 100 \
   --field dimmer
 ```
@@ -314,7 +316,7 @@ For fine-grained control or non-standard fixture layouts, you can create individ
 ```bash
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 1 \
   --length 1 \
   --type discrete \
@@ -325,7 +327,7 @@ dmx-lan-cli mappings create \
 ```bash
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 2 \
   --length 3 \
   --type range
@@ -337,7 +339,7 @@ This automatically maps channels 2, 3, 4 to R, G, B respectively.
 # Map red to channel 10
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 10 \
   --length 1 \
   --type discrete \
@@ -346,7 +348,7 @@ dmx-lan-cli mappings create \
 # Map green to channel 11
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 11 \
   --length 1 \
   --type discrete \
@@ -355,7 +357,7 @@ dmx-lan-cli mappings create \
 # Map blue to channel 12
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 12 \
   --length 1 \
   --type discrete \
@@ -366,7 +368,7 @@ dmx-lan-cli mappings create \
 ```bash
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 13 \
   --length 1 \
   --type discrete \
@@ -473,7 +475,7 @@ Template 'DimRGBCT' is incompatible with this device (missing brightness support
 
 #### "Field(s) already mapped for device"
 ```
-Field(s) already mapped for device AA:BB:CC:DD:EE:FF on universe 0: r, g, b
+Field(s) already mapped for device AA:BB:CC:DD:EE:FF on universe 1: r, g, b
 ```
 
 **Cause**: You're trying to map a field (like 'r' for red) that's already mapped for this device on this universe.
@@ -676,27 +678,27 @@ dmx-lan-cli mappings channel-map
 
 ## Sample Configurations
 
-### Example 1: Three RGB Light Strips on Universe 0
+### Example 1: Three RGB Light Strips on Universe 1
 
 ```bash
 # Strip 1: Channels 1-3
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:01" \
-  --universe 0 \
+  --universe 1 \
   --start-channel 1 \
   --template RGB
 
 # Strip 2: Channels 4-6
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:02" \
-  --universe 0 \
+  --universe 1 \
   --start-channel 4 \
   --template RGB
 
 # Strip 3: Channels 7-9
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:03" \
-  --universe 0 \
+  --universe 1 \
   --start-channel 7 \
   --template RGB
 ```
@@ -752,7 +754,7 @@ If you need a non-standard layout, use individual mappings:
 # Dimmer on channel 1
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 1 \
   --type discrete \
   --field dimmer
@@ -762,7 +764,7 @@ dmx-lan-cli mappings create \
 # RGB on channels 3-5
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 3 \
   --length 3 \
   --type range
@@ -770,7 +772,7 @@ dmx-lan-cli mappings create \
 # Color temperature on channel 10 (non-consecutive)
 dmx-lan-cli mappings create \
   --device-id "AA:BB:CC:DD:EE:FF" \
-  --universe 0 \
+  --universe 1 \
   --channel 10 \
   --type discrete \
   --field ct

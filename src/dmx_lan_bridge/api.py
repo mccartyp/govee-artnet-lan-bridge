@@ -155,10 +155,14 @@ class DeviceOut(BaseModel):
 
 
 class MappingCreate(BaseModel):
-    """Payload for creating a mapping."""
+    """Payload for creating a mapping.
+
+    Note: sACN (E1.31) universes are 1–63999. Art-Net supports universe 0.
+    Universe 0 is Art-Net-only in this application; universes 1+ are mergeable across protocols.
+    """
 
     device_id: str
-    universe: int = Field(ge=0)
+    universe: int = Field(default=1, ge=0, description="DMX universe (0=Art-Net only, 1+=multi-protocol)")
     channel: Optional[int] = Field(default=None, gt=0)
     start_channel: Optional[int] = Field(default=None, gt=0)
     length: Optional[int] = Field(default=1, gt=0)

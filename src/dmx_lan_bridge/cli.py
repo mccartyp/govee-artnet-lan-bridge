@@ -83,7 +83,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "Command-line client for ArtNet LAN Bridge (multi-protocol). "
             "Uses ARTNET_LAN_CLI_* env vars for defaults and prints JSON (default) or YAML. "
             "Examples: `artnet-lan-cli devices list`, "
-            "`artnet-lan-cli mappings create --device-id <id> --universe 0 --start-channel 1 --template rgb`."
+            "`artnet-lan-cli mappings create --device-id <id> --universe 1 --start-channel 1 --template rgb`."
         )
     )
     parser.add_argument(
@@ -414,14 +414,23 @@ def _add_mapping_commands(subparsers: argparse._SubParsersAction[argparse.Argume
         help="Create a mapping (POST /mappings; supports templates or manual ranges)",
         description=(
             "Creates mappings for a device. Template example: "
-            "`--device-id <id> --universe 0 --start-channel 1 --template rgbw` "
+            "`--device-id <id> --universe 1 --start-channel 1 --template rgbw` "
             "expands to consecutive color fields. Manual example: "
             "`--channel 10 --length 3 --type range` for RGB. Prevents overlap unless "
             "--allow-overlap is set."
         ),
     )
     create.add_argument("--device-id", required=True, help="Device identifier to map")
-    create.add_argument("--universe", required=True, type=int, help="DMX universe number")
+    create.add_argument(
+        "--universe",
+        required=True,
+        type=int,
+        help=(
+            "DMX universe number (default: 1 if omitted). "
+            "Note: sACN (E1.31) universes are 1–63999. Art-Net supports universe 0. "
+            "Universe 0 is Art-Net-only; universes 1+ are mergeable across protocols."
+        )
+    )
     create.add_argument("--channel", type=int, help="Starting DMX channel")
     create.add_argument(
         "--start-channel",
