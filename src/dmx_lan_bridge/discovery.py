@@ -114,6 +114,7 @@ class DiscoveryService:
         self.protocol = protocol
         self.logger = get_logger("devices.discovery")
         self._seen: Dict[str, str] = {}
+        self._lifx_version_requests: set[tuple[str, str]] = set()
         self._probe_payload = self.config.discovery_probe_payload.encode("utf-8")
         self._lifx_socket: Optional[socket.socket] = None
         self._lifx_task: Optional[asyncio.Task] = None
@@ -216,6 +217,7 @@ class DiscoveryService:
     def reset_cycle(self) -> None:
         """Clear seen devices for a new discovery cycle."""
         self._seen.clear()
+        self._lifx_version_requests.clear()
 
     async def run_cycle(self) -> None:
         """Run a discovery cycle by sending probes for all protocols."""
@@ -345,55 +347,114 @@ class DiscoveryService:
             # Get LIFX protocol handler
             lifx_handler = get_protocol_handler("lifx")
 
-            # Parse discovery response
-            parsed = lifx_handler.parse_discovery_response(data)
+            header = lifx_handler.decode_header(data)
 
-            if parsed is None:
-                # Not a StateService response, ignore
-                return
+            if header["type"] == lifx_handler.MSG_STATE_SERVICE:
+                parsed = lifx_handler.parse_state_service(header)
+                if parsed is None:
+                    return
 
-            # Extract device info
-            device_id = parsed["mac_str"]
-            ip = addr[0]
-            port = parsed.get("port", 56700)
+                device_id = parsed["mac_str"]
+                ip = addr[0]
+                port = parsed.get("port", 56700)
+                previous_ip = self._seen.get(device_id)
+                self._seen[device_id] = ip
 
-            # Check if already seen
-            previous_ip = self._seen.get(device_id)
-            self._seen[device_id] = ip
-            if previous_ip and previous_ip == ip:
-                self.logger.debug(
-                    "Ignoring duplicate LIFX discovery response",
-                    extra={"device_id": device_id, "ip": ip},
+                version_key = (device_id, ip)
+                if version_key not in self._lifx_version_requests and self._lifx_socket:
+                    try:
+                        version_request = lifx_handler.build_get_version_request(parsed["mac"])
+                        self._lifx_socket.sendto(version_request, (ip, port))
+                        self._lifx_version_requests.add(version_key)
+                        self.logger.debug(
+                            "Sent LIFX GetVersion request",
+                            extra={"device_id": device_id, "ip": ip, "port": port},
+                        )
+                    except Exception as exc:
+                        record_discovery_error("lifx_version_request_error")
+                        self.logger.debug(
+                            "Failed to send LIFX version request",
+                            extra={"device_id": device_id, "ip": ip, "error": str(exc)},
+                        )
+
+                if previous_ip and previous_ip == ip:
+                    self.logger.debug(
+                        "Ignoring duplicate LIFX discovery response",
+                        extra={"device_id": device_id, "ip": ip},
+                    )
+                    return
+
+                discovery_result = DiscoveryResult(
+                    id=device_id,
+                    ip=ip,
+                    protocol="lifx",
+                    model_number=None,
+                    device_type="light",
+                    length_meters=None,
+                    led_count=None,
+                    led_density_per_meter=None,
+                    has_zones=None,
+                    zone_count=None,
+                    description=None,
+                    capabilities={"port": port, "service": parsed.get("service", 1)},
+                    manual=False,
                 )
+
+                self.logger.info(
+                    "Discovered LIFX device",
+                    extra={"device_id": device_id, "ip": ip, "port": port},
+                )
+                record_discovery_response("lifx_broadcast")
+                self.logger.debug(
+                    "Scheduling LIFX device record to database",
+                    extra={"device_id": device_id, "ip": ip}
+                )
+                self._schedule(self.store.record_discovery(discovery_result))
                 return
 
-            # Create discovery result
-            discovery_result = DiscoveryResult(
-                id=device_id,
-                ip=ip,
-                protocol="lifx",
-                model_number=None,  # LIFX doesn't provide model in discovery
-                device_type="light",  # LIFX devices are lights
-                length_meters=None,
-                led_count=None,
-                led_density_per_meter=None,
-                has_zones=None,
-                zone_count=None,
-                description=None,
-                capabilities={"port": port, "service": parsed.get("service", 1)},
-                manual=False,
-            )
+            if header["type"] == lifx_handler.MSG_STATE_VERSION:
+                try:
+                    version_details = lifx_handler.parse_state_version(header["payload"])
+                except Exception as exc:
+                    record_discovery_error("lifx_version_parse_error")
+                    self.logger.debug(
+                        "Failed to parse LIFX version response",
+                        extra={"from": addr, "error": str(exc)},
+                    )
+                    return
 
-            self.logger.info(
-                "Discovered LIFX device",
-                extra={"device_id": device_id, "ip": ip, "port": port},
-            )
-            record_discovery_response("lifx_broadcast")
-            self.logger.debug(
-                "Scheduling LIFX device record to database",
-                extra={"device_id": device_id, "ip": ip}
-            )
-            self._schedule(self.store.record_discovery(discovery_result))
+                device_mac = header.get("target", b"")
+                device_id = ":".join(f"{b:02X}" for b in device_mac)
+                ip = addr[0]
+                discovery_result = DiscoveryResult(
+                    id=device_id,
+                    ip=ip,
+                    protocol="lifx",
+                    model_number=version_details.get("model_number"),
+                    device_type="light",
+                    length_meters=None,
+                    led_count=None,
+                    led_density_per_meter=None,
+                    has_zones=None,
+                    zone_count=None,
+                    description=None,
+                    capabilities=version_details.get("capabilities"),
+                    manual=False,
+                )
+                self.logger.info(
+                    "Received LIFX version details",
+                    extra={
+                        "device_id": device_id,
+                        "ip": ip,
+                        "model_number": discovery_result.model_number,
+                    },
+                )
+                record_discovery_response("lifx_version")
+                self.logger.debug(
+                    "Scheduling LIFX version record to database",
+                    extra={"device_id": device_id, "ip": ip}
+                )
+                self._schedule(self.store.record_discovery(discovery_result))
 
         except Exception as e:
             record_discovery_error("lifx_parse_error")
