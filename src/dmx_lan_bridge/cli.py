@@ -22,7 +22,7 @@ from rich.text import Text
 
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
-ENV_PREFIX = "GOVEE_ARTNET_CLI_"
+ENV_PREFIX = "DMX_LAN_CLI_"
 
 
 class CliError(Exception):

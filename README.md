@@ -1,9 +1,9 @@
 # DMX LAN Bridge
 
-[![Latest Release](https://img.shields.io/github/v/release/mccartyp/govee-artnet-lan-bridge)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
-[![Download DEB](https://img.shields.io/badge/download-.deb-blue)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/mccartyp/dmx-lan-bridge)](https://github.com/mccartyp/dmx-lan-bridge/releases/latest)
+[![Download DEB](https://img.shields.io/badge/download-.deb-blue)](https://github.com/mccartyp/dmx-lan-bridge/releases/latest)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/github/license/mccartyp/govee-artnet-lan-bridge)](LICENSE)
+[![License](https://img.shields.io/github/license/mccartyp/dmx-lan-bridge)](LICENSE)
 
 A multi-protocol DMX to LAN device bridge with priority-based source merging. Control smart lights using professional lighting control protocols (ArtNet, sACN) and software like QLC+, Chamsys MagicQ, or any DMX-compatible controller.
 
