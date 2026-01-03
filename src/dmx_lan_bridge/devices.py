@@ -747,6 +747,7 @@ class DeviceStore:
             SELECT
                 d.id,
                 d.ip,
+                d.protocol,
                 d.name,
                 d.model,
                 d.model_number,
@@ -805,6 +806,7 @@ class DeviceStore:
             SELECT
                 d.id,
                 d.ip,
+                d.protocol,
                 d.name,
                 d.model,
                 d.model_number,
@@ -855,6 +857,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                protocol,
                 name,
                 model,
                 model_number,
@@ -1023,6 +1026,7 @@ class DeviceStore:
             SELECT
                 id,
                 ip,
+                protocol,
                 name,
                 model,
                 model_number,
@@ -1521,6 +1525,7 @@ class DeviceStore:
                 d.ip,
                 d.model,
                 d.model_number,
+                d.protocol,
                 d.capabilities
             FROM mappings m
             JOIN devices d ON d.id = m.device_id
@@ -1618,7 +1623,7 @@ class DeviceStore:
         if normalized_mapping_type == "discrete" and length != 1:
             raise ValueError("Discrete mappings must have a length of 1")
         device_row = conn.execute(
-            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities, protocol FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not device_row:
@@ -1718,7 +1723,7 @@ class DeviceStore:
 
         segments = _template_segments(template)
         device_row = conn.execute(
-            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities, protocol FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not device_row:
@@ -1829,7 +1834,7 @@ class DeviceStore:
         if new_channel <= 0 or new_length <= 0:
             raise ValueError("Channel and length must be positive")
         device_row = conn.execute(
-            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities, protocol FROM devices WHERE id = ?",
             (new_device_id,),
         ).fetchone()
         if not device_row:
@@ -2332,7 +2337,7 @@ class DeviceStore:
         self, conn: sqlite3.Connection, device_id: str
     ) -> Optional[NormalizedCapabilities]:
         row = conn.execute(
-            "SELECT model, model_number, capabilities FROM devices WHERE id = ?",
+            "SELECT model, model_number, capabilities, protocol FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         if not row:
