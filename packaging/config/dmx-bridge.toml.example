@@ -41,9 +41,9 @@ artnet_port = 6454
 artnet_priority = 25
 
 ## sACN (Streaming ACN / ANSI E1.31)
-# Enable sACN/E1.31 input protocol (default: false)
+# Enable sACN/E1.31 input protocol (default: true)
 # Professional standard with priority control and multicast efficiency
-sacn_enabled = false
+sacn_enabled = true
 
 # sACN listening port (default: 5568, standard sACN port)
 sacn_port = 5568

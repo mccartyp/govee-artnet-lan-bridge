@@ -71,7 +71,7 @@ class Config:
     artnet_enabled: bool = True
     artnet_port: int = 6454
     artnet_priority: int = 25  # Fixed priority for ArtNet (0-200, below sACN default)
-    sacn_enabled: bool = False  # sACN disabled by default (new feature)
+    sacn_enabled: bool = True  # sACN/E1.31 enabled by default
     sacn_port: int = 5568
     sacn_multicast: bool = True
     sacn_universes: Sequence[int] = (1,)  # Universes to listen on (multicast mode)
