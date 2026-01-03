@@ -17,7 +17,13 @@ import uvicorn
 from .capabilities import NormalizedCapabilities, validate_command_payload
 from .config import Config, ManualDevice
 from .devices import DeviceStateUpdate, DeviceStore
-from .events import EVENT_MAPPING_CREATED, EVENT_MAPPING_DELETED, EVENT_MAPPING_UPDATED
+from .events import (
+    EVENT_DEVICE_DISABLED,
+    EVENT_DEVICE_ENABLED,
+    EVENT_MAPPING_CREATED,
+    EVENT_MAPPING_DELETED,
+    EVENT_MAPPING_UPDATED,
+)
 from .health import HealthMonitor
 from .logging import get_logger, redact_mapping
 from .metrics import (
@@ -497,6 +503,12 @@ def create_app(
         )
         if not updated:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+
+        # Emit device enabled/disabled event if enabled state was changed
+        if payload.enabled is not None and event_bus:
+            event_type = EVENT_DEVICE_ENABLED if payload.enabled else EVENT_DEVICE_DISABLED
+            await event_bus.publish(event_type, {"device_id": device_id, "enabled": payload.enabled})
+
         return DeviceOut(**updated.__dict__)
 
     @app.post("/devices/{device_id}/test", dependencies=[Depends(auth_dependency)], status_code=status.HTTP_202_ACCEPTED)
