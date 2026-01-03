@@ -40,4 +40,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.data-files]
-"share/dmx_lan_bridge" = ["res/capability_catalog_govee.json"]
+"share/dmx_lan_bridge" = [
+    "res/capability_catalog_govee.json",
+    "res/capability_catalog_lifx.json"
+]

@@ -39,39 +39,45 @@ case "$1" in
             chmod 755 /usr/share/dmx_lan_bridge
         fi
 
-        # Ensure capability catalog has correct ownership and permissions
-        if [ -f /usr/share/dmx_lan_bridge/capability_catalog_govee.json ]; then
-            chown root:root /usr/share/dmx_lan_bridge/capability_catalog_govee.json
-            chmod 644 /usr/share/dmx_lan_bridge/capability_catalog_govee.json
+        # Ensure capability catalogs have correct ownership and permissions
+        for catalog in capability_catalog_govee.json capability_catalog_lifx.json; do
+            if [ -f "/usr/share/dmx_lan_bridge/$catalog" ]; then
+                chown root:root "/usr/share/dmx_lan_bridge/$catalog"
+                chmod 644 "/usr/share/dmx_lan_bridge/$catalog"
 
-            # Remove ACLs if setfacl is available (Ubuntu 24.04 has ACLs that block access)
-            if command -v setfacl >/dev/null 2>&1; then
-                echo "Removing ACLs from capability catalog..."
-                setfacl -b /usr/share/dmx_lan_bridge/capability_catalog_govee.json 2>/dev/null || true
-                setfacl -b /usr/share/dmx_lan_bridge 2>/dev/null || true
-            else
-                echo "Note: setfacl not available, skipping ACL removal"
-            fi
-
-            # Verify file is accessible
-            echo "Verifying capability catalog is accessible..."
-            ls -la /usr/share/dmx_lan_bridge/capability_catalog_govee.json || echo "WARNING: Cannot list file"
-            if [ -r /usr/share/dmx_lan_bridge/capability_catalog_govee.json ]; then
-                echo "✓ Capability catalog is readable by root"
-            else
-                echo "WARNING: Capability catalog is not readable by root!"
-            fi
-
-            # Test if dmx-bridge user can read the file
-            if command -v sudo >/dev/null 2>&1 && id dmx-bridge >/dev/null 2>&1; then
-                if sudo -u dmx-bridge test -r /usr/share/dmx_lan_bridge/capability_catalog_govee.json 2>/dev/null; then
-                    echo "✓ Capability catalog is readable by dmx-bridge user"
+                # Remove ACLs if setfacl is available (Ubuntu 24.04 has ACLs that block access)
+                if command -v setfacl >/dev/null 2>&1; then
+                    echo "Removing ACLs from $catalog..."
+                    setfacl -b "/usr/share/dmx_lan_bridge/$catalog" 2>/dev/null || true
                 else
-                    echo "WARNING: Capability catalog is NOT readable by dmx-bridge user!"
-                    echo "Directory permissions:"
-                    ls -lad /usr/share/dmx_lan_bridge/
+                    echo "Note: setfacl not available for $catalog, skipping ACL removal"
+                fi
+
+                # Verify file is accessible
+                echo "Verifying $catalog is accessible..."
+                ls -la "/usr/share/dmx_lan_bridge/$catalog" || echo "WARNING: Cannot list file"
+                if [ -r "/usr/share/dmx_lan_bridge/$catalog" ]; then
+                    echo "✓ $catalog is readable by root"
+                else
+                    echo "WARNING: $catalog is not readable by root!"
+                fi
+
+                # Test if dmx-bridge user can read the file
+                if command -v sudo >/dev/null 2>&1 && id dmx-bridge >/dev/null 2>&1; then
+                    if sudo -u dmx-bridge test -r "/usr/share/dmx_lan_bridge/$catalog" 2>/dev/null; then
+                        echo "✓ $catalog is readable by dmx-bridge user"
+                    else
+                        echo "WARNING: $catalog is NOT readable by dmx-bridge user!"
+                        echo "Directory permissions:"
+                        ls -lad /usr/share/dmx_lan_bridge/
+                    fi
                 fi
             fi
+        done
+
+        # Remove ACLs from directory after processing all catalogs
+        if command -v setfacl >/dev/null 2>&1; then
+            setfacl -b /usr/share/dmx_lan_bridge 2>/dev/null || true
         fi
 
         # Ensure systemd service file has correct ownership

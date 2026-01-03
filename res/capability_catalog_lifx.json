@@ -1,2422 +1,3631 @@
-[
-  {
-    "vid": 1,
-    "name": "LIFX",
-    "defaults": {
-      "hev": false,
-      "color": false,
-      "chain": false,
-      "matrix": false,
-      "relays": false,
-      "buttons": false,
-      "infrared": false,
-      "multizone": false,
-      "temperature_range": null,
-      "extended_multizone": false
+{
+  "schema": 1,
+  "devices": [
+    {
+      "model_number": "1:1",
+      "product_name": "LIFX Original 1000",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
     },
-    "products": [
-      {
-        "pid": 1,
-        "name": "LIFX Original 1000",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": []
+    {
+      "model_number": "1:3",
+      "product_name": "LIFX Color 650",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 3,
-        "name": "LIFX Color 650",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": []
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:10",
+      "product_name": "LIFX White 800 (Low Voltage)",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          6500
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 10,
-        "name": "LIFX White 800 (Low Voltage)",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            6500
-          ]
-        },
-        "upgrades": []
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:11",
+      "product_name": "LIFX White 800 (High Voltage)",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          6500
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 11,
-        "name": "LIFX White 800 (High Voltage)",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            6500
-          ]
-        },
-        "upgrades": []
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:15",
+      "product_name": "LIFX Color 1000",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 15,
-        "name": "LIFX Color 1000",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": []
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:18",
+      "product_name": "LIFX White 900 BR30 (Low Voltage)",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 18,
-        "name": "LIFX White 900 BR30 (Low Voltage)",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": []
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:19",
+      "product_name": "LIFX White 900 BR30 (High Voltage)",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 19,
-        "name": "LIFX White 900 BR30 (High Voltage)",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": []
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:20",
+      "product_name": "LIFX Color 1000 BR30",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 20,
-        "name": "LIFX Color 1000 BR30",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": []
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:22",
+      "product_name": "LIFX Color 1000",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 22,
-        "name": "LIFX Color 1000",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": []
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:27",
+      "product_name": "LIFX A19",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 27,
-        "name": "LIFX A19",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:28",
+      "product_name": "LIFX BR30",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
+          }
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:29",
+      "product_name": "LIFX A19 Night Vision",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
+          }
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:30",
+      "product_name": "LIFX BR30 Night Vision",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
+          }
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:31",
+      "product_name": "LIFX Z",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:32",
+      "product_name": "LIFX Z",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false,
+        "min_ext_mz_firmware": 1532997580,
+        "min_ext_mz_firmware_components": [
+          2,
+          77
         ]
       },
-      {
-        "pid": 28,
-        "name": "LIFX BR30",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 77,
+          "features": {
+            "extended_multizone": true
           }
+        },
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
+          }
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:36",
+      "product_name": "LIFX Downlight",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
+          }
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:37",
+      "product_name": "LIFX Downlight",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
+          }
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:38",
+      "product_name": "LIFX Beam",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false,
+        "min_ext_mz_firmware": 1532997580,
+        "min_ext_mz_firmware_components": [
+          2,
+          77
         ]
       },
-      {
-        "pid": 29,
-        "name": "LIFX A19 Night Vision",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 77,
+          "features": {
+            "extended_multizone": true
           }
-        ]
-      },
-      {
-        "pid": 30,
-        "name": "LIFX BR30 Night Vision",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
         },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
-        ]
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:39",
+      "product_name": "LIFX Downlight White to Warm",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 31,
-        "name": "LIFX Z",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 32,
-        "name": "LIFX Z",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            2500,
-            9000
-          ],
-          "min_ext_mz_firmware": 1532997580,
-          "min_ext_mz_firmware_components": [
-            2,
-            77
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 77,
-            "features": {
-              "extended_multizone": true
-            }
-          },
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
-        ]
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:40",
+      "product_name": "LIFX Downlight",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 36,
-        "name": "LIFX Downlight",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
-        ]
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:43",
+      "product_name": "LIFX A19",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 37,
-        "name": "LIFX Downlight",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
-        ]
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:44",
+      "product_name": "LIFX BR30",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 38,
-        "name": "LIFX Beam",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            2500,
-            9000
-          ],
-          "min_ext_mz_firmware": 1532997580,
-          "min_ext_mz_firmware_components": [
-            2,
-            77
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 77,
-            "features": {
-              "extended_multizone": true
-            }
-          },
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
-        ]
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:45",
+      "product_name": "LIFX A19 Night Vision",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 39,
-        "name": "LIFX Downlight White to Warm",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
-        ]
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:46",
+      "product_name": "LIFX BR30 Night Vision",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 40,
-        "name": "LIFX Downlight",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "upgrades": [
+        {
+          "major": 2,
+          "minor": 80,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
-        ]
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:49",
+      "product_name": "LIFX Mini Color",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 43,
-        "name": "LIFX A19",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:50",
+      "product_name": "LIFX Mini White to Warm",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          6500
+        ],
+        "extended_multizone": false
+      },
+      "upgrades": [
+        {
+          "major": 3,
+          "minor": 70,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
-        ]
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:51",
+      "product_name": "LIFX Mini White",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          2700
+        ],
+        "extended_multizone": false
       },
-      {
-        "pid": 44,
-        "name": "LIFX BR30",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:52",
+      "product_name": "LIFX GU10",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:53",
+      "product_name": "LIFX GU10",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:55",
+      "product_name": "LIFX Tile",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": true,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:57",
+      "product_name": "LIFX Candle",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:59",
+      "product_name": "LIFX Mini Color",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:60",
+      "product_name": "LIFX Mini White to Warm",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          6500
+        ],
+        "extended_multizone": false
+      },
+      "upgrades": [
+        {
+          "major": 3,
+          "minor": 70,
+          "features": {
+            "temperature_range": [
+              1500,
+              9000
+            ]
           }
-        ]
-      },
-      {
-        "pid": 45,
-        "name": "LIFX A19 Night Vision",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
-          }
-        ]
-      },
-      {
-        "pid": 46,
-        "name": "LIFX BR30 Night Vision",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 2,
-            "minor": 80,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
-          }
-        ]
-      },
-      {
-        "pid": 49,
-        "name": "LIFX Mini Color",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 50,
-        "name": "LIFX Mini White to Warm",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            6500
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 3,
-            "minor": 70,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
-          }
-        ]
-      },
-      {
-        "pid": 51,
-        "name": "LIFX Mini White",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            2700
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 52,
-        "name": "LIFX GU10",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 53,
-        "name": "LIFX GU10",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 55,
-        "name": "LIFX Tile",
-        "features": {
-          "color": true,
-          "chain": true,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 57,
-        "name": "LIFX Candle",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 59,
-        "name": "LIFX Mini Color",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 60,
-        "name": "LIFX Mini White to Warm",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            6500
-          ]
-        },
-        "upgrades": [
-          {
-            "major": 3,
-            "minor": 70,
-            "features": {
-              "temperature_range": [
-                1500,
-                9000
-              ]
-            }
-          }
-        ]
-      },
-      {
-        "pid": 61,
-        "name": "LIFX Mini White",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            2700
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 62,
-        "name": "LIFX A19",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 63,
-        "name": "LIFX BR30",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 64,
-        "name": "LIFX A19 Night Vision",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 65,
-        "name": "LIFX BR30 Night Vision",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 66,
-        "name": "LIFX Mini White",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            2700
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 68,
-        "name": "LIFX Candle",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 70,
-        "name": "LIFX Switch",
-        "features": {
-          "color": false,
-          "relays": true,
-          "chain": false,
-          "matrix": false,
-          "buttons": true,
-          "infrared": false,
-          "multizone": false
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 71,
-        "name": "LIFX Switch",
-        "features": {
-          "color": false,
-          "relays": true,
-          "chain": false,
-          "matrix": false,
-          "buttons": true,
-          "infrared": false,
-          "multizone": false
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 81,
-        "name": "LIFX Candle White to Warm",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2200,
-            6500
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 82,
-        "name": "LIFX Filament Clear",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2100,
-            2100
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 85,
-        "name": "LIFX Filament Amber",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2000,
-            2000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 87,
-        "name": "LIFX Mini White",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            2700
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 88,
-        "name": "LIFX Mini White",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            2700
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 89,
-        "name": "LIFX Switch",
-        "features": {
-          "color": false,
-          "relays": true,
-          "chain": false,
-          "matrix": false,
-          "buttons": true,
-          "infrared": false,
-          "multizone": false
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 90,
-        "name": "LIFX Clean",
-        "features": {
-          "hev": true,
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 91,
-        "name": "LIFX Color",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 92,
-        "name": "LIFX Color",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 93,
-        "name": "LIFX A19 US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 94,
-        "name": "LIFX BR30",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 96,
-        "name": "LIFX Candle White to Warm",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2200,
-            6500
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 97,
-        "name": "LIFX A19",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 98,
-        "name": "LIFX BR30",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 99,
-        "name": "LIFX Clean",
-        "features": {
-          "hev": true,
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 100,
-        "name": "LIFX Filament Clear",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2100,
-            2100
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 101,
-        "name": "LIFX Filament Amber",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2000,
-            2000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 109,
-        "name": "LIFX A19 Night Vision",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 110,
-        "name": "LIFX BR30 Night Vision",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 111,
-        "name": "LIFX A19 Night Vision",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 112,
-        "name": "LIFX BR30 Night Vision Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": true,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 113,
-        "name": "LIFX Mini WW US",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 114,
-        "name": "LIFX Mini WW Intl",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 115,
-        "name": "LIFX Switch",
-        "features": {
-          "color": false,
-          "relays": true,
-          "chain": false,
-          "matrix": false,
-          "buttons": true,
-          "infrared": false,
-          "multizone": false
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 116,
-        "name": "LIFX Switch",
-        "features": {
-          "color": false,
-          "relays": true,
-          "chain": false,
-          "matrix": false,
-          "buttons": true,
-          "infrared": false,
-          "multizone": false
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 117,
-        "name": "LIFX Z US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 118,
-        "name": "LIFX Z Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 119,
-        "name": "LIFX Beam US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 120,
-        "name": "LIFX Beam Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 121,
-        "name": "LIFX Downlight Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 122,
-        "name": "LIFX Downlight US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 123,
-        "name": "LIFX Color US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 124,
-        "name": "LIFX Colour Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 125,
-        "name": "LIFX White to Warm US",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 126,
-        "name": "LIFX White to Warm Intl",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 127,
-        "name": "LIFX White US",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            2700
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 128,
-        "name": "LIFX White Intl",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            2700
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 129,
-        "name": "LIFX Color US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 130,
-        "name": "LIFX Colour Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 131,
-        "name": "LIFX White To Warm US",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 132,
-        "name": "LIFX White To Warm Intl",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 133,
-        "name": "LIFX White US",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            2700
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 134,
-        "name": "LIFX White Intl",
-        "features": {
-          "color": false,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            2700,
-            2700
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 135,
-        "name": "LIFX GU10 Color US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 136,
-        "name": "LIFX GU10 Colour Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 137,
-        "name": "LIFX Candle Color US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 138,
-        "name": "LIFX Candle Colour Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 141,
-        "name": "LIFX Neon US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 142,
-        "name": "LIFX Neon Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 143,
-        "name": "LIFX String US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 144,
-        "name": "LIFX String Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 161,
-        "name": "LIFX Outdoor Neon US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 162,
-        "name": "LIFX Outdoor Neon Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 163,
-        "name": "LIFX A19 US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 164,
-        "name": "LIFX BR30 US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 165,
-        "name": "LIFX A19 Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 166,
-        "name": "LIFX BR30 Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 167,
-        "name": "LIFX Downlight",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 168,
-        "name": "LIFX Downlight",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 169,
-        "name": "LIFX A21 1600lm US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 170,
-        "name": "LIFX A21 1600lm Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 171,
-        "name": "LIFX Round Spot US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 173,
-        "name": "LIFX Round Path US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 174,
-        "name": "LIFX Square Path US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 175,
-        "name": "LIFX PAR38 US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 176,
-        "name": "LIFX Ceiling US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 177,
-        "name": "LIFX Ceiling Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 178,
-        "name": "LIFX Downlight US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 179,
-        "name": "LIFX Downlight US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 180,
-        "name": "LIFX Downlight US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 181,
-        "name": "LIFX Color US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 182,
-        "name": "LIFX Colour Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 185,
-        "name": "LIFX Candle Color US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 186,
-        "name": "LIFX Candle Colour Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 187,
-        "name": "LIFX Candle Color US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 188,
-        "name": "LIFX Candle Colour Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 201,
-        "name": "LIFX Ceiling 13x26\" US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 202,
-        "name": "LIFX Ceiling 13x26\" Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 203,
-        "name": "LIFX String US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 204,
-        "name": "LIFX String Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 205,
-        "name": "LIFX Indoor Neon US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 206,
-        "name": "LIFX Indoor Neon Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 213,
-        "name": "LIFX Permanent Outdoor US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 214,
-        "name": "LIFX Permanent Outdoor Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": true,
-          "temperature_range": [
-            1500,
-            9000
-          ],
-          "extended_multizone": true
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 215,
-        "name": "LIFX Candle Color US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 216,
-        "name": "LIFX Candle Colour Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 217,
-        "name": "LIFX Tube US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 218,
-        "name": "LIFX Tube Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 219,
-        "name": "LIFX Luna US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "buttons": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 220,
-        "name": "LIFX Luna Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "buttons": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 221,
-        "name": "LIFX Round Spot Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 222,
-        "name": "LIFX Round Path Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": true,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 223,
-        "name": "LIFX Downlight US",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 224,
-        "name": "LIFX Downlight Intl",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      },
-      {
-        "pid": 225,
-        "name": "LIFX PAR38 INTL",
-        "features": {
-          "color": true,
-          "chain": false,
-          "matrix": false,
-          "infrared": false,
-          "multizone": false,
-          "temperature_range": [
-            1500,
-            9000
-          ]
-        },
-        "upgrades": []
-      }
-    ]
-  }
-]
+        }
+      ],
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:61",
+      "product_name": "LIFX Mini White",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          2700
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:62",
+      "product_name": "LIFX A19",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:63",
+      "product_name": "LIFX BR30",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:64",
+      "product_name": "LIFX A19 Night Vision",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:65",
+      "product_name": "LIFX BR30 Night Vision",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:66",
+      "product_name": "LIFX Mini White",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          2700
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:68",
+      "product_name": "LIFX Candle",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:70",
+      "product_name": "LIFX Switch",
+      "device_type": "switch",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": true,
+        "buttons": true,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": null,
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:71",
+      "product_name": "LIFX Switch",
+      "device_type": "switch",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": true,
+        "buttons": true,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": null,
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:81",
+      "product_name": "LIFX Candle White to Warm",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2200,
+          6500
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:82",
+      "product_name": "LIFX Filament Clear",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2100,
+          2100
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:85",
+      "product_name": "LIFX Filament Amber",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2000,
+          2000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:87",
+      "product_name": "LIFX Mini White",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          2700
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:88",
+      "product_name": "LIFX Mini White",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          2700
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:89",
+      "product_name": "LIFX Switch",
+      "device_type": "switch",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": true,
+        "buttons": true,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": null,
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:90",
+      "product_name": "LIFX Clean",
+      "device_type": "light",
+      "capabilities": {
+        "hev": true,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:91",
+      "product_name": "LIFX Color",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:92",
+      "product_name": "LIFX Color",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:93",
+      "product_name": "LIFX A19 US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:94",
+      "product_name": "LIFX BR30",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:96",
+      "product_name": "LIFX Candle White to Warm",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2200,
+          6500
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:97",
+      "product_name": "LIFX A19",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:98",
+      "product_name": "LIFX BR30",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:99",
+      "product_name": "LIFX Clean",
+      "device_type": "light",
+      "capabilities": {
+        "hev": true,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:100",
+      "product_name": "LIFX Filament Clear",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2100,
+          2100
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:101",
+      "product_name": "LIFX Filament Amber",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2000,
+          2000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:109",
+      "product_name": "LIFX A19 Night Vision",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:110",
+      "product_name": "LIFX BR30 Night Vision",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:111",
+      "product_name": "LIFX A19 Night Vision",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:112",
+      "product_name": "LIFX BR30 Night Vision Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": true,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:113",
+      "product_name": "LIFX Mini WW US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:114",
+      "product_name": "LIFX Mini WW Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:115",
+      "product_name": "LIFX Switch",
+      "device_type": "switch",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": true,
+        "buttons": true,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": null,
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:116",
+      "product_name": "LIFX Switch",
+      "device_type": "switch",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": true,
+        "buttons": true,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": null,
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:117",
+      "product_name": "LIFX Z US",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:118",
+      "product_name": "LIFX Z Intl",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:119",
+      "product_name": "LIFX Beam US",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:120",
+      "product_name": "LIFX Beam Intl",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:121",
+      "product_name": "LIFX Downlight Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:122",
+      "product_name": "LIFX Downlight US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:123",
+      "product_name": "LIFX Color US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:124",
+      "product_name": "LIFX Colour Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:125",
+      "product_name": "LIFX White to Warm US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:126",
+      "product_name": "LIFX White to Warm Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:127",
+      "product_name": "LIFX White US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          2700
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:128",
+      "product_name": "LIFX White Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          2700
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:129",
+      "product_name": "LIFX Color US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:130",
+      "product_name": "LIFX Colour Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:131",
+      "product_name": "LIFX White To Warm US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:132",
+      "product_name": "LIFX White To Warm Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:133",
+      "product_name": "LIFX White US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          2700
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:134",
+      "product_name": "LIFX White Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": false,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          2700,
+          2700
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:135",
+      "product_name": "LIFX GU10 Color US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:136",
+      "product_name": "LIFX GU10 Colour Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:137",
+      "product_name": "LIFX Candle Color US",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:138",
+      "product_name": "LIFX Candle Colour Intl",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:141",
+      "product_name": "LIFX Neon US",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:142",
+      "product_name": "LIFX Neon Intl",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:143",
+      "product_name": "LIFX String US",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:144",
+      "product_name": "LIFX String Intl",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:161",
+      "product_name": "LIFX Outdoor Neon US",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:162",
+      "product_name": "LIFX Outdoor Neon Intl",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:163",
+      "product_name": "LIFX A19 US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:164",
+      "product_name": "LIFX BR30 US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:165",
+      "product_name": "LIFX A19 Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:166",
+      "product_name": "LIFX BR30 Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:167",
+      "product_name": "LIFX Downlight",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:168",
+      "product_name": "LIFX Downlight",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:169",
+      "product_name": "LIFX A21 1600lm US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:170",
+      "product_name": "LIFX A21 1600lm Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:171",
+      "product_name": "LIFX Round Spot US",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:173",
+      "product_name": "LIFX Round Path US",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:174",
+      "product_name": "LIFX Square Path US",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:175",
+      "product_name": "LIFX PAR38 US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:176",
+      "product_name": "LIFX Ceiling US",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:177",
+      "product_name": "LIFX Ceiling Intl",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:178",
+      "product_name": "LIFX Downlight US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:179",
+      "product_name": "LIFX Downlight US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:180",
+      "product_name": "LIFX Downlight US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:181",
+      "product_name": "LIFX Color US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:182",
+      "product_name": "LIFX Colour Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:185",
+      "product_name": "LIFX Candle Color US",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:186",
+      "product_name": "LIFX Candle Colour Intl",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:187",
+      "product_name": "LIFX Candle Color US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:188",
+      "product_name": "LIFX Candle Colour Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:201",
+      "product_name": "LIFX Ceiling 13x26\" US",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:202",
+      "product_name": "LIFX Ceiling 13x26\" Intl",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:203",
+      "product_name": "LIFX String US",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:204",
+      "product_name": "LIFX String Intl",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:205",
+      "product_name": "LIFX Indoor Neon US",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:206",
+      "product_name": "LIFX Indoor Neon Intl",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:213",
+      "product_name": "LIFX Permanent Outdoor US",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:214",
+      "product_name": "LIFX Permanent Outdoor Intl",
+      "device_type": "led_strip",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": true,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": true
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:215",
+      "product_name": "LIFX Candle Color US",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:216",
+      "product_name": "LIFX Candle Colour Intl",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:217",
+      "product_name": "LIFX Tube US",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:218",
+      "product_name": "LIFX Tube Intl",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:219",
+      "product_name": "LIFX Luna US",
+      "device_type": "switch",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": true,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:220",
+      "product_name": "LIFX Luna Intl",
+      "device_type": "switch",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": true,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:221",
+      "product_name": "LIFX Round Spot Intl",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:222",
+      "product_name": "LIFX Round Path Intl",
+      "device_type": "led_panel",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": true,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": true,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:223",
+      "product_name": "LIFX Downlight US",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:224",
+      "product_name": "LIFX Downlight Intl",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    },
+    {
+      "model_number": "1:225",
+      "product_name": "LIFX PAR38 INTL",
+      "device_type": "light",
+      "capabilities": {
+        "hev": false,
+        "color": true,
+        "chain": false,
+        "matrix": false,
+        "relays": false,
+        "buttons": false,
+        "infrared": false,
+        "multizone": false,
+        "temperature_range": [
+          1500,
+          9000
+        ],
+        "extended_multizone": false
+      },
+      "length_meters": null,
+      "led_count": null,
+      "led_density_per_meter": null,
+      "has_zones": false,
+      "zone_count": null
+    }
+  ]
+}

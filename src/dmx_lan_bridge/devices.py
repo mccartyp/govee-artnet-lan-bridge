@@ -2113,6 +2113,143 @@ class DeviceStore:
         count = self._mapping_count(conn, device_id=device_id, universe=universe)
         self._set_configured_state(conn, device_id, count > 0, commit=commit)
 
+    def _enrich_lifx_capabilities(
+        self, device_row: Optional[sqlite3.Row], incoming_caps: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Enrich LIFX capabilities from catalog after firmware/version discovery.
+
+        This runs once after we've received vendor_id, product_id, firmware_major,
+        and firmware_minor from the device.
+        """
+        if not device_row:
+            return incoming_caps
+
+        # Get existing capabilities
+        existing_caps = _deserialize_capabilities(device_row["capabilities"]) if device_row["capabilities"] else {}
+
+        # Merge incoming with existing
+        merged = _merge_capability_mappings(existing_caps, incoming_caps)
+
+        # Check if LIFX extension exists with required fields
+        lifx_ext = merged.get("lifx", {}) if isinstance(merged, Mapping) else {}
+
+        # Check if we have all required fields for catalog lookup
+        has_vendor_id = "vendor_id" in lifx_ext
+        has_product_id = "product_id" in lifx_ext
+        has_firmware_major = "firmware_major" in lifx_ext
+        has_firmware_minor = "firmware_minor" in lifx_ext
+
+        # Check if already enriched (has catalog_enriched flag or mapped fields)
+        already_enriched = lifx_ext.get("catalog_enriched", False)
+
+        if not (has_vendor_id and has_product_id and has_firmware_major and has_firmware_minor):
+            # Not ready for enrichment yet
+            return merged
+
+        if already_enriched:
+            # Already enriched, don't do it again
+            return merged
+
+        # Perform catalog lookup
+        from .protocol.lifx import LifxProtocolHandler
+
+        vid = lifx_ext["vendor_id"]
+        pid = lifx_ext["product_id"]
+        fw_major = lifx_ext["firmware_major"]
+        fw_minor = lifx_ext["firmware_minor"]
+
+        catalog_caps = LifxProtocolHandler.lookup_catalog_capabilities(
+            vid, pid, fw_major, fw_minor
+        )
+
+        if not catalog_caps:
+            # Mark as attempted so we don't keep trying
+            if isinstance(merged, MutableMapping) and isinstance(lifx_ext, MutableMapping):
+                lifx_ext["catalog_enriched"] = True
+                merged["lifx"] = lifx_ext
+            return merged
+
+        # Map LIFX-specific capabilities to standard fields
+        mapped_caps = self._map_lifx_capabilities_to_standard(catalog_caps, fw_major, fw_minor)
+
+        # Merge mapped capabilities
+        result = dict(merged)
+        result.update(mapped_caps)
+
+        # Store original LIFX capabilities in extension
+        if isinstance(result.get("lifx"), MutableMapping):
+            result["lifx"].update(catalog_caps)
+            result["lifx"]["catalog_enriched"] = True
+
+        return result
+
+    def _map_lifx_capabilities_to_standard(
+        self, lifx_caps: Mapping[str, Any], fw_major: int, fw_minor: int
+    ) -> Dict[str, Any]:
+        """Map LIFX-specific capability fields to standard capability fields.
+
+        Args:
+            lifx_caps: LIFX-specific capabilities from catalog
+            fw_major: Firmware major version
+            fw_minor: Firmware minor version
+
+        Returns:
+            Dictionary of standard capability fields
+        """
+        mapped = {}
+
+        # Map color capability
+        if lifx_caps.get("color"):
+            mapped["color"] = True
+            mapped["color_modes"] = mapped.get("color_modes", [])
+            if "color" not in mapped["color_modes"]:
+                mapped["color_modes"].append("color")
+
+        # Map temperature_range to color_temp_range
+        temp_range = lifx_caps.get("temperature_range")
+        if temp_range and isinstance(temp_range, list) and len(temp_range) == 2:
+            # Check if device supports variable color temperature
+            if temp_range[0] != temp_range[1]:
+                mapped["color_temperature"] = True
+                mapped["color_temp_range"] = temp_range
+                mapped["color_modes"] = mapped.get("color_modes", [])
+                if "ct" not in mapped["color_modes"]:
+                    mapped["color_modes"].append("ct")
+
+                # Warn if firmware doesn't support full range
+                if temp_range[0] > 2500 and (fw_major, fw_minor) < (2, 80):
+                    self.logger.warning(
+                        f"Device supports extended temperature range {temp_range} "
+                        f"but firmware {fw_major}.{fw_minor} may not support it. "
+                        "Consider upgrading firmware.",
+                        extra={"firmware": f"{fw_major}.{fw_minor}", "temp_range": temp_range}
+                    )
+        elif temp_range is None:
+            # Device is not a lighting product (switch/relay)
+            pass
+
+        # Map multizone/matrix to has_zones
+        if lifx_caps.get("multizone") or lifx_caps.get("matrix"):
+            mapped["has_zones"] = True
+
+        # Set device_type based on capabilities
+        if lifx_caps.get("relays") or lifx_caps.get("buttons"):
+            mapped["device_type"] = "switch"
+        elif lifx_caps.get("multizone"):
+            mapped["device_type"] = "led_strip"
+        elif lifx_caps.get("matrix"):
+            mapped["device_type"] = "led_panel"
+        else:
+            mapped["device_type"] = "light"
+
+        # All LIFX devices support brightness
+        mapped["brightness"] = True
+
+        # Set HSBK color model for all LIFX devices
+        mapped["color_model"] = "hsbk"
+
+        return mapped
+
     async def update_capabilities(
         self, device_id: str, capabilities: Mapping[str, Any]
     ) -> None:
@@ -2122,7 +2259,7 @@ class DeviceStore:
         self, conn: sqlite3.Connection, device_id: str, capabilities: Mapping[str, Any]
     ) -> None:
         device_row = conn.execute(
-            "SELECT model, model_number, protocol FROM devices WHERE id = ?",
+            "SELECT model, model_number, protocol, capabilities FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         model = None
@@ -2130,8 +2267,16 @@ class DeviceStore:
         if device_row:
             model = device_row["model_number"] or device_row["model"]
             protocol = device_row["protocol"] if "protocol" in device_row.keys() else "govee"
+
+        # For LIFX devices: enrich capabilities from catalog if ready
+        capabilities_to_use = dict(capabilities) if capabilities else {}
+        if protocol == "lifx":
+            capabilities_to_use = self._enrich_lifx_capabilities(
+                device_row, capabilities_to_use
+            )
+
         cache = self._get_capability_cache(protocol)
-        normalized = cache.normalize(model, capabilities)
+        normalized = cache.normalize(model, capabilities_to_use)
         serialized = _serialize_capabilities(normalized.as_mapping())
         metadata = _coerce_metadata_for_db(normalized.metadata)
         conn.execute(

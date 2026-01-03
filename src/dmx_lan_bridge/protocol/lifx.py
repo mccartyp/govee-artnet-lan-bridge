@@ -7,11 +7,16 @@ Protocol documentation: https://lan.developer.lifx.com/
 from __future__ import annotations
 
 import colorsys
+import json
 import struct
+from copy import deepcopy
+from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from .base import ProtocolHandler
 from ..capabilities import CapabilityProvider, DeviceReportedCapabilityProvider
+from ..config import _default_capability_catalog_dir
+from ..logging import get_logger
 
 
 class LifxProtocolHandler(ProtocolHandler):
@@ -681,6 +686,102 @@ class LifxProtocolHandler(ProtocolHandler):
             label = ""
 
         return {"label": label}
+
+    @staticmethod
+    def lookup_catalog_capabilities(
+        vid: int, pid: int, firmware_major: int, firmware_minor: int
+    ) -> Optional[Mapping[str, Any]]:
+        """Look up device capabilities from the LIFX catalog.
+
+        Args:
+            vid: Vendor ID
+            pid: Product ID
+            firmware_major: Firmware major version
+            firmware_minor: Firmware minor version
+
+        Returns:
+            Dictionary of LIFX-specific capabilities, or None if not found
+        """
+        logger = get_logger("lifx.protocol")
+
+        # Load catalog
+        catalog_dir = _default_capability_catalog_dir()
+        catalog_path = catalog_dir / "capability_catalog_lifx.json"
+
+        if not catalog_path.exists():
+            logger.warning(
+                f"LIFX capability catalog not found at {catalog_path}",
+                extra={"vid": vid, "pid": pid}
+            )
+            return None
+
+        try:
+            with catalog_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error(
+                f"Failed to load LIFX capability catalog: {e}",
+                extra={"vid": vid, "pid": pid}
+            )
+            return None
+
+        # Find vendor
+        vendor_entry = None
+        for by_vendor in data.get("devices", []):
+            # Catalog is normalized, so model_number is "vid:pid"
+            model_parts = by_vendor.get("model_number", "").split(":")
+            if len(model_parts) != 2:
+                continue
+            try:
+                catalog_vid = int(model_parts[0])
+                catalog_pid = int(model_parts[1])
+            except ValueError:
+                continue
+
+            if catalog_vid == vid and catalog_pid == pid:
+                vendor_entry = by_vendor
+                break
+
+        if not vendor_entry:
+            logger.debug(
+                f"Product {vid}:{pid} not found in LIFX catalog",
+                extra={"vid": vid, "pid": pid}
+            )
+            return None
+
+        # Get base capabilities
+        capabilities = deepcopy(vendor_entry.get("capabilities", {}))
+
+        # Apply firmware upgrades
+        for upgrade in vendor_entry.get("upgrades", []):
+            upgrade_major = upgrade.get("major", 0)
+            upgrade_minor = upgrade.get("minor", 0)
+
+            if (firmware_major, firmware_minor) >= (upgrade_major, upgrade_minor):
+                # Apply upgrade features
+                upgrade_features = upgrade.get("features", {})
+                capabilities.update(upgrade_features)
+                logger.debug(
+                    f"Applied firmware upgrade for {firmware_major}.{firmware_minor}",
+                    extra={
+                        "vid": vid,
+                        "pid": pid,
+                        "upgrade_version": f"{upgrade_major}.{upgrade_minor}",
+                        "features": upgrade_features
+                    }
+                )
+
+        logger.info(
+            f"Loaded catalog capabilities for {vendor_entry.get('product_name', 'Unknown')}",
+            extra={
+                "vid": vid,
+                "pid": pid,
+                "firmware": f"{firmware_major}.{firmware_minor}",
+                "capabilities": capabilities
+            }
+        )
+
+        return capabilities
 
     def get_capability_provider(self) -> CapabilityProvider:
         """Get device-reported capability provider for LIFX devices.
