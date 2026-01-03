@@ -47,7 +47,7 @@ class SacnPacket:
     stream_terminated: bool  # Stream termination flag
 
 
-def _parse_sacn_packet(data: bytes) -> Optional[SacnPacket]:
+def _parse_sacn_packet(data: bytes, logger=None) -> Optional[SacnPacket]:
     """Parse sACN/E1.31 packet.
 
     Returns parsed packet or None if invalid/unsupported packet type.
@@ -196,7 +196,7 @@ def _parse_sacn_packet(data: bytes) -> Optional[SacnPacket]:
         # DMX channel data
         dmx_data = data[offset:offset + dmx_channel_count]
 
-        return SacnPacket(
+        packet = SacnPacket(
             universe=universe,
             sequence=sequence,
             priority=priority,
@@ -207,6 +207,26 @@ def _parse_sacn_packet(data: bytes) -> Optional[SacnPacket]:
             preview=preview,
             stream_terminated=stream_terminated,
         )
+
+        # DEBUG: Log successfully parsed packet
+        if logger:
+            logger.debug(
+                "Parsed E1.31 packet",
+                extra={
+                    "universe": universe,
+                    "sequence": sequence,
+                    "priority": priority,
+                    "source_name": source_name,
+                    "cid": cid.hex(),
+                    "sync_address": sync_address,
+                    "preview": preview,
+                    "stream_terminated": stream_terminated,
+                    "dmx_channels": dmx_channel_count,
+                    "dmx_data_sample": list(dmx_data[:16]) if len(dmx_data) >= 16 else list(dmx_data),
+                },
+            )
+
+        return packet
 
     except (struct.error, IndexError):
         return None
@@ -252,7 +272,7 @@ class SacnProtocol(asyncio.DatagramProtocol):
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]) -> None:
         """Called when sACN packet is received."""
-        packet = _parse_sacn_packet(data)
+        packet = _parse_sacn_packet(data, logger=self.logger)
         if packet:
             self.handler.handle_packet(packet, addr)
 
@@ -393,10 +413,24 @@ class SacnService:
 
         # Ensure packet has exactly 512 DMX channels (pad if needed)
         dmx_data = packet.data
+        original_length = len(dmx_data)
         if len(dmx_data) < 512:
             dmx_data = dmx_data + b"\x00" * (512 - len(dmx_data))
         elif len(dmx_data) > 512:
             dmx_data = dmx_data[:512]
+
+        # DEBUG: Log DMX data before mapping
+        if random.random() <= self._log_sample_rate:
+            self.logger.debug(
+                "E1.31 DMX data before mapping",
+                extra={
+                    "universe": packet.universe,
+                    "original_length": original_length,
+                    "padded_length": len(dmx_data),
+                    "dmx_data_sample": list(dmx_data[:32]),
+                    "non_zero_channels": sum(1 for b in dmx_data if b != 0),
+                },
+            )
 
         # Convert sACN packet to unified DMX frame
         from .dmx import DmxFrame
@@ -414,6 +448,22 @@ class SacnService:
             timestamp=time.perf_counter(),
             source_id=source_id,
         )
+
+        # DEBUG: Log DmxFrame before forwarding to mapper
+        if random.random() <= self._log_sample_rate:
+            self.logger.debug(
+                "E1.31 DmxFrame before forwarding to mapper",
+                extra={
+                    "universe": frame.universe,
+                    "sequence": frame.sequence,
+                    "priority": frame.priority,
+                    "source_protocol": frame.source_protocol,
+                    "source_id": frame.source_id,
+                    "timestamp": frame.timestamp,
+                    "data_length": len(frame.data),
+                    "data_sample": list(frame.data[:32]),
+                },
+            )
 
         # Forward to DMX mapping service (async call from sync context)
         if self.dmx_mapper:
