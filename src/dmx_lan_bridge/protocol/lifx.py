@@ -28,6 +28,8 @@ class LifxProtocolHandler(ProtocolHandler):
     # LIFX Message Types
     MSG_GET_SERVICE = 2
     MSG_STATE_SERVICE = 3
+    MSG_GET_VERSION = 32
+    MSG_STATE_VERSION = 33
     MSG_GET_POWER = 20
     MSG_SET_POWER = 21
     MSG_STATE_POWER = 22
@@ -269,11 +271,17 @@ class LifxProtocolHandler(ProtocolHandler):
             "payload": data[36:size] if size <= len(data) else data[36:]
         }
 
+    def decode_header(self, data: bytes) -> dict[str, Any]:
+        """Public helper to decode a LIFX packet header."""
+        return self._decode_header(data)
+
     def _get_payload_size(self, msg_type: int) -> int:
         """Get expected payload size for message type."""
         payload_sizes = {
             self.MSG_GET_SERVICE: 0,
             self.MSG_STATE_SERVICE: 5,
+            self.MSG_GET_VERSION: 0,
+            self.MSG_STATE_VERSION: 12,
             self.MSG_GET_POWER: 0,
             self.MSG_SET_POWER: 2,
             self.MSG_STATE_POWER: 2,
@@ -425,6 +433,38 @@ class LifxProtocolHandler(ProtocolHandler):
 
     # ===== Message Parsers =====
 
+    def build_get_version_request(self, target_mac: bytes) -> bytes:
+        """Build Device::GetVersion request for a specific device."""
+        if len(target_mac) != 6:
+            raise ValueError(f"MAC address must be 6 bytes, got {len(target_mac)}")
+        return self._build_header(
+            msg_type=self.MSG_GET_VERSION,
+            target_mac=target_mac,
+            tagged=False,
+            res_required=True
+        )
+
+    def parse_state_service(self, header: Mapping[str, Any]) -> Optional[dict[str, Any]]:
+        """Parse a decoded StateService header into a discovery payload."""
+        if header.get("type") != self.MSG_STATE_SERVICE:
+            return None
+
+        payload = header.get("payload", b"")
+        if len(payload) < 5:
+            return None
+
+        service, port = struct.unpack("<BI", payload[:5])
+        mac: bytes = header.get("target", b"")
+        mac_str = ":".join(f"{b:02X}" for b in mac)
+
+        return {
+            "mac": mac,
+            "mac_str": mac_str,
+            "service": service,
+            "port": port,
+            "protocol": "lifx",
+        }
+
     def _parse_light_state(self, payload: bytes) -> dict[str, Any]:
         """Parse Light::State response payload.
 
@@ -561,18 +601,27 @@ class LifxProtocolHandler(ProtocolHandler):
         if len(payload) < 5:
             return None
 
-        service, port = struct.unpack("<BI", payload[:5])
+        return self.parse_state_service(header)
 
-        # Extract device MAC from header
-        mac = header["target"]
-        mac_str = ":".join(f"{b:02X}" for b in mac)
+    def parse_state_version(self, payload: bytes) -> dict[str, Any]:
+        """Parse Device::StateVersion payload into normalized structure."""
+        if len(payload) < 12:
+            raise ValueError(f"Invalid StateVersion payload size: {len(payload)}")
+
+        vendor_id, product_id, version_build = struct.unpack("<III", payload[:12])
+        model_number = f"{vendor_id}:{product_id}"
+        capabilities = {
+            "vendor_id": vendor_id,
+            "product_id": product_id,
+            "firmware_build": version_build,
+        }
 
         return {
-            "mac": mac,
-            "mac_str": mac_str,
-            "service": service,  # 1 = UDP
-            "port": port,        # Usually 56700
-            "protocol": "lifx"
+            "vendor_id": vendor_id,
+            "product_id": product_id,
+            "version_build": version_build,
+            "model_number": model_number,
+            "capabilities": capabilities,
         }
 
     def get_capability_provider(self) -> CapabilityProvider:
