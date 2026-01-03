@@ -110,6 +110,7 @@ class DeviceOut(BaseModel):
     id: str
     ip: Optional[str]
     protocol: str
+    name: Optional[str] = None
     model_number: Optional[str]
     model: Optional[str] = None
     device_type: Optional[str] = None

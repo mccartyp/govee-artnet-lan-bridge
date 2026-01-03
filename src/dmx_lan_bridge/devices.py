@@ -518,6 +518,7 @@ class DiscoveryResult:
     id: str
     ip: str
     protocol: str = "govee"
+    name: Optional[str] = None
     model_number: Optional[str] = None
     device_type: Optional[str] = None
     length_meters: Optional[float] = None
@@ -1099,15 +1100,16 @@ class DeviceStore:
         conn.execute(
             """
             INSERT INTO devices (
-                id, ip, protocol, model, model_number, device_type, length_meters, led_count,
+                id, ip, protocol, name, model, model_number, device_type, length_meters, led_count,
                 led_density_per_meter, has_zones, zone_count, description, capabilities, manual,
                 configured, enabled, discovered, first_seen, last_seen,
                 stale, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 1, 0, ?, NULL, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
                 protocol=excluded.protocol,
+                name=COALESCE(excluded.name, devices.name),
                 model=COALESCE(excluded.model, devices.model),
                 model_number=COALESCE(excluded.model_number, devices.model_number, devices.model),
                 device_type=COALESCE(excluded.device_type, devices.device_type),
@@ -1128,6 +1130,7 @@ class DeviceStore:
                 device.id,
                 device.ip,
                 device.protocol,
+                None,
                 model_number,
                 model_number,
                 metadata.get("device_type"),
@@ -1197,15 +1200,16 @@ class DeviceStore:
         conn.execute(
             """
             INSERT INTO devices (
-                id, ip, protocol, model, model_number, device_type, length_meters, led_count,
+                id, ip, protocol, name, model, model_number, device_type, length_meters, led_count,
                 led_density_per_meter, has_zones, zone_count, description, capabilities, manual, discovered,
                 configured, enabled, first_seen, last_seen, stale,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, 0, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, 0, datetime('now'), datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 ip=excluded.ip,
                 protocol=excluded.protocol,
+                name=COALESCE(excluded.name, devices.name),
                 model=COALESCE(excluded.model, devices.model),
                 model_number=COALESCE(excluded.model_number, devices.model_number, devices.model),
                 device_type=COALESCE(excluded.device_type, devices.device_type),
@@ -1230,6 +1234,7 @@ class DeviceStore:
                 result.id,
                 result.ip,
                 result.protocol,
+                result.name,
                 model_number,
                 model_number,
                 metadata.get("device_type"),
@@ -3077,11 +3082,12 @@ class DeviceStore:
         elif "model" in row.keys():
             model_number = row["model"]
         metadata = _merge_metadata(row, normalized.metadata)
+        name = row["name"] if "name" in row.keys() else None
         return DeviceRow(
             id=row["id"],
             ip=row["ip"],
             protocol=row["protocol"] if "protocol" in row.keys() else "govee",
-            name=row["name"] if "name" in row.keys() else None,
+            name=name,
             model_number=model_number,
             device_type=metadata.get("device_type"),
             length_meters=metadata.get("length_meters"),
