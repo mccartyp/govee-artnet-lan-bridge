@@ -54,10 +54,10 @@ The service is automatically started after installation:
 
 ```bash
 # Check service status
-sudo systemctl status artnet-bridge.service
+sudo systemctl status dmx-bridge.service
 
 # View service logs
-sudo journalctl -u artnet-bridge.service -f
+sudo journalctl -u dmx-bridge.service -f
 ```
 
 ### 4. Configure (Optional)
@@ -65,25 +65,26 @@ sudo journalctl -u artnet-bridge.service -f
 Edit the configuration file:
 
 ```bash
-sudo nano /etc/artnet-bridge/config.toml
+sudo nano /etc/dmx-bridge/dmx-bridge.toml
 ```
 
 After making changes, reload the configuration:
 
 ```bash
-sudo systemctl reload artnet-bridge.service
+sudo systemctl reload dmx-bridge.service
 ```
 
 For detailed configuration options, see:
-- `/usr/share/doc/dmx-lan-bridge/artnet-bridge.toml.example`
+- `/usr/share/doc/dmx-lan-bridge/dmx-bridge.toml.example`
 
 ### What Gets Installed
 
 - **Binaries**: `/usr/bin/dmx-lan-bridge`, `/usr/bin/dmx-lan-cli`
+- **Legacy Aliases**: `/usr/bin/artnet-lan-bridge`, `/usr/bin/artnet-lan-cli`
 - **Python Package**: `/usr/lib/python3/dist-packages/dmx_lan_bridge/`
-- **Systemd Service**: `/lib/systemd/system/artnet-bridge.service`
-- **Configuration**: `/etc/artnet-bridge/config.toml`
-- **Data Directory**: `/var/lib/artnet-bridge/`
+- **Systemd Service**: `/lib/systemd/system/dmx-bridge.service`
+- **Configuration**: `/etc/dmx-bridge/dmx-bridge.toml`
+- **Data Directory**: `/var/lib/dmx-bridge/`
 - **Documentation**: `/usr/share/doc/dmx-lan-bridge/`
 
 ### Uninstall
@@ -91,13 +92,13 @@ For detailed configuration options, see:
 Remove the package (keeps configuration and data):
 
 ```bash
-sudo apt remove artnet-lan-bridge
+sudo apt remove dmx-lan-bridge
 ```
 
 Completely remove including configuration and data (purge):
 
 ```bash
-sudo apt purge artnet-lan-bridge
+sudo apt purge dmx-lan-bridge
 ```
 
 ---
@@ -137,24 +138,24 @@ make install-system
 
 The installer will:
 - Install the Python package globally via `pip`
-- Create the `artnet-bridge` system user
-- Set up `/etc/artnet-bridge/config.toml` and `/var/lib/artnet-bridge/`
+- Create the `dmx-bridge` system user
+- Set up `/etc/dmx-bridge/dmx-bridge.toml` and `/var/lib/dmx-bridge/`
 - Install and start the systemd service
 
 ### Service Management
 
 ```bash
 # Check status
-sudo systemctl status artnet-bridge.service
+sudo systemctl status dmx-bridge.service
 
 # Restart service
-sudo systemctl restart artnet-bridge.service
+sudo systemctl restart dmx-bridge.service
 
 # View logs
-sudo journalctl -u artnet-bridge.service -f
+sudo journalctl -u dmx-bridge.service -f
 
 # Reload configuration
-sudo systemctl reload artnet-bridge.service
+sudo systemctl reload dmx-bridge.service
 ```
 
 ### Uninstall
@@ -163,7 +164,7 @@ sudo systemctl reload artnet-bridge.service
 make uninstall-system
 ```
 
-**Note**: Configuration and data are preserved. Manually remove `/etc/artnet-bridge` and `/var/lib/artnet-bridge` if needed.
+**Note**: Configuration and data are preserved. Manually remove `/etc/dmx-bridge` and `/var/lib/dmx-bridge` if needed.
 
 ---
 
@@ -182,21 +183,21 @@ make install-user
 
 ### Configuration and Data Locations
 
-- **Config**: `~/.config/artnet-bridge/config.toml`
+- **Config**: `~/.config/dmx-bridge/dmx-bridge.toml`
 - **Data**: `~/.local/share/dmx-lan-bridge/`
-- **Service**: `~/.config/systemd/user/artnet-bridge-user.service`
+- **Service**: `~/.config/systemd/user/dmx-bridge-user.service`
 
 ### Service Management
 
 ```bash
 # Check status
-systemctl --user status artnet-bridge-user.service
+systemctl --user status dmx-bridge-user.service
 
 # Restart
-systemctl --user restart artnet-bridge-user.service
+systemctl --user restart dmx-bridge-user.service
 
 # View logs
-journalctl --user -u artnet-bridge-user.service -f
+journalctl --user -u dmx-bridge-user.service -f
 ```
 
 ### Start at Boot
@@ -246,7 +247,7 @@ dmx-lan-cli --help
 ### Uninstall
 
 ```bash
-pip3 uninstall artnet-lan-bridge
+pip3 uninstall dmx-lan-bridge
 ```
 
 ---
@@ -300,12 +301,12 @@ firefox http://localhost:8000/docs
 Devices are automatically discovered via multicast. Check logs to see discovered devices:
 
 ```bash
-sudo journalctl -u artnet-bridge.service | grep discovered
+sudo journalctl -u dmx-bridge.service | grep discovered
 ```
 
 ### Configuration Examples
 
-See `/usr/share/doc/dmx-lan-bridge/artnet-bridge.toml.example` for comprehensive configuration documentation.
+See `/usr/share/doc/dmx-lan-bridge/dmx-bridge.toml.example` for comprehensive configuration documentation.
 
 ---
 
@@ -313,9 +314,9 @@ See `/usr/share/doc/dmx-lan-bridge/artnet-bridge.toml.example` for comprehensive
 
 After installation:
 
-1. **Verify service is running**: `sudo systemctl status artnet-bridge.service`
-2. **Check devices are discovered**: `dmx-lan-cli` or check API
-3. **Configure ArtNet mapping**: See main [README.md](README.md) for usage
-4. **Set up authentication**: Edit `/etc/artnet-bridge/config.toml` to add `api_key`
+1. **Verify service is running**: `sudo systemctl status dmx-bridge.service`
+2. **Check devices are discovered**: `dmx-lan-cli devices list` or check API
+3. **Configure DMX mapping**: See main [README.md](README.md) for usage
+4. **Set up authentication**: Edit `/etc/dmx-bridge/dmx-bridge.toml` to add `api_key`
 
-For usage instructions and ArtNet mapping examples, see the main [README.md](README.md).
+For usage instructions and DMX mapping examples, see the main [README.md](README.md).

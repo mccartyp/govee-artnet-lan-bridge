@@ -1,6 +1,6 @@
-# Govee ArtNet LAN Bridge - API Documentation
+# DMX LAN Bridge - API Documentation
 
-This document describes the REST API for the Govee ArtNet LAN Bridge.
+This document describes the REST API for the DMX LAN Bridge, a multi-protocol bridge supporting ArtNet, sACN/E1.31 input and Govee, LIFX device protocols.
 
 ## Base URL
 
@@ -27,7 +27,7 @@ curl -H "Authorization: Bearer your-token" http://127.0.0.1:8000/devices
 GET /devices
 ```
 
-Returns all discovered Govee devices with their capabilities.
+Returns all discovered devices across all supported protocols (Govee, LIFX, etc.) with their capabilities.
 
 **Response**: `200 OK`
 ```json
@@ -36,18 +36,41 @@ Returns all discovered Govee devices with their capabilities.
     "id": "AA:BB:CC:DD:EE:FF",
     "name": "Living Room Strip",
     "model": "H6160",
+    "protocol": "govee",
     "ip": "192.168.1.100",
     "capabilities": {
+      "model_number": "H6160",
+      "device_type": "led_strip",
       "brightness": true,
       "color": true,
       "color_temperature": true,
       "color_modes": ["color", "ct"],
-      "color_temp_range": [2000, 9000],
-      "effects": ["sunrise", "sunset"]
+      "color_temp_range": [2000, 9000]
     },
     "offline": false,
     "stale": false,
+    "enabled": true,
     "mapping_count": 3,
+    "last_seen": "2025-12-26T10:30:00Z",
+    "first_seen": "2025-12-25T08:00:00Z"
+  },
+  {
+    "id": "d0:73:d5:00:11:22",
+    "name": "Office Bulb",
+    "model": "LIFX A19",
+    "protocol": "lifx",
+    "ip": "192.168.1.101",
+    "capabilities": {
+      "model_number": "LCB19E27US",
+      "device_type": "bulb",
+      "brightness": true,
+      "color": true,
+      "color_temperature": true
+    },
+    "offline": false,
+    "stale": false,
+    "enabled": true,
+    "mapping_count": 1,
     "last_seen": "2025-12-26T10:30:00Z",
     "first_seen": "2025-12-25T08:00:00Z"
   }
@@ -55,6 +78,8 @@ Returns all discovered Govee devices with their capabilities.
 ```
 
 **Response Fields**:
+- `protocol` (string): Device protocol (`govee`, `lifx`, etc.)
+- `enabled` (boolean): Whether device is enabled for control
 - `mapping_count` (integer): Number of DMX mappings configured for this device
 - `offline` (boolean): Whether device is currently offline due to failures
 - `stale` (boolean): Whether device hasn't responded to recent discovery probes
@@ -468,8 +493,10 @@ ws.onmessage = (event) => {
 
 | Event Type | Trigger | Data Fields |
 |------------|---------|-------------|
-| `device_discovered` | New device found during discovery | `device_id`, `ip`, `model`, `device_type`, `capabilities[]`, `is_new` |
+| `device_discovered` | New device found during discovery | `device_id`, `protocol`, `ip`, `model`, `device_type`, `capabilities[]`, `is_new` |
 | `device_updated` | Device metadata changed | `device_id`, `changed_fields[]`, `ip` |
+| `device_enabled` | Device enabled for control | `device_id`, `protocol` |
+| `device_disabled` | Device disabled from control | `device_id`, `protocol` |
 | `device_online` | Offline device comes back online | `device_id`, `previous_offline_reason` |
 | `device_offline` | Device goes offline after failures | `device_id`, `reason`, `failure_count` |
 
@@ -477,7 +504,7 @@ ws.onmessage = (event) => {
 
 | Event Type | Trigger | Data Fields |
 |------------|---------|-------------|
-| `mapping_created` | New DMX mapping created | `mapping_id`, `universe`, `channel` |
+| `mapping_created` | New DMX mapping created | `mapping_id`, `device_id`, `universe`, `channel`, `field`, `fields` |
 | `mapping_updated` | Mapping modified | `mapping_id`, `changed_fields[]` |
 | `mapping_deleted` | Mapping removed | `mapping_id` |
 
@@ -497,6 +524,7 @@ ws.onmessage = (event) => {
 - `discovery`: Device discovery service
 - `sender`: Device command sender
 - `artnet`: ArtNet DMX listener
+- `sacn`: sACN/E1.31 DMX listener (if enabled)
 - `api`: REST API server
 - `poller`: Device state poller (if enabled)
 
@@ -668,10 +696,10 @@ curl -X POST http://127.0.0.1:8000/mappings \
 
 ## Rate Limiting
 
-The bridge implements rate limiting to prevent overwhelming Govee devices. Monitor rate limit status via metrics:
+The bridge implements rate limiting to prevent overwhelming smart devices. Monitor rate limit status via metrics:
 
-- **`govee_rate_limit_tokens`** (gauge): Current available tokens
-- **`govee_rate_limit_waits_total{scope="global"}`** (counter): Number of times sends waited for tokens
+- **`device_rate_limit_tokens`** (gauge): Current available tokens
+- **`device_rate_limit_waits_total{scope="global"}`** (counter): Number of times sends waited for tokens
 
 Configuration:
 - `rate_limit_per_second`: Token refill rate
