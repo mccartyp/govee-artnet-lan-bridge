@@ -94,7 +94,7 @@ deb: clean-deb
 	@# Create copyright file
 	@echo "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/" > $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
 	@echo "Upstream-Name: $(PACKAGE_NAME)" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
-	@echo "Source: https://github.com/mccartyp/govee-artnet-lan-bridge" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
+	@echo "Source: https://github.com/mccartyp/dmx-lan-bridge" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
 	@echo "" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
 	@echo "Files: *" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright
 	@echo "Copyright: 2025 Patrick McCarty" >> $(DEB_PKG_DIR)/usr/share/doc/$(PACKAGE_NAME)/copyright

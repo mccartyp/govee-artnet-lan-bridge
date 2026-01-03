@@ -120,7 +120,7 @@ For an interactive shell experience with real-time monitoring, log viewing, and 
 dmx-lan-cli --server-url http://192.168.1.100:8000 devices list
 
 # Or set the environment variable
-export GOVEE_ARTNET_CLI_SERVER_URL=http://192.168.1.100:8000
+export DMX_LAN_CLI_SERVER_URL=http://192.168.1.100:8000
 dmx-lan-cli devices list
 ```
 
@@ -136,7 +136,7 @@ dmx-lan-cli --api-key your-api-key devices list
 dmx-lan-cli --api-bearer-token your-token devices list
 
 # Or use environment variables
-export GOVEE_ARTNET_CLI_API_KEY=your-api-key
+export DMX_LAN_CLI_API_KEY=your-api-key
 dmx-lan-cli devices list
 ```
 

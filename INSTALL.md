@@ -1,7 +1,7 @@
 # Installation Guide
 
-[![Latest Release](https://img.shields.io/github/v/release/mccartyp/govee-artnet-lan-bridge)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
-[![Download DEB](https://img.shields.io/badge/download-.deb-blue)](https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/mccartyp/dmx-lan-bridge)](https://github.com/mccartyp/dmx-lan-bridge/releases/latest)
+[![Download DEB](https://img.shields.io/badge/download-.deb-blue)](https://github.com/mccartyp/dmx-lan-bridge/releases/latest)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 This repository provides multiple installation methods for the DMX LAN Bridge. The Debian package (.deb) method is recommended for Ubuntu 24.04 and Debian 13 systems.
@@ -28,10 +28,10 @@ This is the easiest and recommended installation method for supported distributi
 Download the latest release from GitHub:
 
 ```bash
-# Visit https://github.com/mccartyp/govee-artnet-lan-bridge/releases/latest
+# Visit https://github.com/mccartyp/dmx-lan-bridge/releases/latest
 # Or download latest version dynamically:
-LATEST_VERSION=$(curl -s https://api.github.com/repos/mccartyp/govee-artnet-lan-bridge/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-wget https://github.com/mccartyp/govee-artnet-lan-bridge/releases/download/${LATEST_VERSION}/dmx-lan-bridge_${LATEST_VERSION#v}_all.deb
+LATEST_VERSION=$(curl -s https://api.github.com/repos/mccartyp/dmx-lan-bridge/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+wget https://github.com/mccartyp/dmx-lan-bridge/releases/download/${LATEST_VERSION}/dmx-lan-bridge_${LATEST_VERSION#v}_all.deb
 ```
 
 ### 2. Install the Package
@@ -106,8 +106,8 @@ If you want to build the .deb package yourself:
 
 ```bash
 # Clone repository
-git clone https://github.com/mccartyp/govee-artnet-lan-bridge.git
-cd govee-artnet-lan-bridge
+git clone https://github.com/mccartyp/dmx-lan-bridge.git
+cd dmx-lan-bridge
 
 # Build .deb package
 make deb
@@ -126,8 +126,8 @@ This method uses the included installer script to set up a system-wide service.
 
 ```bash
 # Clone repository
-git clone https://github.com/mccartyp/govee-artnet-lan-bridge.git
-cd govee-artnet-lan-bridge
+git clone https://github.com/mccartyp/dmx-lan-bridge.git
+cd dmx-lan-bridge
 
 # Install as system service
 make install-system
@@ -172,8 +172,8 @@ For per-user installation without root privileges:
 ### Install
 
 ```bash
-git clone https://github.com/mccartyp/govee-artnet-lan-bridge.git
-cd govee-artnet-lan-bridge
+git clone https://github.com/mccartyp/dmx-lan-bridge.git
+cd dmx-lan-bridge
 
 make install-user
 ```
@@ -221,8 +221,8 @@ For other distributions (including Ubuntu 22.04) or development:
 
 ```bash
 # Clone repository
-git clone https://github.com/mccartyp/govee-artnet-lan-bridge.git
-cd govee-artnet-lan-bridge
+git clone https://github.com/mccartyp/dmx-lan-bridge.git
+cd dmx-lan-bridge
 
 # Install dependencies
 python3 -m pip install --upgrade pip
