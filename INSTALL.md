@@ -6,8 +6,6 @@
 
 This repository provides multiple installation methods for the DMX LAN Bridge. The Debian package (.deb) method is recommended for Ubuntu 24.04 and Debian 13 systems.
 
-**Note:** Package has been renamed from `artnet-lan-bridge` to `dmx-lan-bridge` to reflect multi-protocol support. Legacy command names (`artnet-lan-bridge`, `artnet-lan-cli`) remain available for backwards compatibility.
-
 ---
 
 ## Requirements
@@ -80,7 +78,6 @@ For detailed configuration options, see:
 ### What Gets Installed
 
 - **Binaries**: `/usr/bin/dmx-lan-bridge`, `/usr/bin/dmx-lan-cli`
-- **Legacy Aliases**: `/usr/bin/artnet-lan-bridge`, `/usr/bin/artnet-lan-cli`
 - **Python Package**: `/usr/lib/python3/dist-packages/dmx_lan_bridge/`
 - **Systemd Service**: `/lib/systemd/system/dmx-bridge.service`
 - **Configuration**: `/etc/dmx-bridge/dmx-bridge.toml`

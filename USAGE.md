@@ -37,9 +37,6 @@ dmx-lan-bridge --config /path/to/config.toml
 
 # Start with custom API port
 dmx-lan-bridge --api-port 9000
-
-# Legacy command (still works)
-artnet-lan-bridge
 ```
 
 See [INSTALL.md](INSTALL.md) for systemd service setup and other installation options.
@@ -112,12 +109,7 @@ The `dmx-lan-cli` tool communicates with the bridge server via its REST API and 
 ```bash
 # Run CLI commands
 dmx-lan-cli devices list
-
-# Legacy command (still works)
-artnet-lan-cli devices list
 ```
-
-**Note:** Both `dmx-lan-cli` and `artnet-lan-cli` commands work identically. The legacy names are maintained for backwards compatibility.
 
 For an interactive shell experience with real-time monitoring, log viewing, and enhanced features, see the dedicated console tool: **[artnet-console](https://github.com/mccartyp/artnet-console)**
 

@@ -14,7 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Primary commands**: `govee-artnet-bridge` → `dmx-lan-bridge`, `govee-artnet-cli` → `dmx-lan-cli`
 - **Configuration files**: `govee-bridge.toml` → `dmx-bridge.toml`
 - **Systemd services**: `govee-bridge.service` → `dmx-bridge.service`, `govee-bridge-user.service` → `dmx-bridge-user.service`
-- **Legacy command aliases** preserved for backwards compatibility: `artnet-lan-bridge`, `artnet-lan-cli`, `govee-artnet-bridge`, `govee-artnet-cli` (deprecated, will be removed in v3.0.0)
 - **Capability catalogs**: Split into protocol-specific files (`capability_catalog_govee.json`, `capability_catalog_lifx.json`)
 
 #### Configuration Changes
@@ -161,12 +160,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - dpkg warning when removing `/opt` directory
 
 ### Deprecated
-- Legacy command names (`artnet-lan-bridge`, `artnet-lan-cli`, `govee-artnet-bridge`, `govee-artnet-cli`)
-  - Still functional via aliases
-  - Will be removed in v3.0.0
-  - Users should migrate to new `dmx-lan-*` commands
+- None
 
 ### Removed
+- Legacy command aliases (`artnet-lan-bridge`, `artnet-lan-cli`, `govee-artnet-bridge`, `govee-artnet-cli`)
 - Direct Govee-specific naming from core codebase
 - Monolithic discovery system (replaced with protocol-specific handlers)
 - Hardcoded device type assumptions
