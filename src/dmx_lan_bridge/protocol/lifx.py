@@ -33,6 +33,8 @@ class LifxProtocolHandler(ProtocolHandler):
     MSG_GET_POWER = 20
     MSG_SET_POWER = 21
     MSG_STATE_POWER = 22
+    MSG_GET_LABEL = 23
+    MSG_STATE_LABEL = 25
     MSG_GET = 101           # Light::Get
     MSG_SET_COLOR = 102     # Light::SetColor
     MSG_STATE = 107         # Light::State
@@ -285,6 +287,8 @@ class LifxProtocolHandler(ProtocolHandler):
             self.MSG_GET_POWER: 0,
             self.MSG_SET_POWER: 2,
             self.MSG_STATE_POWER: 2,
+            self.MSG_GET_LABEL: 0,
+            self.MSG_STATE_LABEL: 32,
             self.MSG_GET: 0,
             self.MSG_SET_COLOR: 13,
             self.MSG_STATE: 52,
@@ -442,6 +446,17 @@ class LifxProtocolHandler(ProtocolHandler):
             target_mac=target_mac,
             tagged=False,
             res_required=True
+        )
+
+    def build_get_label_request(self, target_mac: bytes) -> bytes:
+        """Build Device::GetLabel request for a specific device."""
+        if len(target_mac) != 6:
+            raise ValueError(f"MAC address must be 6 bytes, got {len(target_mac)}")
+        return self._build_header(
+            msg_type=self.MSG_GET_LABEL,
+            target_mac=target_mac,
+            tagged=False,
+            res_required=True,
         )
 
     def parse_state_service(self, header: Mapping[str, Any]) -> Optional[dict[str, Any]]:
@@ -623,6 +638,19 @@ class LifxProtocolHandler(ProtocolHandler):
             "model_number": model_number,
             "capabilities": capabilities,
         }
+
+    def parse_state_label(self, payload: bytes) -> dict[str, Any]:
+        """Parse Device::StateLabel payload into normalized structure."""
+        if len(payload) < 32:
+            raise ValueError(f"Invalid StateLabel payload size: {len(payload)}")
+
+        label_bytes = payload[:32]
+        try:
+            label = label_bytes.split(b"\x00", 1)[0].decode("utf-8")
+        except UnicodeDecodeError:
+            label = ""
+
+        return {"label": label}
 
     def get_capability_provider(self) -> CapabilityProvider:
         """Get device-reported capability provider for LIFX devices.
