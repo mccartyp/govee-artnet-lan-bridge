@@ -171,6 +171,30 @@ class CapabilityCatalog:
             return None
         return self._entries.get(normalized)
 
+    def get_capabilities(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+        """Get capabilities for a model from the catalog.
+
+        Args:
+            model: Device model number
+
+        Returns:
+            Capabilities dict or None if not available
+        """
+        entry = self.lookup(model)
+        return entry.capabilities if entry else None
+
+    def get_metadata(self, model: Optional[str]) -> Optional[Mapping[str, Any]]:
+        """Get metadata for a model from the catalog.
+
+        Args:
+            model: Device model number
+
+        Returns:
+            Metadata dict or None if not available
+        """
+        entry = self.lookup(model)
+        return entry.metadata if entry else None
+
 
 class CapabilityProvider(ABC):
     """Provides device capabilities from various sources (catalogs, device detection, etc.)."""

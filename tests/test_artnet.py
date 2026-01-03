@@ -13,6 +13,7 @@ from dmx_lan_bridge.artnet import (
     _parse_artnet_packet,
 )
 from dmx_lan_bridge.config import Config, ManualDevice
+from dmx_lan_bridge.dmx import DmxMappingService
 from dmx_lan_bridge.db import apply_migrations
 from dmx_lan_bridge.devices import DeviceStore, MappingRecord
 
@@ -247,8 +248,9 @@ async def _run_artnet_reuse(tmp_path: Path) -> None:
     )
 
     initial = {"dev-1": {"color": {"r": 1, "g": 2, "b": 3}}}
-    artnet = ArtNetService(config, store, initial_last_payloads=initial)
-    artnet._debounce_seconds = 0
+    dmx_mapper = DmxMappingService(config, store, initial_last_payloads=initial)
+    artnet = ArtNetService(config, dmx_mapper=dmx_mapper)
+    dmx_mapper._debounce_seconds = 0
     await artnet.start()
     try:
         packet = ArtNetPacket(universe=0, sequence=1, physical=0, length=3, data=bytes([1, 2, 3]))
