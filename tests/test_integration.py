@@ -5,6 +5,7 @@ from dmx_lan_bridge.artnet import ArtNetPacket, ArtNetService
 from dmx_lan_bridge.config import Config, ManualDevice
 from dmx_lan_bridge.db import apply_migrations
 from dmx_lan_bridge.devices import DeviceStore
+from dmx_lan_bridge.dmx import DmxMappingService
 from dmx_lan_bridge.sender import DeviceSenderService
 
 
@@ -35,8 +36,10 @@ async def _run_pipeline(tmp_path: Path) -> None:
         allow_overlap=True,
     )
 
-    artnet = ArtNetService(config, store)
-    artnet._debounce_seconds = 0  # expedite flush in tests
+    dmx_mapper = DmxMappingService(config, store)
+    dmx_mapper._debounce_seconds = 0  # expedite flush in tests
+
+    artnet = ArtNetService(config, dmx_mapper=dmx_mapper)
     await artnet.start()
 
     sender = DeviceSenderService(config, store)
