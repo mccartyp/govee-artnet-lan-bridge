@@ -30,6 +30,8 @@ class LifxProtocolHandler(ProtocolHandler):
     MSG_STATE_SERVICE = 3
     MSG_GET_VERSION = 32
     MSG_STATE_VERSION = 33
+    MSG_GET_HOST_FIRMWARE = 14
+    MSG_STATE_HOST_FIRMWARE = 15
     MSG_GET_POWER = 20
     MSG_SET_POWER = 21
     MSG_STATE_POWER = 22
@@ -282,6 +284,8 @@ class LifxProtocolHandler(ProtocolHandler):
         payload_sizes = {
             self.MSG_GET_SERVICE: 0,
             self.MSG_STATE_SERVICE: 5,
+            self.MSG_GET_HOST_FIRMWARE: 0,
+            self.MSG_STATE_HOST_FIRMWARE: 20,
             self.MSG_GET_VERSION: 0,
             self.MSG_STATE_VERSION: 12,
             self.MSG_GET_POWER: 0,
@@ -446,6 +450,17 @@ class LifxProtocolHandler(ProtocolHandler):
             target_mac=target_mac,
             tagged=False,
             res_required=True
+        )
+
+    def build_get_host_firmware_request(self, target_mac: bytes) -> bytes:
+        """Build Device::GetHostFirmware request for a specific device."""
+        if len(target_mac) != 6:
+            raise ValueError(f"MAC address must be 6 bytes, got {len(target_mac)}")
+        return self._build_header(
+            msg_type=self.MSG_GET_HOST_FIRMWARE,
+            target_mac=target_mac,
+            tagged=False,
+            res_required=True,
         )
 
     def build_get_label_request(self, target_mac: bytes) -> bytes:
@@ -625,18 +640,33 @@ class LifxProtocolHandler(ProtocolHandler):
 
         vendor_id, product_id, version_build = struct.unpack("<III", payload[:12])
         model_number = f"{vendor_id}:{product_id}"
-        capabilities = {
+        lifx_extension = {
             "vendor_id": vendor_id,
             "product_id": product_id,
             "firmware_build": version_build,
         }
 
         return {
-            "vendor_id": vendor_id,
-            "product_id": product_id,
-            "version_build": version_build,
             "model_number": model_number,
-            "capabilities": capabilities,
+            "capabilities": {"lifx": lifx_extension},
+        }
+
+    def parse_state_host_firmware(self, payload: bytes) -> dict[str, Any]:
+        """Parse Device::StateHostFirmware payload into normalized structure."""
+        if len(payload) < 20:
+            raise ValueError(f"Invalid StateHostFirmware payload size: {len(payload)}")
+
+        build, reserved1, reserved2, version_minor, version_major = struct.unpack("<QIIHH", payload[:20])
+        lifx_extension = {
+            "firmware_major": version_major,
+            "firmware_minor": version_minor,
+            "firmware_build": build,
+            "host_reserved_1": reserved1,
+            "host_reserved_2": reserved2,
+        }
+
+        return {
+            "capabilities": {"lifx": lifx_extension},
         }
 
     def parse_state_label(self, payload: bytes) -> dict[str, Any]:

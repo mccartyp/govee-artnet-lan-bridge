@@ -115,6 +115,7 @@ class DiscoveryService:
         self.logger = get_logger("devices.discovery")
         self._seen: Dict[str, str] = {}
         self._lifx_version_requests: set[tuple[str, str]] = set()
+        self._lifx_host_firmware_requests: set[tuple[str, str]] = set()
         self._lifx_label_requests: set[tuple[str, str]] = set()
         self._probe_payload = self.config.discovery_probe_payload.encode("utf-8")
         self._lifx_socket: Optional[socket.socket] = None
@@ -378,6 +379,22 @@ class DiscoveryService:
                             "Failed to send LIFX version request",
                             extra={"device_id": device_id, "ip": ip, "error": str(exc)},
                         )
+                firmware_key = (device_id, ip)
+                if firmware_key not in self._lifx_host_firmware_requests and self._lifx_socket:
+                    try:
+                        firmware_request = lifx_handler.build_get_host_firmware_request(parsed["mac"])
+                        self._lifx_socket.sendto(firmware_request, (ip, port))
+                        self._lifx_host_firmware_requests.add(firmware_key)
+                        self.logger.debug(
+                            "Sent LIFX GetHostFirmware request",
+                            extra={"device_id": device_id, "ip": ip, "port": port},
+                        )
+                    except Exception as exc:
+                        record_discovery_error("lifx_host_firmware_request_error")
+                        self.logger.debug(
+                            "Failed to send LIFX host firmware request",
+                            extra={"device_id": device_id, "ip": ip, "error": str(exc)},
+                        )
                 label_key = (device_id, ip)
                 if label_key not in self._lifx_label_requests and self._lifx_socket:
                     try:
@@ -470,6 +487,47 @@ class DiscoveryService:
                 record_discovery_response("lifx_version")
                 self.logger.debug(
                     "Scheduling LIFX version record to database",
+                    extra={"device_id": device_id, "ip": ip}
+                )
+                self._schedule(self.store.record_discovery(discovery_result))
+                return
+
+            if header["type"] == lifx_handler.MSG_STATE_HOST_FIRMWARE:
+                try:
+                    firmware_details = lifx_handler.parse_state_host_firmware(header["payload"])
+                except Exception as exc:
+                    record_discovery_error("lifx_host_firmware_parse_error")
+                    self.logger.debug(
+                        "Failed to parse LIFX host firmware response",
+                        extra={"from": addr, "error": str(exc)},
+                    )
+                    return
+
+                device_mac = header.get("target", b"")
+                device_id = ":".join(f"{b:02X}" for b in device_mac)
+                ip = addr[0]
+                discovery_result = DiscoveryResult(
+                    id=device_id,
+                    ip=ip,
+                    protocol="lifx",
+                    model_number=None,
+                    device_type="light",
+                    length_meters=None,
+                    led_count=None,
+                    led_density_per_meter=None,
+                    has_zones=None,
+                    zone_count=None,
+                    description=None,
+                    capabilities=firmware_details.get("capabilities"),
+                    manual=False,
+                )
+                self.logger.info(
+                    "Received LIFX host firmware details",
+                    extra={"device_id": device_id, "ip": ip},
+                )
+                record_discovery_response("lifx_host_firmware")
+                self.logger.debug(
+                    "Scheduling LIFX host firmware record to database",
                     extra={"device_id": device_id, "ip": ip}
                 )
                 self._schedule(self.store.record_discovery(discovery_result))
