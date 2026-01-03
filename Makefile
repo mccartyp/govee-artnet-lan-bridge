@@ -62,9 +62,10 @@ deb: clean-deb
 	@mkdir -p $(DEB_PKG_DIR)/opt/dmx-lan-bridge
 	@cp -r src/dmx_lan_bridge $(DEB_PKG_DIR)/opt/dmx-lan-bridge/
 
-	@# Install capability catalog to standard location
+	@# Install capability catalogs to standard location
 	@mkdir -p $(DEB_PKG_DIR)/usr/share/dmx_lan_bridge
 	@cp res/capability_catalog_govee.json $(DEB_PKG_DIR)/usr/share/dmx_lan_bridge/
+	@cp res/capability_catalog_lifx.json $(DEB_PKG_DIR)/usr/share/dmx_lan_bridge/
 
 	@# Create executable wrappers using system Python
 	@echo '#!/bin/bash' > $(DEB_PKG_DIR)/usr/bin/dmx-lan-bridge

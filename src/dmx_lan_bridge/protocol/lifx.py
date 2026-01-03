@@ -7,11 +7,16 @@ Protocol documentation: https://lan.developer.lifx.com/
 from __future__ import annotations
 
 import colorsys
+import json
 import struct
+from copy import deepcopy
+from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from .base import ProtocolHandler
 from ..capabilities import CapabilityProvider, DeviceReportedCapabilityProvider
+from ..config import _default_capability_catalog_dir
+from ..logging import get_logger
 
 
 class LifxProtocolHandler(ProtocolHandler):
@@ -681,6 +686,236 @@ class LifxProtocolHandler(ProtocolHandler):
             label = ""
 
         return {"label": label}
+
+    @staticmethod
+    def lookup_catalog_capabilities(
+        vid: int, pid: int, firmware_major: int, firmware_minor: int
+    ) -> Optional[Mapping[str, Any]]:
+        """Look up device capabilities from the LIFX catalog.
+
+        Args:
+            vid: Vendor ID
+            pid: Product ID
+            firmware_major: Firmware major version
+            firmware_minor: Firmware minor version
+
+        Returns:
+            Dictionary of LIFX-specific capabilities, or None if not found
+        """
+        logger = get_logger("lifx.protocol")
+
+        # Load catalog
+        catalog_dir = _default_capability_catalog_dir()
+        catalog_path = catalog_dir / "capability_catalog_lifx.json"
+
+        if not catalog_path.exists():
+            logger.warning(
+                f"LIFX capability catalog not found at {catalog_path}",
+                extra={"vid": vid, "pid": pid}
+            )
+            return None
+
+        try:
+            with catalog_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error(
+                f"Failed to load LIFX capability catalog: {e}",
+                extra={"vid": vid, "pid": pid}
+            )
+            return None
+
+        # Find vendor
+        vendor_entry = None
+        for by_vendor in data.get("devices", []):
+            # Catalog is normalized, so model_number is "vid:pid"
+            model_parts = by_vendor.get("model_number", "").split(":")
+            if len(model_parts) != 2:
+                continue
+            try:
+                catalog_vid = int(model_parts[0])
+                catalog_pid = int(model_parts[1])
+            except ValueError:
+                continue
+
+            if catalog_vid == vid and catalog_pid == pid:
+                vendor_entry = by_vendor
+                break
+
+        if not vendor_entry:
+            logger.debug(
+                f"Product {vid}:{pid} not found in LIFX catalog",
+                extra={"vid": vid, "pid": pid}
+            )
+            return None
+
+        # Get base capabilities
+        capabilities = deepcopy(vendor_entry.get("capabilities", {}))
+
+        # Apply firmware upgrades
+        for upgrade in vendor_entry.get("upgrades", []):
+            upgrade_major = upgrade.get("major", 0)
+            upgrade_minor = upgrade.get("minor", 0)
+
+            if (firmware_major, firmware_minor) >= (upgrade_major, upgrade_minor):
+                # Apply upgrade features
+                upgrade_features = upgrade.get("features", {})
+                capabilities.update(upgrade_features)
+                logger.debug(
+                    f"Applied firmware upgrade for {firmware_major}.{firmware_minor}",
+                    extra={
+                        "vid": vid,
+                        "pid": pid,
+                        "upgrade_version": f"{upgrade_major}.{upgrade_minor}",
+                        "features": upgrade_features
+                    }
+                )
+
+        logger.info(
+            f"Loaded catalog capabilities for {vendor_entry.get('product_name', 'Unknown')}",
+            extra={
+                "vid": vid,
+                "pid": pid,
+                "firmware": f"{firmware_major}.{firmware_minor}",
+                "capabilities": capabilities
+            }
+        )
+
+        return capabilities
+
+    def enrich_capabilities(
+        self,
+        existing_caps: Mapping[str, Any],
+        incoming_caps: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Enrich LIFX capabilities from catalog after firmware/version discovery.
+
+        This runs once after we've received vendor_id, product_id, firmware_major,
+        and firmware_minor from the device.
+        """
+        from ..devices import _merge_capability_mappings
+
+        # Merge incoming with existing
+        merged = _merge_capability_mappings(existing_caps, incoming_caps)
+
+        # Check if LIFX extension exists with required fields
+        lifx_ext = merged.get("lifx", {}) if isinstance(merged, Mapping) else {}
+
+        # Check if we have all required fields for catalog lookup
+        has_vendor_id = "vendor_id" in lifx_ext
+        has_product_id = "product_id" in lifx_ext
+        has_firmware_major = "firmware_major" in lifx_ext
+        has_firmware_minor = "firmware_minor" in lifx_ext
+
+        # Check if already enriched (has catalog_enriched flag)
+        already_enriched = lifx_ext.get("catalog_enriched", False)
+
+        if not (has_vendor_id and has_product_id and has_firmware_major and has_firmware_minor):
+            # Not ready for enrichment yet
+            return merged
+
+        if already_enriched:
+            # Already enriched, don't do it again
+            return merged
+
+        # Perform catalog lookup
+        vid = lifx_ext["vendor_id"]
+        pid = lifx_ext["product_id"]
+        fw_major = lifx_ext["firmware_major"]
+        fw_minor = lifx_ext["firmware_minor"]
+
+        catalog_caps = self.lookup_catalog_capabilities(vid, pid, fw_major, fw_minor)
+
+        if not catalog_caps:
+            # Mark as attempted so we don't keep trying
+            result = dict(merged)
+            if "lifx" not in result:
+                result["lifx"] = {}
+            result["lifx"]["catalog_enriched"] = True
+            return result
+
+        # Map LIFX-specific capabilities to standard fields
+        mapped_caps = self._map_capabilities_to_standard(catalog_caps, fw_major, fw_minor)
+
+        # Merge mapped capabilities
+        result = dict(merged)
+        result.update(mapped_caps)
+
+        # Store original LIFX capabilities in extension
+        if "lifx" not in result:
+            result["lifx"] = {}
+        result["lifx"].update(catalog_caps)
+        result["lifx"]["catalog_enriched"] = True
+
+        return result
+
+    def _map_capabilities_to_standard(
+        self, lifx_caps: Mapping[str, Any], fw_major: int, fw_minor: int
+    ) -> dict[str, Any]:
+        """Map LIFX-specific capability fields to standard capability fields.
+
+        Args:
+            lifx_caps: LIFX-specific capabilities from catalog
+            fw_major: Firmware major version
+            fw_minor: Firmware minor version
+
+        Returns:
+            Dictionary of standard capability fields
+        """
+        logger = get_logger("lifx.protocol")
+        mapped = {}
+
+        # Map color capability
+        if lifx_caps.get("color"):
+            mapped["color"] = True
+            mapped["color_modes"] = mapped.get("color_modes", [])
+            if "color" not in mapped["color_modes"]:
+                mapped["color_modes"].append("color")
+
+        # Map temperature_range to color_temp_range
+        temp_range = lifx_caps.get("temperature_range")
+        if temp_range and isinstance(temp_range, list) and len(temp_range) == 2:
+            # Check if device supports variable color temperature
+            if temp_range[0] != temp_range[1]:
+                mapped["color_temperature"] = True
+                mapped["color_temp_range"] = temp_range
+                mapped["color_modes"] = mapped.get("color_modes", [])
+                if "ct" not in mapped["color_modes"]:
+                    mapped["color_modes"].append("ct")
+
+                # Warn if firmware doesn't support full range
+                if temp_range[0] < 2500 and (fw_major, fw_minor) < (2, 80):
+                    logger.warning(
+                        f"Device supports extended temperature range {temp_range} "
+                        f"but firmware {fw_major}.{fw_minor} may not support it. "
+                        "Consider upgrading firmware.",
+                        extra={"firmware": f"{fw_major}.{fw_minor}", "temp_range": temp_range}
+                    )
+        elif temp_range is None:
+            # Device is not a lighting product (switch/relay)
+            pass
+
+        # Map multizone/matrix to has_zones
+        if lifx_caps.get("multizone") or lifx_caps.get("matrix"):
+            mapped["has_zones"] = True
+
+        # Set device_type based on capabilities
+        if lifx_caps.get("relays") or lifx_caps.get("buttons"):
+            mapped["device_type"] = "switch"
+        elif lifx_caps.get("multizone"):
+            mapped["device_type"] = "led_strip"
+        elif lifx_caps.get("matrix"):
+            mapped["device_type"] = "led_panel"
+        else:
+            mapped["device_type"] = "light"
+
+        # All LIFX devices support brightness
+        mapped["brightness"] = True
+
+        # Set HSBK color model for all LIFX devices
+        mapped["color_model"] = "hsbk"
+
+        return mapped
 
     def get_capability_provider(self) -> CapabilityProvider:
         """Get device-reported capability provider for LIFX devices.

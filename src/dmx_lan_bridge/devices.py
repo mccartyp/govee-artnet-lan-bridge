@@ -2122,7 +2122,7 @@ class DeviceStore:
         self, conn: sqlite3.Connection, device_id: str, capabilities: Mapping[str, Any]
     ) -> None:
         device_row = conn.execute(
-            "SELECT model, model_number, protocol FROM devices WHERE id = ?",
+            "SELECT model, model_number, protocol, capabilities FROM devices WHERE id = ?",
             (device_id,),
         ).fetchone()
         model = None
@@ -2130,8 +2130,18 @@ class DeviceStore:
         if device_row:
             model = device_row["model_number"] or device_row["model"]
             protocol = device_row["protocol"] if "protocol" in device_row.keys() else "govee"
+
+        # Enrich capabilities using protocol-specific handler
+        from .protocol import get_protocol_handler
+        handler = get_protocol_handler(protocol)
+
+        existing_caps = _deserialize_capabilities(device_row["capabilities"]) if device_row and device_row["capabilities"] else {}
+        incoming_caps = dict(capabilities) if capabilities else {}
+
+        enriched_caps = handler.enrich_capabilities(existing_caps, incoming_caps)
+
         cache = self._get_capability_cache(protocol)
-        normalized = cache.normalize(model, capabilities)
+        normalized = cache.normalize(model, enriched_caps)
         serialized = _serialize_capabilities(normalized.as_mapping())
         metadata = _coerce_metadata_for_db(normalized.metadata)
         conn.execute(

@@ -62,6 +62,31 @@ class ProtocolHandler(ABC):
         """
         pass
 
+    def enrich_capabilities(
+        self,
+        existing_caps: Mapping[str, Any],
+        incoming_caps: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Enrich device capabilities with protocol-specific catalog data.
+
+        This method allows protocols to augment device capabilities from
+        protocol-specific catalogs, firmware data, or other sources.
+
+        Args:
+            existing_caps: Existing capabilities stored in database
+            incoming_caps: New/updated capabilities from discovery or updates
+
+        Returns:
+            Enriched capabilities dictionary. Default implementation just
+            merges incoming over existing. Protocols can override to add
+            catalog lookups, feature detection, etc.
+        """
+        # Default: simple merge (incoming overwrites existing)
+        result = dict(existing_caps) if existing_caps else {}
+        if incoming_caps:
+            result.update(incoming_caps)
+        return result
+
     def supports_polling(self) -> bool:
         """Check if this protocol supports device polling.
 

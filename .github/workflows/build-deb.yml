@@ -249,19 +249,27 @@ jobs:
           exit 1
         fi
 
-        # Check capability catalog installed
-        echo "Checking for capability catalog..."
-        if [ -f /usr/share/dmx_lan_bridge/capability_catalog_govee.json ]; then
-          echo "✓ Capability catalog found"
-          ls -la /usr/share/dmx_lan_bridge/capability_catalog_govee.json
-          echo "Verifying config points to it..."
-          ${{ matrix.use_sudo && 'sudo' || '' }} grep capability_catalog /etc/dmx-bridge/config.toml || echo "NOT FOUND IN CONFIG"
-        else
-          echo "ERROR: Capability catalog not found"
+        # Check capability catalogs installed
+        echo "Checking for capability catalogs..."
+        all_found=true
+        for catalog in capability_catalog_govee.json capability_catalog_lifx.json; do
+          if [ -f "/usr/share/dmx_lan_bridge/$catalog" ]; then
+            echo "✓ $catalog found"
+            ls -la "/usr/share/dmx_lan_bridge/$catalog"
+          else
+            echo "ERROR: $catalog not found"
+            all_found=false
+          fi
+        done
+
+        if [ "$all_found" = "false" ]; then
           echo "Contents of /usr/share/:"
           ls -la /usr/share/ | grep dmx || echo "No dmx directories"
           exit 1
         fi
+
+        echo "Verifying config points to catalog directory..."
+        ${{ matrix.use_sudo && 'sudo' || '' }} grep capability_catalog /etc/dmx-bridge/config.toml || echo "NOT FOUND IN CONFIG"
 
         echo ""
         echo "✓ Installation verified successfully on ${{ matrix.name }}"
@@ -285,8 +293,10 @@ jobs:
         echo "=== Testing systemd service ==="
 
         # Debug: verify files exist before testing service
-        echo "Debug: Checking capability catalog and config..."
-        ls -la /usr/share/dmx_lan_bridge/capability_catalog_govee.json || echo "ERROR: Catalog file missing!"
+        echo "Debug: Checking capability catalogs and config..."
+        for catalog in capability_catalog_govee.json capability_catalog_lifx.json; do
+          ls -la "/usr/share/dmx_lan_bridge/$catalog" || echo "ERROR: $catalog missing!"
+        done
         echo "Config file contents (capability_catalog line):"
         sudo grep capability_catalog /etc/dmx-bridge/config.toml || echo "ERROR: Not in config!"
         echo ""
