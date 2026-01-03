@@ -494,6 +494,7 @@ class DiscoveryService:
                     id=device_id,
                     ip=ip,
                     protocol="lifx",
+                    name=label,
                     model_number=None,
                     device_type="light",
                     length_meters=None,
@@ -501,7 +502,7 @@ class DiscoveryService:
                     led_density_per_meter=None,
                     has_zones=None,
                     zone_count=None,
-                    description=label,
+                    description=None,
                     capabilities=None,
                     manual=False,
                 )

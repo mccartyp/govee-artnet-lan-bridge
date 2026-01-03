@@ -682,7 +682,7 @@ def _print_device_cards(devices: list[dict[str, Any]], console: Console, config:
             ("Protocol", "protocol"),
             ("Model", "model_number"),
             ("Type", "device_type"),
-            ("Description", "description"),
+            ("Name", "name"),
             ("Enabled", "enabled"),
             ("Manual", "manual"),
             ("Discovered", "discovered"),
