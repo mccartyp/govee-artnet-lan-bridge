@@ -29,6 +29,9 @@ case "$1" in
             rm -rf /opt/dmx-lan-bridge || true
         fi
 
+        # Clean up /opt directory if empty (prevents dpkg warning)
+        rmdir --ignore-fail-on-non-empty /opt 2>/dev/null || true
+
         # Reload systemd daemon
         systemctl daemon-reload || true
 
@@ -42,6 +45,9 @@ case "$1" in
             echo "Removing application directory /opt/dmx-lan-bridge..."
             rm -rf /opt/dmx-lan-bridge || true
         fi
+
+        # Clean up /opt directory if empty (prevents dpkg warning)
+        rmdir --ignore-fail-on-non-empty /opt 2>/dev/null || true
 
         # Just reload systemd to remove the service unit
         systemctl daemon-reload || true
